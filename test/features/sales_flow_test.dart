@@ -107,7 +107,7 @@ void main() {
     await settle(tester);
     expect(find.text('1,000.00'), findsWidgets); // line total and invoice total
 
-    await tester.tap(find.textContaining(Strings.save));
+    await tester.tap(find.text('${Strings.save} (Ctrl+S)'));
     await settle(tester);
 
     expect(find.textContaining('S-000001'), findsWidgets);
