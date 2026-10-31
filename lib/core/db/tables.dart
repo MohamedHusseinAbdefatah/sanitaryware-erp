@@ -45,6 +45,7 @@ class Units extends Table with Timestamps {
   TextColumn get nameAr => text()();
 }
 
+@TableIndex(name: 'idx_products_name_ar', columns: {#nameAr})
 class Products extends Table with Timestamps {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get code => text().unique()();

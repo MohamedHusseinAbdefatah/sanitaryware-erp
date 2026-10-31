@@ -33,6 +33,7 @@ void main() {
       expect(parseMoney('1.234'), isNull);
       expect(parseMoney('1.2.3'), isNull);
       expect(parseMoney('.'), isNull);
+      expect(parseMoney('99999999999999999999'), isNull);
     });
 
     test('round trip', () {

@@ -1,5 +1,5 @@
 name: sanitaryware_erp
-description: "A new Flutter project."
+description: "Offline Arabic ERP for a sanitaryware supply business (Windows desktop)."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -37,7 +37,7 @@ dependencies:
   flutter_riverpod: ^2.6.1
   go_router: ^17.2.3
   window_manager: ^0.5.2
-  intl: any
+  intl: ^0.20.2
   drift: ^2.31.0
   sqlite3_flutter_libs: ^0.5.42
   path_provider: ^2.1.5

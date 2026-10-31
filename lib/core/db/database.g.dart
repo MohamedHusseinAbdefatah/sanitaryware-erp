@@ -10549,6 +10549,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $ExpenseCategoriesTable(this);
   late final $ExpensesTable expenses = $ExpensesTable(this);
   late final $AuditLogsTable auditLogs = $AuditLogsTable(this);
+  late final Index idxProductsNameAr = Index(
+    'idx_products_name_ar',
+    'CREATE INDEX idx_products_name_ar ON products (name_ar)',
+  );
   late final Index idxStockMovementsProduct = Index(
     'idx_stock_movements_product',
     'CREATE INDEX idx_stock_movements_product ON stock_movements (product_id)',
@@ -10590,6 +10594,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     expenseCategories,
     expenses,
     auditLogs,
+    idxProductsNameAr,
     idxStockMovementsProduct,
     idxSalesInvoicesCustomerDate,
     idxPurchaseInvoicesSupplierDate,

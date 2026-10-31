@@ -7,7 +7,7 @@ if exist check_log.txt del check_log.txt
 
 echo [1/3] Generating database code...
 echo ---- BUILD_RUNNER ---- >> check_log.txt
-call dart run build_runner build --delete-conflicting-outputs >> check_log.txt 2>&1
+call dart run build_runner build >> check_log.txt 2>&1
 
 echo [2/3] Analyzing code...
 echo ---- ANALYZE ---- >> check_log.txt

@@ -1,5 +1,8 @@
-/// Money is always an integer number of piastres (100 piastres = 1 EGP).
-/// Never use double for money.
+// Money is always an integer number of piastres (100 piastres = 1 EGP).
+// Never use double for money.
+
+// Largest whole-pound part accepted (13 digits), so int.parse never overflows.
+const _maxPoundDigits = 13;
 
 /// 123456 -> "1,234.56", -50 -> "-0.50"
 String formatMoney(int piastres) {
@@ -34,6 +37,7 @@ int? parseMoney(String input) {
   final fracText = parts.length == 2 ? parts[1] : '';
   if (wholeText.isEmpty && fracText.isEmpty) return null;
   if (fracText.length > 2) return null;
+  if (wholeText.length > _maxPoundDigits) return null;
 
   final digits = RegExp(r'^\d+$');
   if (wholeText.isNotEmpty && !digits.hasMatch(wholeText)) return null;
