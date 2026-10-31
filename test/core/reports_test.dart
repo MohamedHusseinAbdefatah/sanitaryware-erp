@@ -350,5 +350,6 @@ void main() {
     expect(ReportTable.display(qtyOf(35), ColumnType.qty), '35');
     expect(ReportTable.display(DateTime(2026, 10, 4), ColumnType.date), '2026/10/04');
     expect(ReportTable.display(null, ColumnType.money), '');
+    expect(ReportTable.display('الإجمالي', ColumnType.date), 'الإجمالي'); // totals row
   });
 }

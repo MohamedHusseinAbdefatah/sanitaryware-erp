@@ -18,16 +18,17 @@ pw.Widget rtlTable({
   required List<PdfColumn> columns,
   required List<List<String>> rows,
   List<String>? footer,
+  double fontSize = 9.5,
 }) {
   final reversed = columns.reversed.toList();
 
   pw.Widget cell(String text, PdfColumn column, {bool bold = false}) {
     return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
       child: pw.Text(
         text,
         textAlign: column.numeric ? pw.TextAlign.center : pw.TextAlign.right,
-        style: bold ? pw.TextStyle(fontWeight: pw.FontWeight.bold) : null,
+        style: pw.TextStyle(fontSize: fontSize, fontWeight: bold ? pw.FontWeight.bold : null),
       ),
     );
   }

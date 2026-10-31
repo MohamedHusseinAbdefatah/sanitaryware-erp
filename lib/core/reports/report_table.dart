@@ -55,6 +55,9 @@ class ReportTable {
   /// One value as the screen shows it.
   static String display(Object? value, ColumnType type) {
     if (value == null) return '';
+    // The totals row puts the word "الإجمالي" in the first column, which
+    // may be a date or number column.
+    if (value is String) return value;
     return switch (type) {
       ColumnType.money => formatMoney(value as int),
       ColumnType.qty => formatQty(value as int),
