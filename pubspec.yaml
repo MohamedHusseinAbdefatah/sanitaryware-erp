@@ -76,6 +76,17 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  # Cairo (SIL Open Font License, see assets/fonts/OFL.txt). Declared as a
+  # font for the screens and as assets so PDFs can embed the same files.
+  fonts:
+    - family: Cairo
+      fonts:
+        - asset: assets/fonts/Cairo-Regular.ttf
+        - asset: assets/fonts/Cairo-Bold.ttf
+          weight: 700
+  assets:
+    - assets/fonts/
+
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg

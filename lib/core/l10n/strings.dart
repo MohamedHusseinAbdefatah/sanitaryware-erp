@@ -48,6 +48,12 @@ class Strings {
   static const roleAdmin = 'مدير';
   static const roleCashier = 'كاشير';
 
+  // Settings: printing
+  static const printingSection = 'الطباعة';
+  static const printTestPage = 'طباعة صفحة تجريبية';
+  static const printTestInfo =
+      'اطبع هذه الصفحة على طابعة المحل للتأكد من ظهور الحروف العربية والجداول والأرقام بشكل صحيح.';
+
   // Settings: backup
   static const backupSection = 'النسخ الاحتياطي';
   static const backupNow = 'نسخة احتياطية الآن';

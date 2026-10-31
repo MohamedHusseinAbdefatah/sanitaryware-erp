@@ -3,11 +3,14 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:printing/printing.dart';
 
 import '../../core/auth/session.dart';
 import '../../core/backup/backup_service.dart';
 import '../../core/backup/restart.dart';
 import '../../core/l10n/strings.dart';
+import '../../core/printing/pdf_fonts.dart';
+import '../../core/printing/test_page.dart';
 import '../../core/providers.dart';
 import '../../core/services/settings_service.dart';
 import 'backup_list.dart';
@@ -97,6 +100,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         _toast(Strings.backupDone);
       });
 
+  /// Opens the Windows print dialog (with "Microsoft Print to PDF" as an
+  /// option) for the Arabic test page.
+  Future<void> _printTestPage() => _run(() async {
+        final fonts = await PdfFonts.load();
+        final company = await ref.read(settingsServiceProvider).company();
+        await Printing.layoutPdf(
+          name: Strings.printTestPage,
+          onLayout: (_) => buildTestPage(
+            fonts: fonts,
+            company: company,
+            printedAt: DateTime.now(),
+          ),
+        );
+      });
+
   Future<void> _chooseExternalFolder() => _run(() async {
         final path = await FilePicker.getDirectoryPath();
         if (path == null) return;
@@ -181,6 +199,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ),
                 ],
               ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(Strings.printingSection, style: theme.textTheme.titleMedium),
+                const SizedBox(height: 8),
+                const Text(Strings.printTestInfo),
+                const SizedBox(height: 16),
+                OutlinedButton.icon(
+                  onPressed: _busy ? null : _printTestPage,
+                  icon: const Icon(Icons.print_outlined),
+                  label: const Text(Strings.printTestPage),
+                ),
+              ],
             ),
           ),
         ),
