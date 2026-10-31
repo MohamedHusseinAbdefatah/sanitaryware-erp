@@ -332,6 +332,19 @@ void main() {
     expect(values.length - header - 2, 3); // three day rows
   });
 
+  test('dashboard for Oct 3', () async {
+    final d = await reports.dashboard(now: oct(3, 18));
+    expect(d.todaySales, 62500); // S4 is cancelled
+    expect(d.todayInvoices, 1);
+    expect(d.todayReceived, 12500); // paid at the counter on S3
+    expect(d.lowStockCount, 1);
+    expect(d.chequesInDue, 0); // due Oct 20, more than a week away
+    expect(d.topDebtors, [('مقاول', 60000), ('عميل', 25000)]);
+    final later = await reports.dashboard(now: oct(18));
+    expect((later.chequesInDue, later.chequesInDueTotal), (1, 30000));
+    expect((later.chequesOutDue, later.chequesOutDueTotal), (1, 100000));
+  });
+
   test('display formatting', () {
     expect(ReportTable.display(192500, ColumnType.money), '1,925.00');
     expect(ReportTable.display(qtyOf(35), ColumnType.qty), '35');

@@ -7,9 +7,11 @@ import '../../core/db/database.dart';
 import '../../core/l10n/strings.dart';
 import '../../core/money.dart';
 import '../../core/providers.dart';
+import '../../core/services/doc_types.dart';
 import '../../core/services/product_service.dart';
 import '../../core/widgets/data_list.dart';
 import 'party_form_dialog.dart';
+import 'statement_dialog.dart';
 
 String priceLevelLabel(String level) => switch (level) {
       PriceLevel.wholesale => Strings.priceWholesale,
@@ -44,6 +46,10 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
           rows: list,
           emptyText: Strings.noCustomers,
           onTap: (c) => showCustomerForm(context, existing: c),
+          trailing: (c) => _PartyMenu(
+            onEdit: () => showCustomerForm(context, existing: c),
+            onStatement: () => showStatement(context, partyType: PartyType.customer, partyId: c.id),
+          ),
           columns: [
             DataListColumn(Strings.name, flex: 3, (c) => _NameCell(c.name, c.isActive)),
             DataListColumn(Strings.phone, flex: 2, (c) => Text(c.phone ?? '', textDirection: TextDirection.ltr)),
@@ -86,6 +92,10 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
           rows: list,
           emptyText: Strings.noSuppliers,
           onTap: (s) => showSupplierForm(context, existing: s),
+          trailing: (s) => _PartyMenu(
+            onEdit: () => showSupplierForm(context, existing: s),
+            onStatement: () => showStatement(context, partyType: PartyType.supplier, partyId: s.id),
+          ),
           columns: [
             DataListColumn(Strings.name, flex: 3, (s) => _NameCell(s.name, s.isActive)),
             DataListColumn(Strings.phone, flex: 2, (s) => Text(s.phone ?? '', textDirection: TextDirection.ltr)),
@@ -183,3 +193,21 @@ final _customerBalancesProvider = StreamProvider.autoDispose<Map<int, int>>(
 final _supplierBalancesProvider = StreamProvider.autoDispose<Map<int, int>>(
   (ref) => ref.watch(balanceServiceProvider).watchSupplierBalances(),
 );
+
+class _PartyMenu extends StatelessWidget {
+  const _PartyMenu({required this.onEdit, required this.onStatement});
+
+  final VoidCallback onEdit;
+  final VoidCallback onStatement;
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<VoidCallback>(
+      onSelected: (f) => f(),
+      itemBuilder: (_) => [
+        PopupMenuItem(value: onStatement, child: const Text(Strings.statement)),
+        PopupMenuItem(value: onEdit, child: const Text(Strings.edit)),
+      ],
+    );
+  }
+}

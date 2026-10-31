@@ -224,6 +224,36 @@ class Strings {
   static const returnSaved = 'تم حفظ المرتجع';
   static const cancelReturn = 'إلغاء المرتجع';
 
+  // Reports, statements, expenses, dashboard
+  static const lastMonth = 'الشهر الماضي';
+  static const thisYear = 'هذا العام';
+  static const allTime = 'كل الفترات';
+  static const refresh = 'تحديث';
+  static const exportExcel = 'تصدير Excel';
+  static const savedTo = 'تم الحفظ في';
+  static const noData = 'لا توجد بيانات في هذه الفترة';
+  static const statement = 'كشف حساب';
+  static const statementOf = 'كشف حساب';
+  static const openingLine = 'رصيد أول الفترة';
+  static const closingBalance = 'الرصيد في نهاية الفترة';
+  static const pendingChequesNotCounted = 'شيكات تحت التحصيل غير محسوبة';
+  static const debit = 'مدين';
+  static const credit = 'دائن';
+  static const description = 'البيان';
+  static const newExpense = 'مصروف جديد';
+  static const cancelExpense = 'إلغاء المصروف';
+  static const expenseCategory = 'البند';
+  static const expenseCategories = 'بنود المصروفات';
+  static const noExpenses = 'لا توجد مصروفات في هذه الفترة';
+  static const totalExpenses = 'إجمالي المصروفات';
+  static const todaySales = 'مبيعات اليوم';
+  static const invoicesWord = 'فاتورة';
+  static const todayReceived = 'المقبوض اليوم';
+  static const lowStockItems = 'أصناف تحت حد الطلب';
+  static const chequesDueWeek = 'شيكات تستحق خلال أسبوع';
+  static const topDebtors = 'أكثر العملاء مديونية';
+  static const noDebtors = 'لا توجد مديونيات';
+
   // Settings: rules
   static const rulesSection = 'قواعد البيع والتحصيل';
   static const allowNegativeStock = 'السماح بالبيع بأكثر من الرصيد';

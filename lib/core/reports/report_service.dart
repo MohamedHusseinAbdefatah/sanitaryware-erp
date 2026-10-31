@@ -5,6 +5,7 @@ import '../quantity.dart';
 import '../services/balance_service.dart';
 import '../services/doc_types.dart';
 import '../services/query_helpers.dart';
+import '../services/settings_service.dart';
 import '../services/stock_service.dart';
 import 'report_table.dart';
 
@@ -32,6 +33,37 @@ enum ReportKind {
   final bool byCategory;
 }
 
+/// The numbers on the dashboard.
+class DashboardSummary {
+  const DashboardSummary({
+    required this.todaySales,
+    required this.todayInvoices,
+    required this.todayReceived,
+    required this.lowStockCount,
+    required this.chequesInDue,
+    required this.chequesInDueTotal,
+    required this.chequesOutDue,
+    required this.chequesOutDueTotal,
+    required this.topDebtors,
+  });
+
+  final int todaySales;
+  final int todayInvoices;
+
+  /// Counted money received today (sales at the counter and payments).
+  final int todayReceived;
+  final int lowStockCount;
+
+  /// Pending cheques due within the next 7 days (or overdue).
+  final int chequesInDue;
+  final int chequesInDueTotal;
+  final int chequesOutDue;
+  final int chequesOutDueTotal;
+
+  /// Up to five customers owing the most.
+  final List<(String name, int balance)> topDebtors;
+}
+
 /// Every report in the plan, each returning a [ReportTable].
 /// Cancelled documents never count. Ranges are whole days, inclusive.
 class ReportService {
@@ -53,6 +85,37 @@ class ReportService {
       ReportKind.customersOwing => customersOwing(),
       ReportKind.supplierBalances => supplierBalances(),
     };
+  }
+
+  Future<DashboardSummary> dashboard({DateTime? now}) async {
+    final today = _day(now ?? DateTime.now());
+    final sales = await _sales(today, today);
+    final pending = await SettingsService(db).getBool(SettingKey.countPendingCheques);
+    final received = await db.customSelect(
+      'SELECT COALESCE(SUM(p.amount), 0) AS total FROM payments p '
+      "WHERE p.direction = '${PaymentDirection.inbound}' AND p.party_type = '${PartyType.customer}' "
+      'AND ${BalanceService.countedPayment('p')} AND p.date >= ? AND p.date < ?',
+      variables: [
+        Variable.withBool(pending),
+        Variable.withDateTime(today),
+        Variable.withDateTime(today.add(const Duration(days: 1))),
+      ],
+    ).getSingle();
+    final cheques = (await chequesDue(to: today.add(const Duration(days: 7)))).rows;
+    final incoming = cheques.where((r) => r[4] == 'وارد');
+    final outgoing = cheques.where((r) => r[4] == 'صادر');
+    final debtors = (await customersOwing()).rows.take(5);
+    return DashboardSummary(
+      todaySales: sales.fold(0, (s, i) => s + i.total),
+      todayInvoices: sales.length,
+      todayReceived: received.read<int>('total'),
+      lowStockCount: (await lowStock()).rows.length,
+      chequesInDue: incoming.length,
+      chequesInDueTotal: incoming.fold(0, (s, r) => s + (r[5] as int)),
+      chequesOutDue: outgoing.length,
+      chequesOutDueTotal: outgoing.fold(0, (s, r) => s + (r[5] as int)),
+      topDebtors: [for (final r in debtors) (r[0] as String, r[2] as int)],
+    );
   }
 
   // ---------------------------------------------------------------- sales

@@ -3,9 +3,12 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/l10n/strings.dart';
 import '../../core/services/doc_types.dart';
+import '../dashboard/dashboard_screen.dart';
+import '../expenses/expenses_screen.dart';
 import '../parties/parties_screen.dart';
 import '../payments/payments_screen.dart';
 import '../products/products_screen.dart';
+import '../reports/reports_screen.dart';
 import '../purchases/purchase_entry_screen.dart';
 import '../purchases/purchase_list_screen.dart';
 import '../purchases/purchase_view_screen.dart';
@@ -43,7 +46,7 @@ final appSections = <AppSection>[
     path: '/dashboard',
     title: Strings.dashboard,
     icon: Icons.dashboard_outlined,
-    builder: (_) => const ComingSoonPage(title: Strings.dashboard),
+    builder: (_) => const DashboardScreen(),
   ),
   AppSection(
     path: '/products',
@@ -130,14 +133,14 @@ final appSections = <AppSection>[
     title: Strings.expenses,
     icon: Icons.money_off_outlined,
     adminOnly: true,
-    builder: (_) => const ComingSoonPage(title: Strings.expenses),
+    builder: (_) => const ExpensesScreen(),
   ),
   AppSection(
     path: '/reports',
     title: Strings.reports,
     icon: Icons.bar_chart_outlined,
     adminOnly: true,
-    builder: (_) => const ComingSoonPage(title: Strings.reports),
+    builder: (_) => const ReportsScreen(),
   ),
   AppSection(
     path: '/settings',

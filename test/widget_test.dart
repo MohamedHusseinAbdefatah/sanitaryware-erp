@@ -25,6 +25,21 @@ void main() {
 
   tearDown(() => db.close());
 
+  /// Alternates real time (for drift's queries) with frames. pumpAndSettle
+  /// would wait forever while a loading spinner (the dashboard) is on screen.
+  Future<void> settle(WidgetTester tester) async {
+    for (var i = 0; i < 8; i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+  }
+
+  /// Unmounts so drift closes its streams before the database does.
+  Future<void> unmount(WidgetTester tester) async {
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(Duration.zero);
+  }
+
   Future<void> pumpApp(
     WidgetTester tester, {
     required bool setupNeeded,
@@ -48,7 +63,7 @@ void main() {
         child: const App(),
       ),
     );
-    await tester.pumpAndSettle();
+    await settle(tester);
   }
 
   Future<User> makeUser(WidgetTester tester, String role) async {
@@ -92,10 +107,11 @@ void main() {
       // Let the password check finish on its background isolate.
       await Future<void>.delayed(const Duration(milliseconds: 500));
     });
-    await tester.pumpAndSettle();
+    await settle(tester);
 
     expect(find.text(Strings.products), findsOneWidget);
     expect(find.text('المدير'), findsOneWidget);
+    await unmount(tester);
   });
 
   testWidgets('a wrong password shows an error and stays on login', (tester) async {
@@ -108,7 +124,7 @@ void main() {
       await tester.tap(find.text(Strings.login));
       await Future<void>.delayed(const Duration(milliseconds: 500));
     });
-    await tester.pumpAndSettle();
+    await settle(tester);
 
     expect(find.text(Strings.loginTitle), findsOneWidget);
     expect(find.text('اسم المستخدم أو كلمة المرور غير صحيحة'), findsOneWidget);
@@ -119,6 +135,7 @@ void main() {
     await pumpApp(tester, setupNeeded: false, user: admin);
     expect(find.text(Strings.settings), findsOneWidget);
     expect(find.text(Strings.purchases), findsOneWidget);
+    await unmount(tester);
   });
 
   testWidgets('cashier does not see admin-only sections', (tester) async {
@@ -128,13 +145,14 @@ void main() {
     expect(find.text(Strings.settings), findsNothing);
     expect(find.text(Strings.purchases), findsNothing);
     expect(find.text(Strings.reports), findsNothing);
+    await unmount(tester);
   });
 
   testWidgets('logging out returns to the login screen', (tester) async {
     final admin = await makeUser(tester, UserRole.admin);
     await pumpApp(tester, setupNeeded: false, user: admin);
     await tester.tap(find.byTooltip(Strings.logout));
-    await tester.pumpAndSettle();
+    await settle(tester);
     expect(find.text(Strings.loginTitle), findsOneWidget);
   });
 }

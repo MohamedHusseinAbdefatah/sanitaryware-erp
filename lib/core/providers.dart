@@ -6,8 +6,10 @@ import 'auth/auth_service.dart';
 import 'backup/backup_actions.dart';
 import 'backup/backup_service.dart';
 import 'db/database.dart';
+import 'reports/report_service.dart';
 import 'services/balance_service.dart';
 import 'services/catalog_service.dart';
+import 'services/expense_service.dart';
 import 'services/party_service.dart';
 import 'services/payment_service.dart';
 import 'services/product_service.dart';
@@ -15,6 +17,7 @@ import 'services/purchase_service.dart';
 import 'services/return_service.dart';
 import 'services/sales_service.dart';
 import 'services/settings_service.dart';
+import 'services/statement_service.dart';
 import 'services/stock_service.dart';
 
 /// Overridden in main.dart with the opened database.
@@ -72,3 +75,12 @@ final purchaseServiceProvider =
 
 final returnServiceProvider =
     Provider<ReturnService>((ref) => ReturnService(ref.watch(databaseProvider)));
+
+final expenseServiceProvider =
+    Provider<ExpenseService>((ref) => ExpenseService(ref.watch(databaseProvider)));
+
+final statementServiceProvider =
+    Provider<StatementService>((ref) => StatementService(ref.watch(databaseProvider)));
+
+final reportServiceProvider =
+    Provider<ReportService>((ref) => ReportService(ref.watch(databaseProvider)));
