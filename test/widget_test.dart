@@ -133,7 +133,7 @@ void main() {
   testWidgets('admin sees admin-only sections', (tester) async {
     final admin = await makeUser(tester, UserRole.admin);
     await pumpApp(tester, setupNeeded: false, user: admin);
-    expect(find.text(Strings.settings), findsOneWidget);
+    expect(find.descendant(of: find.byType(SingleChildScrollView).first, matching: find.text(Strings.settings)), findsOneWidget);
     expect(find.text(Strings.purchases), findsOneWidget);
     await unmount(tester);
   });
