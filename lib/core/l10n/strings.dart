@@ -260,6 +260,49 @@ class Strings {
   static const printReceipt = 'طباعة إيصال';
   static const chooseLogo = 'اختيار الشعار';
 
+  // Settings tabs
+  static const generalTab = 'عام';
+  static const usersTab = 'المستخدمون';
+  static const importTab = 'استيراد البيانات';
+  static const auditTab = 'سجل العمليات';
+
+  // Users
+  static const newUser = 'مستخدم جديد';
+  static const role = 'الصلاحية';
+  static const you = 'أنت';
+  static const resetPassword = 'تغيير كلمة المرور';
+  static const newPassword = 'كلمة المرور الجديدة';
+  static const passwordChanged = 'تم تغيير كلمة المرور';
+  static const passwordTooShort = 'كلمة المرور يجب ألا تقل عن 4 أحرف';
+  static const inactiveUserHint = 'المستخدم الموقوف لا يستطيع الدخول';
+  static const adminRights = 'المدير: كل الشاشات، الأسعار والتكلفة، الإلغاء، المشتريات، التقارير والإعدادات';
+  static const cashierRights =
+      'الكاشير: البيع، استلام المدفوعات، العملاء ومرتجعات البيع. لا يرى التكلفة ولا يلغي';
+
+  // Audit log
+  static const user = 'المستخدم';
+  static const action = 'العملية';
+  static const onWhat = 'على';
+  static const details = 'التفاصيل';
+  static const searchAudit = 'بحث في السجل';
+
+  // Import
+  static const importIntro =
+      'لنقل بيانات المحل الحالية: نزّل النموذج، املأه (أو استخدم ملفك بنفس أسماء الأعمدة)، ثم اختر الملف. '
+      'ستظهر معاينة بكل صف وأخطائه قبل الحفظ، ويتم استيراد الصفوف السليمة فقط.';
+  static const downloadTemplate = 'تنزيل النموذج';
+  static const importTemplate = 'نموذج استيراد';
+  static const chooseExcelFile = 'اختيار ملف Excel...';
+  static const importPreview = 'معاينة الاستيراد';
+  static const missingColumns = 'أعمدة مطلوبة غير موجودة في الملف';
+  static const rowsReady = 'صفوف جاهزة';
+  static const rowsWithErrors = 'صفوف بها أخطاء';
+  static const errorsOnly = 'الأخطاء فقط';
+  static const excelRow = 'صف';
+  static const importRows = 'استيراد الصفوف السليمة';
+  static const imported = 'تم استيراد';
+  static const previewLimited = 'تظهر أول 1000 صف فقط في المعاينة؛ الاستيراد يشمل كل الصفوف السليمة';
+
   // Settings: rules
   static const rulesSection = 'قواعد البيع والتحصيل';
   static const allowNegativeStock = 'السماح بالبيع بأكثر من الرصيد';

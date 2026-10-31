@@ -17,7 +17,7 @@ import '../returns/returns_screen.dart';
 import '../sales/sale_entry_screen.dart';
 import '../sales/sale_view_screen.dart';
 import '../sales/sales_list_screen.dart';
-import '../settings/settings_screen.dart';
+import '../settings/settings_tabs.dart';
 import 'coming_soon_page.dart';
 
 /// One sidebar entry and its page. Cashiers do not see [adminOnly] sections

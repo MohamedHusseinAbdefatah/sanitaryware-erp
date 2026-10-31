@@ -119,5 +119,89 @@ class AuthService {
     return user;
   }
 
+  Stream<List<User>> watchUsers() =>
+      (db.select(db.users)..orderBy([(t) => OrderingTerm(expression: t.fullName)])).watch();
+
+  /// Admin only. Adds a user (cashier or admin).
+  Future<User> addUser({
+    required String fullName,
+    required String username,
+    required String password,
+    required String role,
+    required User by,
+  }) {
+    return db.transaction(() async {
+      if (!by.isAdmin) throw AuthException('إدارة المستخدمين للمدير فقط');
+      final user = await createUser(fullName: fullName, username: username, password: password, role: role);
+      await AuditService(db).log(
+        action: AuditAction.create,
+        entity: 'user',
+        entityId: user.id,
+        userId: by.id,
+        details: '${user.username} ($role)',
+      );
+      return user;
+    });
+  }
+
+  /// Admin only. The shop must always keep at least one active admin, so
+  /// the last one cannot be demoted or stopped.
+  Future<void> updateUser(
+    int userId, {
+    required String fullName,
+    required String role,
+    required bool isActive,
+    required User by,
+  }) {
+    return db.transaction(() async {
+      if (!by.isAdmin) throw AuthException('إدارة المستخدمين للمدير فقط');
+      if (fullName.trim().isEmpty) throw AuthException('الاسم مطلوب');
+      if (role != UserRole.admin && role != UserRole.cashier) throw ArgumentError.value(role, 'role');
+      final user = await (db.select(db.users)..where((t) => t.id.equals(userId))).getSingle();
+      final losesAdmin = user.isAdmin && user.isActive && (role != UserRole.admin || !isActive);
+      if (losesAdmin) {
+        final admins = await (db.select(db.users)
+              ..where((t) => t.role.equals(UserRole.admin) & t.isActive.equals(true)))
+            .get();
+        if (admins.length <= 1) throw AuthException('يجب أن يبقى مدير واحد نشط على الأقل');
+      }
+      await (db.update(db.users)..where((t) => t.id.equals(userId))).write(UsersCompanion(
+            fullName: Value(fullName.trim()),
+            role: Value(role),
+            isActive: Value(isActive),
+            updatedAt: Value(DateTime.now()),
+          ));
+      await AuditService(db).log(
+        action: AuditAction.update,
+        entity: 'user',
+        entityId: userId,
+        userId: by.id,
+        details: '${user.username}: $role${isActive ? '' : ' (موقوف)'}',
+      );
+    });
+  }
+
+  /// Admin only (also for their own password).
+  Future<void> resetPassword(int userId, String newPassword, {required User by}) {
+    return db.transaction(() async {
+      if (!by.isAdmin) throw AuthException('إدارة المستخدمين للمدير فقط');
+      if (newPassword.length < minPasswordLength) {
+        throw AuthException('كلمة المرور يجب ألا تقل عن $minPasswordLength أحرف');
+      }
+      final salt = hasher.newSalt();
+      final hash = await hasher.hash(newPassword, salt);
+      await (db.update(db.users)..where((t) => t.id.equals(userId))).write(
+        UsersCompanion(passwordHash: Value(hash), salt: Value(salt), updatedAt: Value(DateTime.now())),
+      );
+      await AuditService(db).log(
+        action: AuditAction.update,
+        entity: 'user',
+        entityId: userId,
+        userId: by.id,
+        details: 'تغيير كلمة المرور',
+      );
+    });
+  }
+
   String _normalizeUsername(String username) => username.trim().toLowerCase();
 }

@@ -15,14 +15,14 @@ import '../../core/providers.dart';
 import '../../core/services/settings_service.dart';
 import 'backup_list.dart';
 
-class SettingsScreen extends ConsumerStatefulWidget {
-  const SettingsScreen({super.key});
+class GeneralSettingsTab extends ConsumerStatefulWidget {
+  const GeneralSettingsTab({super.key});
 
   @override
-  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
+  ConsumerState<GeneralSettingsTab> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+class _SettingsScreenState extends ConsumerState<GeneralSettingsTab> {
   final _form = GlobalKey<FormState>();
   final _name = TextEditingController();
   final _address = TextEditingController();
@@ -203,8 +203,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
-        Text(Strings.settings, style: theme.textTheme.headlineSmall),
-        const SizedBox(height: 16),
         Card(
           child: Padding(
             padding: const EdgeInsets.all(20),

@@ -87,10 +87,14 @@ void main() {
     testWidgets('every section opens without layout errors ($role)', (tester) async {
       await creditSale(tester);
       await pumpApp(tester, role == 'admin' ? shop.admin : shop.cashier);
-      final sidebar = find.byType(ListView).first;
+      final sidebar = find.byType(SingleChildScrollView).first;
       for (final s in appSections) {
         final entry = find.descendant(of: sidebar, matching: find.text(s.title));
-        if (entry.evaluate().isEmpty) continue; // hidden for this role
+        // Every entry the role may use is on screen; the others are hidden.
+        final visible = role == 'admin' || !s.adminOnly;
+        expect(entry, visible ? findsOneWidget : findsNothing, reason: s.title);
+        if (!visible) continue;
+        await tester.ensureVisible(entry);
         await tester.tap(entry);
         await settle(tester);
         expect(tester.takeException(), isNull, reason: s.title);
