@@ -1,11 +1,15 @@
 import 'package:drift/drift.dart';
 
 import '../db/database.dart';
+import '../quantity.dart';
+import 'audit_service.dart';
+import 'errors.dart';
 
 abstract final class StockMovementType {
   static const opening = 'opening';
   static const purchase = 'purchase';
   static const sale = 'sale';
+  static const saleCancel = 'sale_cancel';
   static const saleReturn = 'sale_return';
   static const purchaseReturn = 'purchase_return';
   static const adjustment = 'adjustment';
@@ -58,5 +62,57 @@ class StockService {
             date: date == null ? const Value.absent() : Value(date),
           ),
         );
+  }
+
+  /// A counted correction (breakage, stock-take). [delta] is in thousandths;
+  /// the reason is required and the result may not go below zero.
+  Future<void> adjust({
+    required int productId,
+    required int delta,
+    required String reason,
+    int? userId,
+  }) {
+    return db.transaction(() async {
+      if (delta == 0) throw ValidationException('أدخل كمية التسوية');
+      if (reason.trim().isEmpty) throw ValidationException('سبب التسوية مطلوب');
+      final product = await (db.select(db.products)..where((t) => t.id.equals(productId)))
+          .getSingle();
+      final unit = product.unitId == null
+          ? null
+          : await (db.select(db.units)..where((t) => t.id.equals(product.unitId!))).getSingle();
+      if (!(unit?.allowDecimal ?? false) && !isWholeQty(delta)) {
+        throw ValidationException('الكمية يجب أن تكون رقماً صحيحاً لهذه الوحدة');
+      }
+      final after = await currentStock(productId) + delta;
+      if (delta < 0 && after < 0) {
+        throw ValidationException('الرصيد بعد التسوية سيكون أقل من صفر');
+      }
+      await record(
+        productId: productId,
+        type: StockMovementType.adjustment,
+        qty: delta,
+        unitCost: product.costPrice,
+        note: reason.trim(),
+        createdBy: userId,
+      );
+      await AuditService(db).log(
+        action: AuditAction.update,
+        entity: 'stock',
+        entityId: productId,
+        userId: userId,
+        details: 'تسوية ${formatQty(delta)}: ${reason.trim()}',
+      );
+    });
+  }
+
+  /// Every movement of one product, newest first (the stock card).
+  Stream<List<StockMovement>> watchMovements(int productId) {
+    return (db.select(db.stockMovements)
+          ..where((t) => t.productId.equals(productId))
+          ..orderBy([
+            (t) => OrderingTerm.desc(t.date),
+            (t) => OrderingTerm.desc(t.id),
+          ]))
+        .watch();
   }
 }

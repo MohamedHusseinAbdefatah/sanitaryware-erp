@@ -8,6 +8,8 @@ abstract final class SettingKey {
   static const companyPhone = 'company_phone';
   // Optional second folder (USB drive, cloud-synced folder) for backups.
   static const backupExternalFolder = 'backup_external_folder';
+  // '1' lets a sale go through even when stock would drop below zero.
+  static const allowNegativeStock = 'allow_negative_stock';
 }
 
 class CompanyInfo {
@@ -36,6 +38,10 @@ class SettingsService {
           AppSettingsCompanion(keyName: Value(key), val: Value(value)),
         );
   }
+
+  Future<bool> getBool(String key) async => await get(key) == '1';
+
+  Future<void> setBool(String key, bool value) => set(key, value ? '1' : '0');
 
   Future<CompanyInfo> company() async {
     return CompanyInfo(

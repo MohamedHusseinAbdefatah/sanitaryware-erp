@@ -2,6 +2,8 @@ import 'package:drift/drift.dart';
 
 import '../db/database.dart';
 import '../services/audit_service.dart';
+import '../services/catalog_service.dart';
+import '../services/errors.dart';
 import '../services/settings_service.dart';
 import 'password_hasher.dart';
 
@@ -14,12 +16,9 @@ extension UserRoleX on User {
   bool get isAdmin => role == UserRole.admin;
 }
 
-/// Thrown for a problem the person can fix; [message] is shown as-is.
-class AuthException implements Exception {
-  AuthException(this.message);
-  final String message;
-  @override
-  String toString() => message;
+/// A login or account problem; [message] is shown as-is.
+class AuthException extends ValidationException {
+  AuthException(super.message);
 }
 
 class AuthService {
@@ -48,6 +47,7 @@ class AuthService {
         throw AuthException('تم إعداد البرنامج من قبل');
       }
       await SettingsService(db).saveCompany(company);
+      await CatalogService(db).seedDefaultUnits();
       final admin = await createUser(
         fullName: fullName,
         username: username,
