@@ -6,7 +6,12 @@ import 'auth/auth_service.dart';
 import 'backup/backup_actions.dart';
 import 'backup/backup_service.dart';
 import 'db/database.dart';
+import 'services/catalog_service.dart';
+import 'services/party_service.dart';
+import 'services/product_service.dart';
+import 'services/sales_service.dart';
 import 'services/settings_service.dart';
+import 'services/stock_service.dart';
 
 /// Overridden in main.dart with the opened database.
 final databaseProvider = Provider<AppDatabase>(
@@ -36,3 +41,18 @@ final backupActionsProvider = Provider<BackupActions>(
     databaseFile: ref.watch(databaseFileProvider),
   ),
 );
+
+final catalogServiceProvider =
+    Provider<CatalogService>((ref) => CatalogService(ref.watch(databaseProvider)));
+
+final productServiceProvider =
+    Provider<ProductService>((ref) => ProductService(ref.watch(databaseProvider)));
+
+final stockServiceProvider =
+    Provider<StockService>((ref) => StockService(ref.watch(databaseProvider)));
+
+final partyServiceProvider =
+    Provider<PartyService>((ref) => PartyService(ref.watch(databaseProvider)));
+
+final salesServiceProvider =
+    Provider<SalesService>((ref) => SalesService(ref.watch(databaseProvider)));

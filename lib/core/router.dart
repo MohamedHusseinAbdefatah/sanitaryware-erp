@@ -29,7 +29,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (location == '/setup' || location == '/login') {
         return appSections.first.path;
       }
-      final section = appSections.where((s) => s.path == location).firstOrNull;
+      final section = appSections
+          .where((s) => location == s.path || location.startsWith('${s.path}/'))
+          .firstOrNull;
       if (section != null && section.adminOnly && !user.isAdmin) {
         return appSections.first.path;
       }
@@ -47,6 +49,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                 GoRoute(
                   path: section.path,
                   builder: (context, _) => section.builder(context),
+                  routes: section.routes,
                 ),
               ],
             ),

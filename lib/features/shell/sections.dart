@@ -1,11 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/l10n/strings.dart';
+import '../parties/parties_screen.dart';
+import '../products/products_screen.dart';
+import '../sales/sale_entry_screen.dart';
+import '../sales/sale_view_screen.dart';
+import '../sales/sales_list_screen.dart';
 import '../settings/settings_screen.dart';
 import 'coming_soon_page.dart';
 
 /// One sidebar entry and its page. Cashiers do not see [adminOnly] sections
-/// and the router sends them away if they try to open one.
+/// and the router sends them away if they try to open one. [routes] are
+/// pages under the section (e.g. /sales/new) that keep its sidebar entry.
 class AppSection {
   const AppSection({
     required this.path,
@@ -13,6 +20,7 @@ class AppSection {
     required this.icon,
     required this.builder,
     this.adminOnly = false,
+    this.routes = const [],
   });
 
   final String path;
@@ -20,6 +28,7 @@ class AppSection {
   final IconData icon;
   final WidgetBuilder builder;
   final bool adminOnly;
+  final List<RouteBase> routes;
 }
 
 final appSections = <AppSection>[
@@ -33,25 +42,38 @@ final appSections = <AppSection>[
     path: '/products',
     title: Strings.products,
     icon: Icons.inventory_2_outlined,
-    builder: (_) => const ComingSoonPage(title: Strings.products),
+    builder: (_) => const ProductsScreen(),
   ),
   AppSection(
     path: '/customers',
     title: Strings.customers,
     icon: Icons.people_outline,
-    builder: (_) => const ComingSoonPage(title: Strings.customers),
+    builder: (_) => const CustomersScreen(),
   ),
   AppSection(
     path: '/suppliers',
     title: Strings.suppliers,
     icon: Icons.local_shipping_outlined,
-    builder: (_) => const ComingSoonPage(title: Strings.suppliers),
+    adminOnly: true,
+    builder: (_) => const SuppliersScreen(),
   ),
   AppSection(
     path: '/sales',
     title: Strings.sales,
     icon: Icons.receipt_long_outlined,
-    builder: (_) => const ComingSoonPage(title: Strings.sales),
+    builder: (_) => const SalesListScreen(),
+    routes: [
+      GoRoute(path: 'new', builder: (_, _) => const SaleEntryScreen()),
+      GoRoute(
+        path: ':id',
+        builder: (_, state) {
+          final id = int.tryParse(state.pathParameters['id'] ?? '');
+          return id == null
+              ? const ComingSoonPage(title: Strings.sales)
+              : SaleViewScreen(key: ValueKey(id), invoiceId: id);
+        },
+      ),
+    ],
   ),
   AppSection(
     path: '/purchases',
