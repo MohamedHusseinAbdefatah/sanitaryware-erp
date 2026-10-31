@@ -4,6 +4,7 @@ import '../db/database.dart';
 import '../services/audit_service.dart';
 import '../services/catalog_service.dart';
 import '../services/errors.dart';
+import '../services/expense_service.dart';
 import '../services/settings_service.dart';
 import 'password_hasher.dart';
 
@@ -48,6 +49,7 @@ class AuthService {
       }
       await SettingsService(db).saveCompany(company);
       await CatalogService(db).seedDefaultUnits();
+      await ExpenseService(db).seedDefaultCategories();
       final admin = await createUser(
         fullName: fullName,
         username: username,
