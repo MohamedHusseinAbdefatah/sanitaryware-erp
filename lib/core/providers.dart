@@ -6,9 +6,13 @@ import 'auth/auth_service.dart';
 import 'backup/backup_actions.dart';
 import 'backup/backup_service.dart';
 import 'db/database.dart';
+import 'services/balance_service.dart';
 import 'services/catalog_service.dart';
 import 'services/party_service.dart';
+import 'services/payment_service.dart';
 import 'services/product_service.dart';
+import 'services/purchase_service.dart';
+import 'services/return_service.dart';
 import 'services/sales_service.dart';
 import 'services/settings_service.dart';
 import 'services/stock_service.dart';
@@ -56,3 +60,15 @@ final partyServiceProvider =
 
 final salesServiceProvider =
     Provider<SalesService>((ref) => SalesService(ref.watch(databaseProvider)));
+
+final balanceServiceProvider =
+    Provider<BalanceService>((ref) => BalanceService(ref.watch(databaseProvider)));
+
+final paymentServiceProvider =
+    Provider<PaymentService>((ref) => PaymentService(ref.watch(databaseProvider)));
+
+final purchaseServiceProvider =
+    Provider<PurchaseService>((ref) => PurchaseService(ref.watch(databaseProvider)));
+
+final returnServiceProvider =
+    Provider<ReturnService>((ref) => ReturnService(ref.watch(databaseProvider)));

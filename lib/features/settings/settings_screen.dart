@@ -30,6 +30,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   List<BackupInfo> _backups = const [];
   String? _externalFolder;
   bool _busy = false;
+  bool _allowNegativeStock = false;
+  bool _countPendingCheques = false;
 
   @override
   void initState() {
@@ -49,6 +51,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final company = await ref.read(settingsServiceProvider).company();
     final external = await ref.read(backupActionsProvider).externalFolder();
     final backups = await ref.read(backupServiceProvider).list();
+    final settings = ref.read(settingsServiceProvider);
+    final rules = (
+      await settings.getBool(SettingKey.allowNegativeStock),
+      await settings.getBool(SettingKey.countPendingCheques),
+    );
     if (!mounted) return;
     setState(() {
       _name.text = company.name;
@@ -56,6 +63,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       _phone.text = company.phone;
       _externalFolder = external?.path;
       _backups = backups;
+      _allowNegativeStock = rules.$1;
+      _countPendingCheques = rules.$2;
     });
   }
 
@@ -168,6 +177,42 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       padding: const EdgeInsets.all(24),
       children: [
         Text(Strings.settings, style: theme.textTheme.headlineSmall),
+        const SizedBox(height: 16),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(Strings.rulesSection, style: theme.textTheme.titleMedium),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text(Strings.allowNegativeStock),
+                  subtitle: const Text(Strings.allowNegativeStockHint),
+                  value: _allowNegativeStock,
+                  onChanged: _busy
+                      ? null
+                      : (v) => _run(() async {
+                            await ref.read(settingsServiceProvider).setBool(SettingKey.allowNegativeStock, v);
+                            setState(() => _allowNegativeStock = v);
+                          }),
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text(Strings.countPendingCheques),
+                  subtitle: const Text(Strings.countPendingChequesHint),
+                  value: _countPendingCheques,
+                  onChanged: _busy
+                      ? null
+                      : (v) => _run(() async {
+                            await ref.read(settingsServiceProvider).setBool(SettingKey.countPendingCheques, v);
+                            setState(() => _countPendingCheques = v);
+                          }),
+                ),
+              ],
+            ),
+          ),
+        ),
         const SizedBox(height: 16),
         Card(
           child: Padding(

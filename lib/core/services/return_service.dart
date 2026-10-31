@@ -85,6 +85,24 @@ class ReturnableLine {
   int get returnable => invoicedQty - returnedQty;
 }
 
+/// The original invoice a return is made against.
+class ReturnSource {
+  const ReturnSource({required this.id, required this.number, this.partyId, this.partyName});
+  final int id;
+  final String number;
+
+  /// Null for a walk-in cash sale.
+  final int? partyId;
+  final String? partyName;
+}
+
+class ReturnDetailLine {
+  const ReturnDetailLine(this.item, this.productCode, this.productName);
+  final ReturnItem item;
+  final String productCode;
+  final String productName;
+}
+
 class ReturnRow {
   const ReturnRow(this.doc, this.partyName, this.invoiceNumber);
   final ReturnDoc doc;
@@ -98,6 +116,48 @@ class ReturnService {
   ReturnService(this.db);
 
   final AppDatabase db;
+
+  /// Finds an active invoice by number ("S-000012", or just "12") or id.
+  Future<ReturnSource?> findInvoice(String kind, {String? number, int? id}) async {
+    String? full;
+    if (number != null) {
+      final n = number.trim().toUpperCase();
+      final prefix = kind == ReturnKind.sale ? 'S' : 'P';
+      final digits = int.tryParse(n.replaceFirst(RegExp('^$prefix-?'), ''));
+      full = digits == null ? n : '$prefix-${digits.toString().padLeft(6, '0')}';
+    }
+    if (kind == ReturnKind.sale) {
+      final inv = await (db.select(db.salesInvoices)
+            ..where((t) => (id != null ? t.id.equals(id) : t.number.equals(full!)) &
+                t.status.equals(DocStatus.active)))
+          .getSingleOrNull();
+      if (inv == null) return null;
+      final c = inv.customerId == null
+          ? null
+          : await (db.select(db.customers)..where((t) => t.id.equals(inv.customerId!))).getSingle();
+      return ReturnSource(id: inv.id, number: inv.number, partyId: c?.id, partyName: c?.name);
+    }
+    final inv = await (db.select(db.purchaseInvoices)
+          ..where((t) => (id != null ? t.id.equals(id) : t.number.equals(full!)) &
+              t.status.equals(DocStatus.active)))
+        .getSingleOrNull();
+    if (inv == null) return null;
+    final s = await (db.select(db.suppliers)..where((t) => t.id.equals(inv.supplierId))).getSingle();
+    return ReturnSource(id: inv.id, number: inv.number, partyId: s.id, partyName: s.name);
+  }
+
+  Future<List<ReturnDetailLine>> lines(int returnId) async {
+    final rows = await (db.select(db.returnItems).join([
+      innerJoin(db.products, db.products.id.equalsExp(db.returnItems.productId)),
+    ])
+          ..where(db.returnItems.returnId.equals(returnId))
+          ..orderBy([OrderingTerm(expression: db.returnItems.id)]))
+        .get();
+    return [
+      for (final r in rows)
+        ReturnDetailLine(r.readTable(db.returnItems), r.readTable(db.products).code, r.readTable(db.products).nameAr),
+    ];
+  }
 
   Future<List<ReturnableLine>> returnableForSale(int invoiceId) async {
     final rows = await (db.select(db.salesInvoiceItems).join([

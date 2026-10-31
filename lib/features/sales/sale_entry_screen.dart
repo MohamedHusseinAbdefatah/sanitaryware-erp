@@ -11,11 +11,13 @@ import '../../core/l10n/strings.dart';
 import '../../core/money.dart';
 import '../../core/providers.dart';
 import '../../core/quantity.dart';
-import '../../core/search_text.dart';
+import '../../core/services/errors.dart';
 import '../../core/services/product_service.dart';
 import '../../core/services/sales_service.dart';
+import '../../core/widgets/amounts.dart';
 import '../../core/widgets/feedback.dart';
 import '../../core/widgets/number_fields.dart';
+import '../../core/widgets/pickers.dart';
 import '../parties/party_form_dialog.dart';
 import '../parties/parties_screen.dart';
 
@@ -73,6 +75,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
   final _notes = TextEditingController();
   final _productSearchFocus = FocusNode();
   Customer? _customer;
+  int? _customerBalance;
   String _method = PaymentMethod.cash;
   bool _paidEdited = false;
   bool _saving = false;
@@ -124,11 +127,27 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
 
   void _setCustomer(Customer? c) {
     _customer = c;
+    _customerBalance = null;
     for (final l in _lines.where((l) => !l.priceEdited)) {
       l.price.text = _plain(l.product.priceFor(_priceLevel));
     }
     if (c != null && !_paidEdited) _paid.text = '';
     _changed();
+    if (c != null) {
+      ref.read(balanceServiceProvider).customerBalance(c.id).then((b) {
+        if (mounted && _customer?.id == c.id) setState(() => _customerBalance = b);
+      });
+    }
+  }
+
+  /// The customer's balance after this invoice, once it is known.
+  int? get _balanceAfter =>
+      _customerBalance == null ? null : _customerBalance! + _total - _paidValue;
+
+  bool get _overCreditLimit {
+    final limit = _customer?.creditLimit ?? 0;
+    final after = _balanceAfter;
+    return limit > 0 && after != null && after > limit;
   }
 
   Future<void> _newCustomer() async {
@@ -166,16 +185,46 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       paymentMethod: _method,
       notes: _notes.text,
     );
-    final invoice = await runGuarded(
-      context,
-      () => ref.read(salesServiceProvider).post(input, userId: ref.read(currentUserProvider)?.id),
-    );
+    final user = ref.read(currentUserProvider);
+    Future<SalesInvoice> post({bool override = false}) => ref
+        .read(salesServiceProvider)
+        .post(input, userId: user?.id, allowOverCreditLimit: override);
+    SalesInvoice? invoice;
+    try {
+      invoice = await post();
+    } on CreditLimitException catch (e) {
+      // Only an admin may go over the limit, after confirming.
+      if (mounted && (user?.isAdmin ?? false) && await _confirmOverLimit(e.message)) {
+        if (mounted) invoice = await runGuarded(context, () => post(override: true));
+      } else if (mounted) {
+        await showMessage(context, e.message);
+      }
+    } on ValidationException catch (e) {
+      if (mounted) await showMessage(context, e.message);
+    } catch (e) {
+      if (mounted) await showMessage(context, '${Strings.unexpectedError}\n$e');
+    }
     if (!mounted) return;
     setState(() => _saving = false);
     if (invoice != null) {
       showToast(context, '${Strings.invoiceSaved} ${invoice.number}');
       context.go('/sales/${invoice.id}');
     }
+  }
+
+  Future<bool> _confirmOverLimit(String message) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text(Strings.creditLimitExceeded),
+        content: Text(message),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text(Strings.cancel)),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text(Strings.saveAnyway)),
+        ],
+      ),
+    );
+    return ok ?? false;
   }
 
   Future<void> _discard() async {
@@ -199,7 +248,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isAdmin = ref.watch(currentUserProvider)?.isAdmin ?? false;
-    final customers = ref.watch(_activeCustomersProvider).valueOrNull ?? const <Customer>[];
+    final customers = ref.watch(activeCustomersProvider).valueOrNull ?? const <Customer>[];
 
     return CallbackShortcuts(
       bindings: {
@@ -228,10 +277,15 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                     children: [
                       SizedBox(
                         width: 320,
-                        child: _CustomerPicker(
+                        child: PartyPicker<Customer>(
                           key: ValueKey(_customer?.id),
-                          customers: customers,
+                          items: customers,
                           selected: _customer,
+                          label: Strings.customer,
+                          hint: Strings.cashCustomer,
+                          clearTooltip: Strings.cashSale,
+                          nameOf: (c) => c.name,
+                          searchFields: (c) => [c.name, c.phone],
                           onSelected: _setCustomer,
                         ),
                       ),
@@ -253,10 +307,10 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
             // Product search.
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: _ProductSearch(
+              child: ProductSearchField(
                 key: ValueKey(_searchKey),
                 focusNode: _productSearchFocus,
-                priceLevel: _priceLevel,
+                trailing: (r) => formatMoney(r.product.priceFor(_priceLevel)),
                 onSelected: _addProduct,
               ),
             ),
@@ -301,7 +355,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                       decoration: const InputDecoration(labelText: Strings.notes, isDense: true),
                     ),
                   ),
-                  _Amount(Strings.subtotal, _subtotal),
+                  AmountLabel(Strings.subtotal, _subtotal),
                   SizedBox(
                     width: 110,
                     child: MoneyField(
@@ -310,7 +364,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                       onChanged: (_) => _changed(),
                     ),
                   ),
-                  _Amount(Strings.total, _total, big: true),
+                  AmountLabel(Strings.total, _total, big: true),
                   SizedBox(
                     width: 120,
                     child: MoneyField(
@@ -330,7 +384,20 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                     ],
                     onChanged: (v) => setState(() => _method = v!),
                   ),
-                  _Amount(Strings.remaining, _total - _paidValue),
+                  AmountLabel(Strings.remaining, _total - _paidValue),
+                  if (_customerBalance != null) ...[
+                    AmountLabel(Strings.previousBalance, _customerBalance!),
+                    Tooltip(
+                      message: _overCreditLimit
+                          ? '${Strings.creditLimitExceeded} (${formatMoney(_customer!.creditLimit)})'
+                          : '',
+                      child: AmountLabel(
+                        Strings.newBalance,
+                        _balanceAfter!,
+                        color: _overCreditLimit ? theme.colorScheme.error : null,
+                      ),
+                    ),
+                  ],
                   OutlinedButton(onPressed: _discard, child: const Text(Strings.cancel)),
                   FilledButton.icon(
                     onPressed: _saving ? null : _save,
@@ -343,28 +410,6 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _Amount extends StatelessWidget {
-  const _Amount(this.label, this.value, {this.big = false});
-
-  final String label;
-  final int value;
-  final bool big;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(label, style: Theme.of(context).textTheme.labelMedium),
-        Text(
-          formatMoney(value),
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: big ? 22 : 16),
-        ),
-      ],
     );
   }
 }
@@ -537,133 +582,3 @@ class _LineRow extends StatelessWidget {
     );
   }
 }
-
-/// Type a code or name; Enter adds the highlighted product.
-class _ProductSearch extends ConsumerStatefulWidget {
-  const _ProductSearch({
-    super.key,
-    required this.focusNode,
-    required this.priceLevel,
-    required this.onSelected,
-  });
-
-  final FocusNode focusNode;
-  final String priceLevel;
-  final ValueChanged<ProductRow> onSelected;
-
-  @override
-  ConsumerState<_ProductSearch> createState() => _ProductSearchState();
-}
-
-class _ProductSearchState extends ConsumerState<_ProductSearch> {
-  final _controller = TextEditingController();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final priceLevel = widget.priceLevel;
-    return RawAutocomplete<ProductRow>(
-      focusNode: widget.focusNode,
-      textEditingController: _controller,
-      displayStringForOption: (r) => r.product.nameAr,
-      optionsBuilder: (value) async {
-        if (value.text.trim().isEmpty) return const [];
-        return ref.read(productServiceProvider).search(value.text);
-      },
-      onSelected: widget.onSelected,
-      fieldViewBuilder: (context, textController, focus, onSubmit) => TextField(
-        controller: textController,
-        focusNode: focus,
-        autofocus: true,
-        onSubmitted: (_) => onSubmit(),
-        decoration: const InputDecoration(
-          prefixIcon: Icon(Icons.qr_code_scanner),
-          hintText: Strings.productSearchHint,
-          border: OutlineInputBorder(),
-          isDense: true,
-        ),
-      ),
-      optionsViewBuilder: (context, onPick, options) => Align(
-        alignment: AlignmentDirectional.topStart,
-        child: Material(
-          elevation: 6,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 360, maxWidth: 720),
-            child: ListView(
-              shrinkWrap: true,
-              padding: EdgeInsets.zero,
-              children: [
-                for (final (i, r) in options.indexed)
-                  Builder(builder: (context) {
-                    final highlighted = AutocompleteHighlightedOption.of(context) == i;
-                    return ListTile(
-                      dense: true,
-                      selected: highlighted,
-                      selectedTileColor: Theme.of(context).colorScheme.secondaryContainer,
-                      title: Text('${r.product.code} — ${r.product.nameAr}'),
-                      subtitle: Text('${Strings.available}: ${formatQty(r.stock)} ${r.unitName ?? ''}'),
-                      trailing: Text(formatMoney(r.product.priceFor(priceLevel))),
-                      onTap: () => onPick(r),
-                    );
-                  }),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Pick a customer by name or phone; empty means a cash sale.
-class _CustomerPicker extends StatelessWidget {
-  const _CustomerPicker({
-    super.key,
-    required this.customers,
-    required this.selected,
-    required this.onSelected,
-  });
-
-  final List<Customer> customers;
-  final Customer? selected;
-  final ValueChanged<Customer?> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    return Autocomplete<Customer>(
-      initialValue: TextEditingValue(text: selected?.name ?? ''),
-      displayStringForOption: (c) => c.name,
-      optionsBuilder: (value) => customers
-          .where((c) => matchesSearch(value.text, [c.name, c.phone]))
-          .take(20),
-      onSelected: onSelected,
-      fieldViewBuilder: (context, controller, focus, onSubmit) => TextField(
-        controller: controller,
-        focusNode: focus,
-        onSubmitted: (_) => onSubmit(),
-        decoration: InputDecoration(
-          labelText: Strings.customer,
-          hintText: Strings.cashCustomer,
-          isDense: true,
-          border: const OutlineInputBorder(),
-          suffixIcon: selected == null
-              ? null
-              : IconButton(
-                  tooltip: Strings.cashSale,
-                  icon: const Icon(Icons.clear),
-                  onPressed: () => onSelected(null),
-                ),
-        ),
-      ),
-    );
-  }
-}
-
-final _activeCustomersProvider = StreamProvider.autoDispose<List<Customer>>(
-  (ref) => ref.watch(partyServiceProvider).watchCustomers(activeOnly: true),
-);

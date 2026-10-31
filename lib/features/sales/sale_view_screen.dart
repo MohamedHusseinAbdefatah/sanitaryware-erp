@@ -10,6 +10,8 @@ import '../../core/money.dart';
 import '../../core/providers.dart';
 import '../../core/quantity.dart';
 import '../../core/services/sales_service.dart';
+import '../../core/widgets/amounts.dart';
+import '../payments/payment_dialog.dart';
 import '../../core/widgets/feedback.dart';
 
 /// A posted invoice, read-only. Posted invoices are never edited: the admin
@@ -39,7 +41,23 @@ class _SaleViewScreenState extends ConsumerState<SaleViewScreen> {
     });
     if (ok == true && mounted) {
       showToast(context, Strings.invoiceCancelled);
-      setState(() => _detail = _load());
+      setState(() {
+        _detail = _load();
+      });
+    }
+  }
+
+  Future<void> _receive(SalesInvoiceDetail d) async {
+    final saved = await showPaymentDialog(
+      context,
+      partyType: PartyType.customer,
+      partyId: d.customer!.id,
+      invoiceId: d.invoice.id,
+    );
+    if (saved && mounted) {
+      setState(() {
+        _detail = _load();
+      });
     }
   }
 
@@ -58,7 +76,11 @@ class _SaleViewScreenState extends ConsumerState<SaleViewScreen> {
         return ListView(
           padding: const EdgeInsets.all(24),
           children: [
-            Row(
+            // Wraps the buttons onto a second line in a narrow window.
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 IconButton(
                   tooltip: Strings.back,
@@ -66,13 +88,24 @@ class _SaleViewScreenState extends ConsumerState<SaleViewScreen> {
                   onPressed: () => context.go('/sales'),
                 ),
                 Text('${Strings.salesInvoice} ${inv.number}', style: theme.textTheme.headlineSmall),
-                const SizedBox(width: 12),
                 if (cancelled)
                   Chip(
                     label: const Text(Strings.cancelled),
                     backgroundColor: theme.colorScheme.errorContainer,
                   ),
-                const Spacer(),
+                const SizedBox(width: 16),
+                if (!cancelled && d.customer != null && inv.total > d.paid)
+                  OutlinedButton.icon(
+                    onPressed: () => _receive(d),
+                    icon: const Icon(Icons.payments_outlined),
+                    label: const Text(Strings.receivePayment),
+                  ),
+                if (!cancelled)
+                  OutlinedButton.icon(
+                    onPressed: () => context.go('/returns/new?kind=sale&invoice=${inv.id}'),
+                    icon: const Icon(Icons.assignment_return_outlined),
+                    label: const Text(Strings.saleReturn),
+                  ),
                 if (isAdmin && !cancelled)
                   OutlinedButton.icon(
                     onPressed: () => _cancel(d),
@@ -80,7 +113,6 @@ class _SaleViewScreenState extends ConsumerState<SaleViewScreen> {
                     label: const Text(Strings.cancelInvoice),
                     style: OutlinedButton.styleFrom(foregroundColor: theme.colorScheme.error),
                   ),
-                const SizedBox(width: 8),
                 FilledButton.icon(
                   onPressed: () => context.go('/sales/new'),
                   icon: const Icon(Icons.add),
@@ -134,11 +166,15 @@ class _SaleViewScreenState extends ConsumerState<SaleViewScreen> {
                 width: 320,
                 child: Column(
                   children: [
-                    _TotalRow(Strings.subtotal, inv.subtotal),
-                    if (inv.discount != 0) _TotalRow(Strings.invoiceDiscount, inv.discount),
-                    _TotalRow(Strings.total, inv.total, bold: true),
-                    _TotalRow(Strings.paid, inv.paidAmount),
-                    _TotalRow(Strings.remaining, inv.total - inv.paidAmount, bold: true),
+                    TotalRow(Strings.subtotal, inv.subtotal),
+                    if (inv.discount != 0) TotalRow(Strings.invoiceDiscount, inv.discount),
+                    TotalRow(Strings.total, inv.total, bold: true),
+                    TotalRow(Strings.paid, d.paid),
+                    TotalRow(Strings.remaining, inv.total - d.paid, bold: true),
+                    if (d.customerBalance != null) ...[
+                      const Divider(),
+                      TotalRow(Strings.customerBalanceNow, d.customerBalance!),
+                    ],
                   ],
                 ),
               ),
@@ -150,29 +186,6 @@ class _SaleViewScreenState extends ConsumerState<SaleViewScreen> {
           ],
         );
       },
-    );
-  }
-}
-
-class _TotalRow extends StatelessWidget {
-  const _TotalRow(this.label, this.amount, {this.bold = false});
-
-  final String label;
-  final int amount;
-  final bool bold;
-
-  @override
-  Widget build(BuildContext context) {
-    final style = bold ? const TextStyle(fontWeight: FontWeight.bold, fontSize: 16) : null;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(
-        children: [
-          Text(label, style: style),
-          const Spacer(),
-          Text(formatMoney(amount), style: style),
-        ],
-      ),
     );
   }
 }

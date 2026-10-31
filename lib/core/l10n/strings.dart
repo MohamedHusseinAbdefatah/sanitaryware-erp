@@ -142,6 +142,95 @@ class Strings {
   static const cancelled = 'ملغاة';
   static const invoiceCount = 'عدد الفواتير';
   static const totalSales = 'إجمالي المبيعات';
+  static const previousBalance = 'الرصيد السابق';
+  static const newBalance = 'الرصيد بعد الفاتورة';
+  static const customerBalanceNow = 'رصيد العميل الآن';
+  static const creditLimitExceeded = 'تجاوز حد الائتمان';
+  static const saveAnyway = 'حفظ رغم ذلك';
+  static const receivePayment = 'استلام دفعة';
+
+  // Common (phase 3)
+  static const clear = 'مسح';
+  static const load = 'تحميل';
+  static const number = 'الرقم';
+  static const amount = 'المبلغ';
+  static const party = 'الطرف';
+  static const kind = 'النوع';
+  static const balance = 'الرصيد';
+  static const supplier = 'المورد';
+  static const chooseCustomer = 'اختر العميل';
+  static const chooseSupplier = 'اختر المورد';
+
+  // Purchases
+  static const newPurchase = 'فاتورة شراء جديدة';
+  static const purchaseInvoice = 'فاتورة شراء';
+  static const supplierInvoiceNo = 'رقم فاتورة المورد';
+  static const searchPurchases = 'بحث برقم الفاتورة أو المورد';
+  static const unitCost = 'تكلفة الوحدة';
+
+  // Payments and cheques
+  static const receiveFromCustomer = 'استلام من عميل';
+  static const payToSupplier = 'دفع لمورد';
+  static const received = 'المقبوضات';
+  static const paidOut = 'المدفوعات';
+  static const cheques = 'الشيكات';
+  static const noPayments = 'لا توجد مدفوعات';
+  static const noCheques = 'لا توجد شيكات';
+  static const paymentSaved = 'تم حفظ الدفعة';
+  static const cancelPayment = 'إلغاء الدفعة';
+  static const method = 'الطريقة';
+  static const methodCheque = 'شيك';
+  static const forWhat = 'مقابل';
+  static const onAccount = 'تحت الحساب';
+  static const linkToInvoice = 'ربط بفاتورة';
+  static const customerOwes = 'المستحق على العميل';
+  static const weOweSupplier = 'المستحق للمورد';
+  static const chequeNo = 'رقم الشيك';
+  static const bank = 'البنك';
+  static const dueDate = 'تاريخ الاستحقاق';
+  static const direction = 'الاتجاه';
+  static const chequeIn = 'وارد';
+  static const chequeOut = 'صادر';
+  static const chequePending = 'تحت التحصيل';
+  static const chequeCleared = 'تم الصرف';
+  static const chequeBounced = 'مرتد';
+  static const markCleared = 'تم الصرف';
+  static const markBounced = 'شيك مرتد';
+  static const pendingOnly = 'تحت التحصيل فقط';
+
+  // Returns
+  static const returns = 'المرتجعات';
+  static const saleReturn = 'مرتجع بيع';
+  static const purchaseReturn = 'مرتجع شراء';
+  static const saleReturns = 'مرتجعات البيع';
+  static const purchaseReturns = 'مرتجعات الشراء';
+  static const newSaleReturn = 'مرتجع بيع جديد';
+  static const newPurchaseReturn = 'مرتجع شراء جديد';
+  static const noReturns = 'لا توجد مرتجعات';
+  static const originalInvoice = 'الفاتورة الأصلية';
+  static const withoutInvoice = 'بدون فاتورة';
+  static const invoiceNotFound = 'لم يتم العثور على فاتورة سارية بهذا الرقم';
+  static const returnHint = 'اكتب رقم الفاتورة الأصلية، أو اختر الأصناف المرتجعة بالبحث بالأعلى';
+  static const nothingLeftToReturn = 'كل أصناف هذه الفاتورة تم إرجاعها';
+  static const canReturn = 'يمكن إرجاع';
+  static const returnQty = 'الكمية المرتجعة';
+  static const enterReturnQty = 'أدخل كمية مرتجعة لصنف واحد على الأقل';
+  static const returnTotal = 'إجمالي المرتجع';
+  static const refundToCustomer = 'المردود للعميل نقداً';
+  static const refundFromSupplier = 'المسترد من المورد نقداً';
+  static const toBalance = 'يخصم من الرصيد';
+  static const refunded = 'المردود نقداً';
+  static const returnRefund = 'رد مرتجع';
+  static const returnSaved = 'تم حفظ المرتجع';
+  static const cancelReturn = 'إلغاء المرتجع';
+
+  // Settings: rules
+  static const rulesSection = 'قواعد البيع والتحصيل';
+  static const allowNegativeStock = 'السماح بالبيع بأكثر من الرصيد';
+  static const allowNegativeStockHint = 'إذا كان مغلقاً، يمنع البرنامج البيع عندما لا تكفي الكمية في المخزن';
+  static const countPendingCheques = 'احتساب الشيك من تاريخ استلامه';
+  static const countPendingChequesHint =
+      'إذا كان مغلقاً، لا يخصم الشيك من رصيد العميل إلا بعد صرفه';
 
   // First-run setup
   static const setupTitle = 'إعداد البرنامج لأول مرة';

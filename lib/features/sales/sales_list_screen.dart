@@ -76,9 +76,9 @@ class _SalesListScreenState extends ConsumerState<SalesListScreen> {
                         DataListColumn(Strings.customer, flex: 3,
                             (r) => Text(r.customerName ?? Strings.cashCustomer)),
                         DataListColumn(Strings.total, numeric: true, (r) => Text(formatMoney(r.invoice.total))),
-                        DataListColumn(Strings.paid, numeric: true, (r) => Text(formatMoney(r.invoice.paidAmount))),
+                        DataListColumn(Strings.paid, numeric: true, (r) => Text(formatMoney(r.paid))),
                         DataListColumn(Strings.remaining, numeric: true,
-                            (r) => Text(formatMoney(r.invoice.total - r.invoice.paidAmount))),
+                            (r) => Text(formatMoney(r.invoice.total - r.paid))),
                         DataListColumn(Strings.status, numeric: true, (r) => Text(
                               r.invoice.status == DocStatus.cancelled ? Strings.cancelled : '',
                               style: TextStyle(color: scheme.error),

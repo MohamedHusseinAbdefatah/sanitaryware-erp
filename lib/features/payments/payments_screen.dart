@@ -1,0 +1,246 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../core/auth/auth_service.dart';
+import '../../core/auth/session.dart';
+import '../../core/dates.dart';
+import '../../core/db/database.dart';
+import '../../core/l10n/strings.dart';
+import '../../core/money.dart';
+import '../../core/providers.dart';
+import '../../core/services/doc_types.dart';
+import '../../core/services/payment_service.dart';
+import '../../core/widgets/data_list.dart';
+import '../../core/widgets/feedback.dart';
+import 'payment_dialog.dart';
+
+String paymentMethodLabel(String method) => switch (method) {
+      PaymentMethod.bank => Strings.methodBank,
+      PaymentMethod.cheque => Strings.methodCheque,
+      _ => Strings.methodCash,
+    };
+
+String chequeStatusLabel(String status) => switch (status) {
+      ChequeStatus.pending => Strings.chequePending,
+      ChequeStatus.cleared => Strings.chequeCleared,
+      ChequeStatus.bounced => Strings.chequeBounced,
+      ChequeStatus.cancelled => Strings.cancelled,
+      _ => status,
+    };
+
+/// Received, paid (admin) and the cheque register in three tabs.
+class PaymentsScreen extends ConsumerWidget {
+  const PaymentsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isAdmin = ref.watch(currentUserProvider)?.isAdmin ?? false;
+    return DefaultTabController(
+      length: isAdmin ? 3 : 2,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          PageHeader(
+            title: Strings.payments,
+            actions: [
+              FilledButton.icon(
+                onPressed: () => showPaymentDialog(context, partyType: PartyType.customer),
+                icon: const Icon(Icons.call_received),
+                label: const Text(Strings.receiveFromCustomer),
+              ),
+              if (isAdmin)
+                FilledButton.tonalIcon(
+                  onPressed: () => showPaymentDialog(context, partyType: PartyType.supplier),
+                  icon: const Icon(Icons.call_made),
+                  label: const Text(Strings.payToSupplier),
+                ),
+            ],
+          ),
+          TabBar(
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
+            tabs: [
+              const Tab(text: Strings.received),
+              if (isAdmin) const Tab(text: Strings.paidOut),
+              const Tab(text: Strings.cheques),
+            ],
+          ),
+          Expanded(
+            child: TabBarView(children: [
+              const _PaymentList(direction: PaymentDirection.inbound),
+              if (isAdmin) const _PaymentList(direction: PaymentDirection.outbound),
+              const _ChequeList(),
+            ]),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PaymentList extends ConsumerWidget {
+  const _PaymentList({required this.direction});
+
+  final String direction;
+
+  Future<void> _cancel(BuildContext context, WidgetRef ref, PaymentRow row) async {
+    final reason = await askReason(context, title: '${Strings.cancelPayment} ${row.payment.number}');
+    if (reason == null || !context.mounted) return;
+    await runGuarded(
+      context,
+      () => ref
+          .read(paymentServiceProvider)
+          .cancel(row.payment.id, reason: reason, user: ref.read(currentUserProvider)!),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isAdmin = ref.watch(currentUserProvider)?.isAdmin ?? false;
+    final rows = ref.watch(_paymentsProvider(direction));
+    final scheme = Theme.of(context).colorScheme;
+    return rows.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('$e')),
+      data: (list) => DataList<PaymentRow>(
+        rows: list,
+        emptyText: Strings.noPayments,
+        rowColor: (r) => r.payment.status == DocStatus.cancelled
+            ? scheme.errorContainer.withValues(alpha: 0.3)
+            : null,
+        trailing: isAdmin
+            ? (r) => r.payment.status == DocStatus.active
+                ? IconButton(
+                    tooltip: Strings.cancelPayment,
+                    icon: const Icon(Icons.block),
+                    onPressed: () => _cancel(context, ref, r),
+                  )
+                : const SizedBox()
+            : null,
+        columns: [
+          DataListColumn(Strings.number, (r) => Text(r.payment.number)),
+          DataListColumn(Strings.date, flex: 2, (r) => Text(formatDateTime(r.payment.date))),
+          DataListColumn(Strings.party, flex: 3, (r) => Text(r.partyName)),
+          DataListColumn(Strings.amount, numeric: true, (r) => Text(formatMoney(r.payment.amount))),
+          DataListColumn(Strings.method, numeric: true, (r) => Text(
+                r.cheque == null
+                    ? paymentMethodLabel(r.payment.method)
+                    : '${Strings.methodCheque} ${r.cheque!.chequeNo}',
+              )),
+          DataListColumn(Strings.forWhat, flex: 2, (r) => Text(_refLabel(r.payment))),
+          DataListColumn(Strings.status, numeric: true, (r) => Text(
+                r.payment.status == DocStatus.cancelled
+                    ? Strings.cancelled
+                    : r.cheque == null
+                        ? ''
+                        : chequeStatusLabel(r.cheque!.status),
+              )),
+        ],
+      ),
+    );
+  }
+
+  static String _refLabel(Payment payment) => switch (payment.invoiceRefType) {
+        RefType.salesInvoice => Strings.salesInvoice,
+        RefType.purchaseInvoice => Strings.purchaseInvoice,
+        RefType.returnDoc => Strings.returnRefund,
+        _ => Strings.onAccount,
+      };
+}
+
+class _ChequeList extends ConsumerStatefulWidget {
+  const _ChequeList();
+
+  @override
+  ConsumerState<_ChequeList> createState() => _ChequeListState();
+}
+
+class _ChequeListState extends ConsumerState<_ChequeList> {
+  bool _pendingOnly = true;
+
+  Future<void> _clear(ChequeRow row) => runGuarded(
+        context,
+        () => ref.read(paymentServiceProvider).clearCheque(row.cheque.id, user: ref.read(currentUserProvider)!),
+      );
+
+  Future<void> _bounce(ChequeRow row) async {
+    final reason = await askReason(context, title: '${Strings.markBounced}: ${row.cheque.chequeNo}');
+    if (reason == null || !mounted) return;
+    await runGuarded(
+      context,
+      () => ref
+          .read(paymentServiceProvider)
+          .bounceCheque(row.cheque.id, reason: reason, user: ref.read(currentUserProvider)!),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isAdmin = ref.watch(currentUserProvider)?.isAdmin ?? false;
+    final rows = ref.watch(_chequesProvider(_pendingOnly));
+    final scheme = Theme.of(context).colorScheme;
+    final today = DateTime.now();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+          child: Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: FilterChip(
+              label: const Text(Strings.pendingOnly),
+              selected: _pendingOnly,
+              onSelected: (v) => setState(() => _pendingOnly = v),
+            ),
+          ),
+        ),
+        Expanded(
+          child: rows.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, _) => Center(child: Text('$e')),
+            data: (list) => DataList<ChequeRow>(
+              rows: list,
+              emptyText: Strings.noCheques,
+              // Pending cheques that are due (or overdue) stand out.
+              rowColor: (r) => r.cheque.status == ChequeStatus.pending &&
+                      !r.cheque.dueDate.isAfter(DateTime(today.year, today.month, today.day, 23, 59))
+                  ? scheme.tertiaryContainer.withValues(alpha: 0.5)
+                  : null,
+              trailing: isAdmin
+                  ? (r) => r.cheque.status == ChequeStatus.pending
+                      ? PopupMenuButton<void Function()>(
+                          onSelected: (f) => f(),
+                          itemBuilder: (_) => [
+                            PopupMenuItem(value: () => _clear(r), child: const Text(Strings.markCleared)),
+                            PopupMenuItem(value: () => _bounce(r), child: const Text(Strings.markBounced)),
+                          ],
+                        )
+                      : const SizedBox()
+                  : null,
+              columns: [
+                DataListColumn(Strings.dueDate, (r) => Text(formatDate(r.cheque.dueDate))),
+                DataListColumn(Strings.chequeNo, (r) => Text(r.cheque.chequeNo)),
+                DataListColumn(Strings.bank, (r) => Text(r.cheque.bank ?? '')),
+                DataListColumn(Strings.party, flex: 2, (r) => Text(r.partyName)),
+                DataListColumn(Strings.direction, numeric: true,
+                    (r) => Text(r.isReceived ? Strings.chequeIn : Strings.chequeOut)),
+                DataListColumn(Strings.amount, numeric: true, (r) => Text(formatMoney(r.payment.amount))),
+                DataListColumn(Strings.status, numeric: true, (r) => Text(chequeStatusLabel(r.cheque.status))),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+final _paymentsProvider = StreamProvider.autoDispose.family<List<PaymentRow>, String>(
+  (ref, direction) => ref.watch(paymentServiceProvider).watchPayments(direction: direction),
+);
+
+final _chequesProvider = StreamProvider.autoDispose.family<List<ChequeRow>, bool>(
+  (ref, pendingOnly) => ref
+      .watch(paymentServiceProvider)
+      .watchCheques(status: pendingOnly ? ChequeStatus.pending : null),
+);

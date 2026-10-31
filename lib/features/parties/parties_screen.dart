@@ -31,6 +31,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
   Widget build(BuildContext context) {
     final isAdmin = ref.watch(currentUserProvider)?.isAdmin ?? false;
     final rows = ref.watch(_customersProvider(_search));
+    final customerBalances = ref.watch(_customerBalancesProvider).valueOrNull ?? const <int, int>{};
     return _PartyPage(
       title: Strings.customers,
       newLabel: Strings.newCustomer,
@@ -51,7 +52,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
             if (isAdmin)
               DataListColumn(Strings.creditLimit, numeric: true,
                   (c) => Text(c.creditLimit == 0 ? '—' : formatMoney(c.creditLimit))),
-            DataListColumn(Strings.openingBalance, numeric: true, (c) => Text(formatMoney(c.openingBalance))),
+            DataListColumn(Strings.balance, numeric: true, (c) => _BalanceCell(customerBalances[c.id])),
           ],
         ),
       ),
@@ -72,6 +73,7 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
   @override
   Widget build(BuildContext context) {
     final rows = ref.watch(_suppliersProvider(_search));
+    final supplierBalances = ref.watch(_supplierBalancesProvider).valueOrNull ?? const <int, int>{};
     return _PartyPage(
       title: Strings.suppliers,
       newLabel: Strings.newSupplier,
@@ -88,7 +90,7 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
             DataListColumn(Strings.name, flex: 3, (s) => _NameCell(s.name, s.isActive)),
             DataListColumn(Strings.phone, flex: 2, (s) => Text(s.phone ?? '', textDirection: TextDirection.ltr)),
             DataListColumn(Strings.address, flex: 3, (s) => Text(s.address ?? '')),
-            DataListColumn(Strings.openingBalance, numeric: true, (s) => Text(formatMoney(s.openingBalance))),
+            DataListColumn(Strings.balance, numeric: true, (s) => _BalanceCell(supplierBalances[s.id])),
           ],
         ),
       ),
@@ -151,4 +153,33 @@ final _customersProvider = StreamProvider.autoDispose.family<List<Customer>, Str
 
 final _suppliersProvider = StreamProvider.autoDispose.family<List<Supplier>, String>(
   (ref, search) => ref.watch(partyServiceProvider).watchSuppliers(search: search),
+);
+
+/// What the party owes (customers) or is owed (suppliers); credit in green.
+class _BalanceCell extends StatelessWidget {
+  const _BalanceCell(this.balance);
+
+  final int? balance;
+
+  @override
+  Widget build(BuildContext context) {
+    final b = balance;
+    if (b == null) return const Text('…');
+    final scheme = Theme.of(context).colorScheme;
+    return Text(
+      formatMoney(b),
+      style: TextStyle(
+        fontWeight: b != 0 ? FontWeight.bold : null,
+        color: b < 0 ? Colors.green.shade700 : (b > 0 ? scheme.onSurface : scheme.outline),
+      ),
+    );
+  }
+}
+
+final _customerBalancesProvider = StreamProvider.autoDispose<Map<int, int>>(
+  (ref) => ref.watch(balanceServiceProvider).watchCustomerBalances(),
+);
+
+final _supplierBalancesProvider = StreamProvider.autoDispose<Map<int, int>>(
+  (ref) => ref.watch(balanceServiceProvider).watchSupplierBalances(),
 );
