@@ -10,6 +10,9 @@ abstract final class SettingKey {
   static const backupExternalFolder = 'backup_external_folder';
   // '1' lets a sale go through even when stock would drop below zero.
   static const allowNegativeStock = 'allow_negative_stock';
+  // '1' counts a received cheque in the balance at once; otherwise only
+  // when it clears.
+  static const countPendingCheques = 'count_pending_cheques';
 }
 
 class CompanyInfo {

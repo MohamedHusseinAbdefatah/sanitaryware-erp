@@ -5,30 +5,15 @@ import '../db/database.dart';
 import '../money.dart';
 import '../quantity.dart';
 import 'audit_service.dart';
+import 'balance_service.dart';
+import 'doc_types.dart';
 import 'errors.dart';
 import 'numbering_service.dart';
+import 'query_helpers.dart';
 import 'settings_service.dart';
 import 'stock_service.dart';
 
-abstract final class DocStatus {
-  static const active = 'active';
-  static const cancelled = 'cancelled';
-}
-
-abstract final class PaymentMethod {
-  static const cash = 'cash';
-  static const bank = 'bank';
-  static const cheque = 'cheque';
-}
-
-/// Values used to link payments and stock movements back to an invoice.
-abstract final class RefType {
-  static const salesInvoice = 'sales_invoice';
-}
-
-/// Party id on a payment for a cash sale with no named customer. It never
-/// matches a real customer, so it never affects anyone's balance.
-const walkInCustomerId = 0;
+export 'doc_types.dart';
 
 class SaleLineInput {
   const SaleLineInput({
@@ -96,12 +81,26 @@ class InsufficientStockException extends ValidationException {
   final List<StockShortage> shortages;
 }
 
+/// The sale would take the customer past their credit limit. Only an admin
+/// can post it anyway (with `allowOverCreditLimit`).
+class CreditLimitException extends ValidationException {
+  CreditLimitException({required this.limit, required this.balanceAfter})
+      : super('هذه الفاتورة تتجاوز حد الائتمان للعميل.\n'
+            'حد الائتمان ${formatMoney(limit)} والرصيد بعد الفاتورة ${formatMoney(balanceAfter)}');
+
+  final int limit;
+  final int balanceAfter;
+}
+
 class SalesInvoiceRow {
-  const SalesInvoiceRow(this.invoice, this.customerName);
+  const SalesInvoiceRow(this.invoice, this.customerName, this.paid);
   final SalesInvoice invoice;
 
   /// Null for a cash sale.
   final String? customerName;
+
+  /// Everything paid against it so far (counted payments).
+  final int paid;
 }
 
 class SalesInvoiceLine {
@@ -117,12 +116,20 @@ class SalesInvoiceDetail {
     required this.invoice,
     required this.customer,
     required this.lines,
+    required this.paid,
+    this.customerBalance,
     this.createdByName,
   });
 
   final SalesInvoice invoice;
   final Customer? customer;
   final List<SalesInvoiceLine> lines;
+
+  /// Everything paid against it so far (counted payments).
+  final int paid;
+
+  /// The customer's whole balance today (all documents), if any customer.
+  final int? customerBalance;
   final String? createdByName;
 }
 
@@ -133,7 +140,8 @@ class SalesService {
 
   final AppDatabase db;
 
-  Future<SalesInvoice> post(SaleInput input, {int? userId}) {
+  /// [allowOverCreditLimit] is honoured only for an admin [userId].
+  Future<SalesInvoice> post(SaleInput input, {int? userId, bool allowOverCreditLimit = false}) {
     return db.transaction(() async {
       // 1. Validate the lines.
       if (input.lines.isEmpty) throw ValidationException('أضف صنفاً واحداً على الأقل');
@@ -173,6 +181,18 @@ class SalesService {
         customer = await (db.select(db.customers)..where((t) => t.id.equals(input.customerId!)))
             .getSingle();
         if (!customer.isActive) throw ValidationException('العميل "${customer.name}" موقوف');
+        if (customer.creditLimit > 0) {
+          final balanceAfter =
+              await BalanceService(db).customerBalance(customer.id) + total - input.paidAmount;
+          if (balanceAfter > customer.creditLimit) {
+            final user = userId == null
+                ? null
+                : await (db.select(db.users)..where((t) => t.id.equals(userId))).getSingleOrNull();
+            if (!allowOverCreditLimit || !(user?.isAdmin ?? false)) {
+              throw CreditLimitException(limit: customer.creditLimit, balanceAfter: balanceAfter);
+            }
+          }
+        }
       }
       if (input.paidAmount > 0 &&
           input.paymentMethod != PaymentMethod.cash &&
@@ -241,8 +261,8 @@ class SalesService {
         await db.into(db.payments).insert(PaymentsCompanion.insert(
               number: await numbering.next('payment'),
               date: date,
-              direction: 'in',
-              partyType: 'customer',
+              direction: PaymentDirection.inbound,
+              partyType: PartyType.customer,
               partyId: input.customerId ?? walkInCustomerId,
               amount: input.paidAmount,
               method: input.paymentMethod,
@@ -279,7 +299,7 @@ class SalesService {
       }
       final returns = await (db.select(db.returns)
             ..where((t) =>
-                t.kind.equals('sale') &
+                t.kind.equals(ReturnKind.sale) &
                 t.originalInvoiceId.equals(invoiceId) &
                 t.status.equals(DocStatus.active)))
           .get();
@@ -334,20 +354,33 @@ class SalesService {
   }
 
   /// Newest first, optionally limited to a date range (inclusive days).
-  Stream<List<SalesInvoiceRow>> watchList({DateTime? from, DateTime? to}) {
-    final query = db.select(db.salesInvoices).join([
-      leftOuterJoin(db.customers, db.customers.id.equalsExp(db.salesInvoices.customerId)),
-    ]);
-    if (from != null) {
-      query.where(db.salesInvoices.date.isBiggerOrEqualValue(DateTime(from.year, from.month, from.day)));
-    }
-    if (to != null) {
-      query.where(db.salesInvoices.date.isSmallerThanValue(DateTime(to.year, to.month, to.day + 1)));
-    }
-    query.orderBy([OrderingTerm.desc(db.salesInvoices.id)]);
-    return query.watch().map((rows) => [
+  /// Newest first, optionally limited to a date range (inclusive days).
+  /// Updates when invoices or payments change.
+  Stream<List<SalesInvoiceRow>> watchList({DateTime? from, DateTime? to}) async* {
+    final pending = await SettingsService(db).getBool(SettingKey.countPendingCheques);
+    yield* db.customSelect(
+      '''
+      SELECT s.*, c.name AS customer_name,
+             COALESCE((SELECT SUM(p.amount) FROM payments p
+                       WHERE p.invoice_ref_type = '${RefType.salesInvoice}' AND p.invoice_ref_id = s.id
+                         AND ${BalanceService.countedPayment('p')}), 0) AS paid
+      FROM sales_invoices s
+      LEFT JOIN customers c ON c.id = s.customer_id
+      WHERE (? IS NULL OR s.date >= ?) AND (? IS NULL OR s.date < ?)
+      ORDER BY s.id DESC
+      ''',
+      variables: [
+        Variable.withBool(pending),
+        ...dateRangeVariables(from, to),
+      ],
+      readsFrom: {db.salesInvoices, db.customers, db.payments, db.cheques},
+    ).watch().map((rows) => [
           for (final r in rows)
-            SalesInvoiceRow(r.readTable(db.salesInvoices), r.readTableOrNull(db.customers)?.name),
+            SalesInvoiceRow(
+              db.salesInvoices.map(r.data),
+              r.readNullable<String>('customer_name'),
+              r.read<int>('paid'),
+            ),
         ]);
   }
 
@@ -369,9 +402,12 @@ class SalesService {
         ? null
         : await (db.select(db.users)..where((t) => t.id.equals(invoice.createdBy!)))
             .getSingleOrNull();
+    final balances = BalanceService(db);
     return SalesInvoiceDetail(
       invoice: invoice,
       customer: customer,
+      paid: await balances.paidOnInvoice(RefType.salesInvoice, invoiceId),
+      customerBalance: customer == null ? null : await balances.customerBalance(customer.id),
       createdByName: createdBy?.fullName,
       lines: [
         for (final r in rows)

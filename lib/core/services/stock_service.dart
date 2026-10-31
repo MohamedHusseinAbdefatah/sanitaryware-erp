@@ -8,11 +8,13 @@ import 'errors.dart';
 abstract final class StockMovementType {
   static const opening = 'opening';
   static const purchase = 'purchase';
+  static const purchaseCancel = 'purchase_cancel';
   static const sale = 'sale';
   static const saleCancel = 'sale_cancel';
   static const saleReturn = 'sale_return';
   static const purchaseReturn = 'purchase_return';
   static const adjustment = 'adjustment';
+  static const returnCancel = 'return_cancel';
 }
 
 /// Stock is never edited directly. Every change is a row in
