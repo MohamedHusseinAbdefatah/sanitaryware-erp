@@ -214,33 +214,39 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
             // Top: number, date, customer.
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
-              child: Row(
+              // Wraps the customer picker onto a second line in a narrow window.
+              child: Wrap(
+                spacing: 24,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   Text(Strings.newInvoice, style: theme.textTheme.headlineSmall),
-                  const SizedBox(width: 24),
                   Text('${Strings.invoiceNo}: ${Strings.automatic}'),
-                  const SizedBox(width: 24),
                   Text('${Strings.date}: ${formatDateTime(DateTime.now())}'),
-                  const Spacer(),
-                  SizedBox(
-                    width: 320,
-                    child: _CustomerPicker(
-                      key: ValueKey(_customer?.id),
-                      customers: customers,
-                      selected: _customer,
-                      onSelected: _setCustomer,
-                    ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 320,
+                        child: _CustomerPicker(
+                          key: ValueKey(_customer?.id),
+                          customers: customers,
+                          selected: _customer,
+                          onSelected: _setCustomer,
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: Strings.newCustomer,
+                        onPressed: _newCustomer,
+                        icon: const Icon(Icons.person_add_alt),
+                      ),
+                      if (_customer != null)
+                        Padding(
+                          padding: const EdgeInsetsDirectional.only(start: 8),
+                          child: Chip(label: Text(priceLevelLabel(_customer!.priceLevel))),
+                        ),
+                    ],
                   ),
-                  IconButton(
-                    tooltip: Strings.newCustomer,
-                    onPressed: _newCustomer,
-                    icon: const Icon(Icons.person_add_alt),
-                  ),
-                  if (_customer != null)
-                    Padding(
-                      padding: const EdgeInsetsDirectional.only(start: 8),
-                      child: Chip(label: Text(priceLevelLabel(_customer!.priceLevel))),
-                    ),
                 ],
               ),
             ),
@@ -281,19 +287,21 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
             Container(
               color: theme.colorScheme.surfaceContainerHigh,
               padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
+              // Wraps onto two lines in a narrow window instead of overflowing.
+              child: Wrap(
+                alignment: WrapAlignment.end,
+                crossAxisAlignment: WrapCrossAlignment.end,
+                spacing: 16,
+                runSpacing: 12,
                 children: [
                   SizedBox(
-                    width: 280,
+                    width: 260,
                     child: TextField(
                       controller: _notes,
                       decoration: const InputDecoration(labelText: Strings.notes, isDense: true),
                     ),
                   ),
-                  const Spacer(),
                   _Amount(Strings.subtotal, _subtotal),
-                  const SizedBox(width: 16),
                   SizedBox(
                     width: 110,
                     child: MoneyField(
@@ -302,9 +310,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                       onChanged: (_) => _changed(),
                     ),
                   ),
-                  const SizedBox(width: 16),
                   _Amount(Strings.total, _total, big: true),
-                  const SizedBox(width: 24),
                   SizedBox(
                     width: 120,
                     child: MoneyField(
@@ -316,7 +322,6 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                       },
                     ),
                   ),
-                  const SizedBox(width: 8),
                   DropdownButton<String>(
                     value: _method,
                     items: const [
@@ -325,11 +330,8 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                     ],
                     onChanged: (v) => setState(() => _method = v!),
                   ),
-                  const SizedBox(width: 16),
                   _Amount(Strings.remaining, _total - _paidValue),
-                  const SizedBox(width: 24),
                   OutlinedButton(onPressed: _discard, child: const Text(Strings.cancel)),
-                  const SizedBox(width: 8),
                   FilledButton.icon(
                     onPressed: _saving ? null : _save,
                     icon: const Icon(Icons.save),
@@ -509,9 +511,15 @@ class _LineRow extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 if (belowCost) Icon(Icons.warning_amber, size: 16, color: scheme.tertiary),
-                Text(
-                  total == null ? '—' : formatMoney(total),
-                  style: const TextStyle(fontWeight: FontWeight.bold),
+                // Shrinks instead of overflowing when the amount is long.
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      total == null ? '—' : formatMoney(total),
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
                 ),
               ],
             ),

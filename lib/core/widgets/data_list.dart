@@ -95,7 +95,8 @@ class DataList<T> extends StatelessWidget {
   }
 }
 
-/// Title row at the top of a section page, with actions at the end.
+/// Title row at the top of a section page, with actions at the end. The
+/// actions wrap onto a second line when the window is narrow.
 class PageHeader extends StatelessWidget {
   const PageHeader({super.key, required this.title, this.actions = const []});
 
@@ -109,8 +110,16 @@ class PageHeader extends StatelessWidget {
       child: Row(
         children: [
           Text(title, style: Theme.of(context).textTheme.headlineSmall),
-          const Spacer(),
-          for (final a in actions) ...[const SizedBox(width: 8), a],
+          const SizedBox(width: 16),
+          Expanded(
+            child: Wrap(
+              alignment: WrapAlignment.end,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 8,
+              children: actions,
+            ),
+          ),
         ],
       ),
     );
