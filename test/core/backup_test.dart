@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
+import 'package:sanitaryware_erp/core/backup/backup_actions.dart';
 import 'package:sanitaryware_erp/core/backup/backup_service.dart';
 import 'package:sanitaryware_erp/core/db/database.dart';
 
@@ -96,6 +97,26 @@ void main() {
       throwsA(isA<BackupException>()),
     );
     expect(await BackupService.pendingFile(dbFile).exists(), isFalse);
+  });
+
+  test('external backup status: not set, unplugged, none, fresh, old', () async {
+    final db = open();
+    final actions = BackupActions(db: db, backups: backups, databaseFile: dbFile);
+    expect((await actions.externalStatus()).state, ExternalBackupState.notSet);
+
+    final usb = p.join(root.path, 'usb');
+    await actions.setExternalFolder(usb);
+    expect((await actions.externalStatus()).state, ExternalBackupState.unavailable);
+
+    await Directory(usb).create();
+    final none = await actions.externalStatus();
+    expect((none.state, none.ageDays), (ExternalBackupState.old, null));
+
+    await actions.backupNow();
+    expect((await actions.externalStatus()).state, ExternalBackupState.ok);
+    final later = await actions.externalStatus(now: DateTime.now().add(const Duration(days: 8)));
+    expect((later.state, later.ageDays), (ExternalBackupState.old, 8));
+    await db.close();
   });
 
   test('a backup from a newer app version is refused', () async {

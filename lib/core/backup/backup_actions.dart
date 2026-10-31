@@ -23,6 +23,20 @@ class BackupActions {
     return path == null || path.isEmpty ? null : Directory(path);
   }
 
+  /// For the startup warning: is there a recent copy outside this computer?
+  Future<ExternalBackupStatus> externalStatus({DateTime? now}) async {
+    final folder = await externalFolder();
+    if (folder == null) return const ExternalBackupStatus(ExternalBackupState.notSet);
+    if (!await folder.exists()) return const ExternalBackupStatus(ExternalBackupState.unavailable);
+    final latest = (await BackupService(dir: folder).list()).firstOrNull?.time;
+    final age = latest == null ? null : (now ?? DateTime.now()).difference(latest).inDays;
+    return ExternalBackupStatus(
+      age == null || age > ExternalBackupStatus.maxAgeDays ? ExternalBackupState.old : ExternalBackupState.ok,
+      lastBackup: latest,
+      ageDays: age,
+    );
+  }
+
   Future<void> setExternalFolder(String? path) =>
       SettingsService(db).set(SettingKey.backupExternalFolder, path ?? '');
 
@@ -68,4 +82,27 @@ class BackupActions {
       details: zip.path,
     );
   }
+}
+
+enum ExternalBackupState {
+  ok,
+
+  /// No external folder chosen in Settings.
+  notSet,
+
+  /// The folder is chosen but not reachable (USB drive unplugged).
+  unavailable,
+
+  /// No copy there, or the newest is older than [ExternalBackupStatus.maxAgeDays].
+  old,
+}
+
+class ExternalBackupStatus {
+  const ExternalBackupStatus(this.state, {this.lastBackup, this.ageDays});
+
+  static const maxAgeDays = 7;
+
+  final ExternalBackupState state;
+  final DateTime? lastBackup;
+  final int? ageDays;
 }

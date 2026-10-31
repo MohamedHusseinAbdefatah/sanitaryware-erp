@@ -12,6 +12,7 @@ import '../../core/l10n/strings.dart';
 import '../../core/printing/pdf_fonts.dart';
 import '../../core/printing/test_page.dart';
 import '../../core/providers.dart';
+import '../../core/version.dart';
 import '../../core/services/settings_service.dart';
 import 'backup_list.dart';
 
@@ -370,6 +371,12 @@ class _SettingsScreenState extends ConsumerState<GeneralSettingsTab> {
               ],
             ),
           ),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          '${Strings.appTitle} — ${Strings.version} $appVersion',
+          textAlign: TextAlign.center,
+          style: theme.textTheme.bodySmall,
         ),
       ],
     );

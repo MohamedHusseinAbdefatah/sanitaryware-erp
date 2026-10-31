@@ -303,6 +303,15 @@ class Strings {
   static const imported = 'تم استيراد';
   static const previewLimited = 'تظهر أول 1000 صف فقط في المعاينة؛ الاستيراد يشمل كل الصفوف السليمة';
 
+  // Delivery
+  static const version = 'الإصدار';
+  static const days = 'يوم';
+  static const backupWarnNotSet =
+      'لم يتم اختيار مجلد خارجي للنسخ الاحتياطي (فلاشة أو مجلد سحابي). إذا تعطل هذا الجهاز ستضيع البيانات.';
+  static const backupWarnUnavailable = 'المجلد الخارجي للنسخ الاحتياطي غير متصل. وصّل الفلاشة ثم اعمل نسخة احتياطية.';
+  static const backupWarnNone = 'لا توجد أي نسخة احتياطية على المجلد الخارجي بعد.';
+  static const backupWarnOld = 'آخر نسخة احتياطية على المجلد الخارجي منذ';
+
   // Settings: rules
   static const rulesSection = 'قواعد البيع والتحصيل';
   static const allowNegativeStock = 'السماح بالبيع بأكثر من الرصيد';

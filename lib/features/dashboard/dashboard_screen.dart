@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/auth/auth_service.dart';
 import '../../core/auth/session.dart';
+import '../../core/backup/backup_actions.dart';
 import '../../core/l10n/strings.dart';
 import '../../core/money.dart';
 import '../../core/providers.dart';
@@ -19,8 +20,37 @@ class DashboardScreen extends ConsumerStatefulWidget {
 
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   late Future<DashboardSummary> _summary = _load();
+  late final Future<ExternalBackupStatus> _backup = ref.read(backupActionsProvider).externalStatus();
 
   Future<DashboardSummary> _load() => ref.read(reportServiceProvider).dashboard();
+
+  /// The plan's startup warning: the data lives on this computer only, so
+  /// the admin is told when there is no recent copy elsewhere.
+  Widget _backupWarning(ExternalBackupStatus s) {
+    final text = switch (s.state) {
+      ExternalBackupState.notSet => Strings.backupWarnNotSet,
+      ExternalBackupState.unavailable => Strings.backupWarnUnavailable,
+      ExternalBackupState.old => s.ageDays == null
+          ? Strings.backupWarnNone
+          : '${Strings.backupWarnOld} ${s.ageDays} ${Strings.days}',
+      ExternalBackupState.ok => '',
+    };
+    final scheme = Theme.of(context).colorScheme;
+    return Card(
+      color: scheme.errorContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: scheme.onErrorContainer),
+            const SizedBox(width: 12),
+            Expanded(child: Text(text, style: TextStyle(color: scheme.onErrorContainer))),
+            TextButton(onPressed: () => context.go('/settings'), child: const Text(Strings.settings)),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -47,6 +77,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               ],
             ),
             const SizedBox(height: 16),
+            if (isAdmin)
+              FutureBuilder<ExternalBackupStatus>(
+                future: _backup,
+                builder: (context, b) => b.data == null || b.data!.state == ExternalBackupState.ok
+                    ? const SizedBox()
+                    : Padding(padding: const EdgeInsets.only(bottom: 16), child: _backupWarning(b.data!)),
+              ),
             if (snap.hasError) Text('${snap.error}'),
             if (d == null && !snap.hasError) const Center(child: CircularProgressIndicator()),
             if (d != null) ...[

@@ -5,6 +5,7 @@ import '../../core/auth/auth_service.dart';
 import '../../core/auth/session.dart';
 import '../../core/l10n/strings.dart';
 import '../../core/providers.dart';
+import '../../core/version.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -71,6 +72,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   Text(
                     Strings.loginTitle,
                     style: theme.textTheme.titleMedium,
+                    textAlign: TextAlign.center,
+                  ),
+                  Text(
+                    '${Strings.version} $appVersion',
+                    style: theme.textTheme.bodySmall,
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 24),
