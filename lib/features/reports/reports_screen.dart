@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/db/database.dart';
 import '../../core/l10n/strings.dart';
+import '../../core/printing/documents.dart';
+import '../../core/printing/print_actions.dart';
 import '../../core/providers.dart';
 import '../../core/reports/report_excel.dart';
 import '../../core/reports/report_service.dart';
@@ -138,6 +140,24 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                           onPressed: snap.data == null ? null : () => _export(snap.data!),
                           icon: const Icon(Icons.table_view),
                           label: const Text(Strings.exportExcel),
+                        ),
+                        FilledButton.tonalIcon(
+                          onPressed: snap.data == null
+                              ? null
+                              : () => printDocument(
+                                    context,
+                                    ref,
+                                    name: snap.data!.title,
+                                    build: (company, fonts) => tablePdf(
+                                      snap.data!,
+                                      company,
+                                      fonts,
+                                      from: _kind.dated ? _range.from : null,
+                                      to: _kind.dated ? _range.to : null,
+                                    ),
+                                  ),
+                          icon: const Icon(Icons.print_outlined),
+                          label: const Text(Strings.print),
                         ),
                       ],
                     ),

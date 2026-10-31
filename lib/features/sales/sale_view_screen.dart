@@ -7,6 +7,7 @@ import '../../core/auth/session.dart';
 import '../../core/dates.dart';
 import '../../core/l10n/strings.dart';
 import '../../core/money.dart';
+import '../../core/printing/print_actions.dart';
 import '../../core/providers.dart';
 import '../../core/quantity.dart';
 import '../../core/services/sales_service.dart';
@@ -113,6 +114,11 @@ class _SaleViewScreenState extends ConsumerState<SaleViewScreen> {
                     label: const Text(Strings.cancelInvoice),
                     style: OutlinedButton.styleFrom(foregroundColor: theme.colorScheme.error),
                   ),
+                FilledButton.tonalIcon(
+                  onPressed: () => printSalesInvoice(context, ref, d.invoice.id),
+                  icon: const Icon(Icons.print_outlined),
+                  label: const Text(Strings.print),
+                ),
                 FilledButton.icon(
                   onPressed: () => context.go('/sales/new'),
                   icon: const Icon(Icons.add),

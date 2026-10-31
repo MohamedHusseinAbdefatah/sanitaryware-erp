@@ -9,6 +9,7 @@ import '../../core/dates.dart';
 import '../../core/db/database.dart';
 import '../../core/l10n/strings.dart';
 import '../../core/money.dart';
+import '../../core/printing/print_actions.dart';
 import '../../core/providers.dart';
 import '../../core/quantity.dart';
 import '../../core/services/errors.dart';
@@ -161,7 +162,9 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       .where((l) => l.product.id == productId)
       .fold(0, (s, l) => s + (l.qtyValue ?? 0));
 
-  Future<void> _save() async {
+  /// Saves; with [andPrint] the print dialog opens before going to the
+  /// saved invoice.
+  Future<void> _save({bool andPrint = false}) async {
     if (_saving) return;
     if (_lines.isEmpty) {
       await showMessage(context, Strings.addAtLeastOneItem);
@@ -208,7 +211,8 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
     setState(() => _saving = false);
     if (invoice != null) {
       showToast(context, '${Strings.invoiceSaved} ${invoice.number}');
-      context.go('/sales/${invoice.id}');
+      if (andPrint) await printSalesInvoice(context, ref, invoice.id);
+      if (mounted) context.go('/sales/${invoice.id}');
     }
   }
 
@@ -253,6 +257,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.keyS, control: true): _save,
+        const SingleActivator(LogicalKeyboardKey.keyP, control: true): () => _save(andPrint: true),
         const SingleActivator(LogicalKeyboardKey.f2): () => _productSearchFocus.requestFocus(),
       },
       child: Form(
@@ -403,6 +408,11 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                     onPressed: _saving ? null : _save,
                     icon: const Icon(Icons.save),
                     label: const Text('${Strings.save} (Ctrl+S)'),
+                  ),
+                  FilledButton.tonalIcon(
+                    onPressed: _saving ? null : () => _save(andPrint: true),
+                    icon: const Icon(Icons.print_outlined),
+                    label: const Text('${Strings.saveAndPrint} (Ctrl+P)'),
                   ),
                 ],
               ),

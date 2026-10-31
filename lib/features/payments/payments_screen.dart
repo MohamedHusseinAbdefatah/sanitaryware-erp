@@ -7,6 +7,7 @@ import '../../core/dates.dart';
 import '../../core/db/database.dart';
 import '../../core/l10n/strings.dart';
 import '../../core/money.dart';
+import '../../core/printing/print_actions.dart';
 import '../../core/providers.dart';
 import '../../core/services/doc_types.dart';
 import '../../core/services/payment_service.dart';
@@ -108,15 +109,20 @@ class _PaymentList extends ConsumerWidget {
         rowColor: (r) => r.payment.status == DocStatus.cancelled
             ? scheme.errorContainer.withValues(alpha: 0.3)
             : null,
-        trailing: isAdmin
-            ? (r) => r.payment.status == DocStatus.active
-                ? IconButton(
-                    tooltip: Strings.cancelPayment,
-                    icon: const Icon(Icons.block),
-                    onPressed: () => _cancel(context, ref, r),
-                  )
-                : const SizedBox()
-            : null,
+        trailing: (r) => PopupMenuButton<VoidCallback>(
+          onSelected: (f) => f(),
+          itemBuilder: (_) => [
+            PopupMenuItem(
+              value: () => printReceipt(context, ref, r),
+              child: const Text(Strings.printReceipt),
+            ),
+            if (isAdmin && r.payment.status == DocStatus.active)
+              PopupMenuItem(
+                value: () => _cancel(context, ref, r),
+                child: const Text(Strings.cancelPayment),
+              ),
+          ],
+        ),
         columns: [
           DataListColumn(Strings.number, (r) => Text(r.payment.number)),
           DataListColumn(Strings.date, flex: 2, (r) => Text(formatDateTime(r.payment.date))),

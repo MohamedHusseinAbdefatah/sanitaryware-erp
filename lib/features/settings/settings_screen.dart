@@ -29,6 +29,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   final _phone = TextEditingController();
   List<BackupInfo> _backups = const [];
   String? _externalFolder;
+  String? _logoPath;
   bool _busy = false;
   bool _allowNegativeStock = false;
   bool _countPendingCheques = false;
@@ -56,8 +57,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       await settings.getBool(SettingKey.allowNegativeStock),
       await settings.getBool(SettingKey.countPendingCheques),
     );
+    final logo = await settings.get(SettingKey.companyLogo);
     if (!mounted) return;
     setState(() {
+      _logoPath = (logo == null || logo.isEmpty) ? null : logo;
       _name.text = company.name;
       _address.text = company.address;
       _phone.text = company.phone;
@@ -90,6 +93,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       if (mounted) setState(() => _busy = false);
     }
   }
+
+  /// Copies the chosen image into the data folder (next to the database),
+  /// so it survives if the original file is moved and is in every backup
+  /// folder's neighbourhood.
+  Future<void> _chooseLogo() => _run(() async {
+        final picked = await FilePicker.pickFiles(
+          type: FileType.custom,
+          allowedExtensions: ['png', 'jpg', 'jpeg'],
+        );
+        final source = picked?.files.single.path;
+        if (source == null) return;
+        final dataDir = ref.read(databaseFileProvider).parent;
+        final ext = source.split('.').last.toLowerCase();
+        final target = File('${dataDir.path}${Platform.pathSeparator}logo.$ext');
+        await File(source).copy(target.path);
+        await ref.read(settingsServiceProvider).set(SettingKey.companyLogo, target.path);
+        imageCache.clear();
+        setState(() => _logoPath = target.path);
+      });
+
+  Future<void> _removeLogo() => _run(() async {
+        await ref.read(settingsServiceProvider).set(SettingKey.companyLogo, '');
+        setState(() => _logoPath = null);
+      });
 
   Future<void> _saveCompany() async {
     if (!_form.currentState!.validate()) return;
@@ -236,6 +263,28 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   TextFormField(
                     controller: _phone,
                     decoration: const InputDecoration(labelText: Strings.companyPhone),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Container(
+                        width: 72,
+                        height: 72,
+                        decoration: BoxDecoration(border: Border.all(color: theme.colorScheme.outlineVariant)),
+                        child: _logoPath != null && File(_logoPath!).existsSync()
+                            ? Image.file(File(_logoPath!), fit: BoxFit.contain)
+                            : const Icon(Icons.image_outlined),
+                      ),
+                      const SizedBox(width: 12),
+                      OutlinedButton(
+                        onPressed: _busy ? null : _chooseLogo,
+                        child: const Text(Strings.chooseLogo),
+                      ),
+                      if (_logoPath != null) ...[
+                        const SizedBox(width: 8),
+                        TextButton(onPressed: _busy ? null : _removeLogo, child: const Text(Strings.removeFolder)),
+                      ],
+                    ],
                   ),
                   const SizedBox(height: 16),
                   FilledButton(

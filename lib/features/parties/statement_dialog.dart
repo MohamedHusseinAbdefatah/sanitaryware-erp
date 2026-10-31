@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/dates.dart';
 import '../../core/l10n/strings.dart';
 import '../../core/money.dart';
+import '../../core/printing/documents.dart';
+import '../../core/printing/print_actions.dart';
 import '../../core/providers.dart';
 import '../../core/reports/report_excel.dart';
 import '../../core/reports/report_table.dart';
@@ -78,6 +80,25 @@ class _StatementDialogState extends ConsumerState<_StatementDialog> {
     await saveExcelFile(context, bytes, '${Strings.statementOf} ${s.partyName}');
   }
 
+  Future<void> _print(Statement s) => printDocument(
+        context,
+        ref,
+        name: '${Strings.statementOf} ${s.partyName}',
+        build: (company, fonts) => tablePdf(
+          statementTable(s, isCustomer: _isCustomer, from: _range.from),
+          company,
+          fonts,
+          from: _range.from,
+          to: _range.to,
+          footerLines: [
+            '${Strings.closingBalance}: ${formatMoney(s.closingBalance)}',
+            if (s.pendingCheques.isNotEmpty)
+              '${Strings.pendingChequesNotCounted}: '
+                  '${s.pendingCheques.map((c) => '${c.chequeNo} (${formatDate(c.dueDate)})').join('، ')}',
+          ],
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
@@ -115,6 +136,11 @@ class _StatementDialogState extends ConsumerState<_StatementDialog> {
                         onPressed: s == null ? null : () => _export(s),
                         icon: const Icon(Icons.table_view),
                         label: const Text(Strings.exportExcel),
+                      ),
+                      FilledButton.tonalIcon(
+                        onPressed: s == null ? null : () => _print(s),
+                        icon: const Icon(Icons.print_outlined),
+                        label: const Text(Strings.print),
                       ),
                       IconButton(
                         tooltip: Strings.close,

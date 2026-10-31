@@ -6,6 +6,7 @@ import '../../core/auth/session.dart';
 import '../../core/dates.dart';
 import '../../core/l10n/strings.dart';
 import '../../core/money.dart';
+import '../../core/printing/print_actions.dart';
 import '../../core/providers.dart';
 import '../../core/quantity.dart';
 import '../../core/services/doc_types.dart';
@@ -97,6 +98,11 @@ class _PurchaseViewScreenState extends ConsumerState<PurchaseViewScreen> {
                     icon: const Icon(Icons.assignment_return_outlined),
                     label: const Text(Strings.purchaseReturn),
                   ),
+                FilledButton.tonalIcon(
+                  onPressed: () => printPurchaseInvoice(context, ref, inv.id),
+                  icon: const Icon(Icons.print_outlined),
+                  label: const Text(Strings.print),
+                ),
                 if (!cancelled)
                   OutlinedButton.icon(
                     onPressed: () => _cancel(d),

@@ -254,6 +254,12 @@ class Strings {
   static const topDebtors = 'أكثر العملاء مديونية';
   static const noDebtors = 'لا توجد مديونيات';
 
+  // Printing
+  static const print = 'طباعة';
+  static const saveAndPrint = 'حفظ وطباعة';
+  static const printReceipt = 'طباعة إيصال';
+  static const chooseLogo = 'اختيار الشعار';
+
   // Settings: rules
   static const rulesSection = 'قواعد البيع والتحصيل';
   static const allowNegativeStock = 'السماح بالبيع بأكثر من الرصيد';

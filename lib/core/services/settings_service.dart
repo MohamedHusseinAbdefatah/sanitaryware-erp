@@ -6,6 +6,8 @@ abstract final class SettingKey {
   static const companyName = 'company_name';
   static const companyAddress = 'company_address';
   static const companyPhone = 'company_phone';
+  // Path of the logo copied into the data folder.
+  static const companyLogo = 'company_logo';
   // Optional second folder (USB drive, cloud-synced folder) for backups.
   static const backupExternalFolder = 'backup_external_folder';
   // '1' lets a sale go through even when stock would drop below zero.
