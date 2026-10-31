@@ -30,7 +30,15 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => latestSchemaVersion;
+
+  static const latestSchemaVersion = 2;
+
+  /// SQLite's own check of the file; false means the file is damaged.
+  Future<bool> integrityOk() async {
+    final rows = await customSelect('PRAGMA integrity_check').get();
+    return rows.length == 1 && rows.single.data.values.first == 'ok';
+  }
 
   @override
   MigrationStrategy get migration => MigrationStrategy(

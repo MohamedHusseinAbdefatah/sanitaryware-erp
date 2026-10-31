@@ -1,40 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../core/auth/auth_service.dart';
+import '../../core/auth/session.dart';
 import '../../core/l10n/strings.dart';
-
-class _NavItem {
-  const _NavItem(this.title, this.icon);
-  final String title;
-  final IconData icon;
-}
-
-const _items = <_NavItem>[
-  _NavItem(Strings.dashboard, Icons.dashboard_outlined),
-  _NavItem(Strings.products, Icons.inventory_2_outlined),
-  _NavItem(Strings.customers, Icons.people_outline),
-  _NavItem(Strings.suppliers, Icons.local_shipping_outlined),
-  _NavItem(Strings.sales, Icons.receipt_long_outlined),
-  _NavItem(Strings.purchases, Icons.shopping_cart_outlined),
-  _NavItem(Strings.payments, Icons.payments_outlined),
-  _NavItem(Strings.expenses, Icons.money_off_outlined),
-  _NavItem(Strings.reports, Icons.bar_chart_outlined),
-  _NavItem(Strings.settings, Icons.settings_outlined),
-];
+import 'sections.dart';
 
 /// Main window: sidebar on the right (RTL) and the selected page on the left.
-class HomeShell extends StatefulWidget {
-  const HomeShell({super.key});
+class HomeShell extends ConsumerWidget {
+  const HomeShell({super.key, required this.navigationShell});
+
+  final StatefulNavigationShell navigationShell;
 
   @override
-  State<HomeShell> createState() => _HomeShellState();
-}
-
-class _HomeShellState extends State<HomeShell> {
-  int _selected = 0;
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
+    final user = ref.watch(currentUserProvider);
+    final isAdmin = user?.isAdmin ?? false;
+
     return Scaffold(
       body: Row(
         children: [
@@ -54,37 +38,36 @@ class _HomeShellState extends State<HomeShell> {
                   ),
                 ),
                 Expanded(
-                  child: ListView.builder(
-                    itemCount: _items.length,
-                    itemBuilder: (context, i) {
-                      final item = _items[i];
-                      return ListTile(
-                        leading: Icon(item.icon),
-                        title: Text(item.title),
-                        selected: i == _selected,
-                        onTap: () => setState(() => _selected = i),
-                      );
-                    },
+                  child: ListView(
+                    children: [
+                      for (var i = 0; i < appSections.length; i++)
+                        if (isAdmin || !appSections[i].adminOnly)
+                          ListTile(
+                            leading: Icon(appSections[i].icon),
+                            title: Text(appSections[i].title),
+                            selected: i == navigationShell.currentIndex,
+                            onTap: () => navigationShell.goBranch(i),
+                          ),
+                    ],
                   ),
                 ),
+                const Divider(height: 1),
+                if (user != null)
+                  ListTile(
+                    leading: const Icon(Icons.person_outline),
+                    title: Text(user.fullName),
+                    subtitle: Text(isAdmin ? Strings.roleAdmin : Strings.roleCashier),
+                    trailing: IconButton(
+                      tooltip: Strings.logout,
+                      icon: const Icon(Icons.logout),
+                      onPressed: () =>
+                          ref.read(currentUserProvider.notifier).state = null,
+                    ),
+                  ),
               ],
             ),
           ),
-          Expanded(
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    _items[_selected].title,
-                    style: Theme.of(context).textTheme.headlineMedium,
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(Strings.comingSoon),
-                ],
-              ),
-            ),
-          ),
+          Expanded(child: navigationShell),
         ],
       ),
     );
