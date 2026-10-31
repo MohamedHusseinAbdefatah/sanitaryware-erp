@@ -1453,8 +1453,29 @@ class $UnitsTable extends Units with TableInfo<$UnitsTable, Unit> {
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _allowDecimalMeta = const VerificationMeta(
+    'allowDecimal',
+  );
   @override
-  List<GeneratedColumn> get $columns => [createdAt, updatedAt, id, nameAr];
+  late final GeneratedColumn<bool> allowDecimal = GeneratedColumn<bool>(
+    'allow_decimal',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("allow_decimal" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    createdAt,
+    updatedAt,
+    id,
+    nameAr,
+    allowDecimal,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -1490,6 +1511,15 @@ class $UnitsTable extends Units with TableInfo<$UnitsTable, Unit> {
     } else if (isInserting) {
       context.missing(_nameArMeta);
     }
+    if (data.containsKey('allow_decimal')) {
+      context.handle(
+        _allowDecimalMeta,
+        allowDecimal.isAcceptableOrUnknown(
+          data['allow_decimal']!,
+          _allowDecimalMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -1515,6 +1545,10 @@ class $UnitsTable extends Units with TableInfo<$UnitsTable, Unit> {
         DriftSqlType.string,
         data['${effectivePrefix}name_ar'],
       )!,
+      allowDecimal: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}allow_decimal'],
+      )!,
     );
   }
 
@@ -1529,11 +1563,13 @@ class Unit extends DataClass implements Insertable<Unit> {
   final DateTime updatedAt;
   final int id;
   final String nameAr;
+  final bool allowDecimal;
   const Unit({
     required this.createdAt,
     required this.updatedAt,
     required this.id,
     required this.nameAr,
+    required this.allowDecimal,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1542,6 +1578,7 @@ class Unit extends DataClass implements Insertable<Unit> {
     map['updated_at'] = Variable<DateTime>(updatedAt);
     map['id'] = Variable<int>(id);
     map['name_ar'] = Variable<String>(nameAr);
+    map['allow_decimal'] = Variable<bool>(allowDecimal);
     return map;
   }
 
@@ -1551,6 +1588,7 @@ class Unit extends DataClass implements Insertable<Unit> {
       updatedAt: Value(updatedAt),
       id: Value(id),
       nameAr: Value(nameAr),
+      allowDecimal: Value(allowDecimal),
     );
   }
 
@@ -1564,6 +1602,7 @@ class Unit extends DataClass implements Insertable<Unit> {
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       id: serializer.fromJson<int>(json['id']),
       nameAr: serializer.fromJson<String>(json['nameAr']),
+      allowDecimal: serializer.fromJson<bool>(json['allowDecimal']),
     );
   }
   @override
@@ -1574,6 +1613,7 @@ class Unit extends DataClass implements Insertable<Unit> {
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'id': serializer.toJson<int>(id),
       'nameAr': serializer.toJson<String>(nameAr),
+      'allowDecimal': serializer.toJson<bool>(allowDecimal),
     };
   }
 
@@ -1582,11 +1622,13 @@ class Unit extends DataClass implements Insertable<Unit> {
     DateTime? updatedAt,
     int? id,
     String? nameAr,
+    bool? allowDecimal,
   }) => Unit(
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     id: id ?? this.id,
     nameAr: nameAr ?? this.nameAr,
+    allowDecimal: allowDecimal ?? this.allowDecimal,
   );
   Unit copyWithCompanion(UnitsCompanion data) {
     return Unit(
@@ -1594,6 +1636,9 @@ class Unit extends DataClass implements Insertable<Unit> {
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       id: data.id.present ? data.id.value : this.id,
       nameAr: data.nameAr.present ? data.nameAr.value : this.nameAr,
+      allowDecimal: data.allowDecimal.present
+          ? data.allowDecimal.value
+          : this.allowDecimal,
     );
   }
 
@@ -1603,13 +1648,15 @@ class Unit extends DataClass implements Insertable<Unit> {
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('id: $id, ')
-          ..write('nameAr: $nameAr')
+          ..write('nameAr: $nameAr, ')
+          ..write('allowDecimal: $allowDecimal')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(createdAt, updatedAt, id, nameAr);
+  int get hashCode =>
+      Object.hash(createdAt, updatedAt, id, nameAr, allowDecimal);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1617,7 +1664,8 @@ class Unit extends DataClass implements Insertable<Unit> {
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.id == this.id &&
-          other.nameAr == this.nameAr);
+          other.nameAr == this.nameAr &&
+          other.allowDecimal == this.allowDecimal);
 }
 
 class UnitsCompanion extends UpdateCompanion<Unit> {
@@ -1625,29 +1673,34 @@ class UnitsCompanion extends UpdateCompanion<Unit> {
   final Value<DateTime> updatedAt;
   final Value<int> id;
   final Value<String> nameAr;
+  final Value<bool> allowDecimal;
   const UnitsCompanion({
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.id = const Value.absent(),
     this.nameAr = const Value.absent(),
+    this.allowDecimal = const Value.absent(),
   });
   UnitsCompanion.insert({
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.id = const Value.absent(),
     required String nameAr,
+    this.allowDecimal = const Value.absent(),
   }) : nameAr = Value(nameAr);
   static Insertable<Unit> custom({
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<int>? id,
     Expression<String>? nameAr,
+    Expression<bool>? allowDecimal,
   }) {
     return RawValuesInsertable({
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (id != null) 'id': id,
       if (nameAr != null) 'name_ar': nameAr,
+      if (allowDecimal != null) 'allow_decimal': allowDecimal,
     });
   }
 
@@ -1656,12 +1709,14 @@ class UnitsCompanion extends UpdateCompanion<Unit> {
     Value<DateTime>? updatedAt,
     Value<int>? id,
     Value<String>? nameAr,
+    Value<bool>? allowDecimal,
   }) {
     return UnitsCompanion(
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       id: id ?? this.id,
       nameAr: nameAr ?? this.nameAr,
+      allowDecimal: allowDecimal ?? this.allowDecimal,
     );
   }
 
@@ -1680,6 +1735,9 @@ class UnitsCompanion extends UpdateCompanion<Unit> {
     if (nameAr.present) {
       map['name_ar'] = Variable<String>(nameAr.value);
     }
+    if (allowDecimal.present) {
+      map['allow_decimal'] = Variable<bool>(allowDecimal.value);
+    }
     return map;
   }
 
@@ -1689,7 +1747,8 @@ class UnitsCompanion extends UpdateCompanion<Unit> {
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('id: $id, ')
-          ..write('nameAr: $nameAr')
+          ..write('nameAr: $nameAr, ')
+          ..write('allowDecimal: $allowDecimal')
           ..write(')'))
         .toString();
   }
@@ -12258,6 +12317,7 @@ typedef $$UnitsTableCreateCompanionBuilder =
       Value<DateTime> updatedAt,
       Value<int> id,
       required String nameAr,
+      Value<bool> allowDecimal,
     });
 typedef $$UnitsTableUpdateCompanionBuilder =
     UnitsCompanion Function({
@@ -12265,6 +12325,7 @@ typedef $$UnitsTableUpdateCompanionBuilder =
       Value<DateTime> updatedAt,
       Value<int> id,
       Value<String> nameAr,
+      Value<bool> allowDecimal,
     });
 
 final class $$UnitsTableReferences
@@ -12316,6 +12377,11 @@ class $$UnitsTableFilterComposer extends Composer<_$AppDatabase, $UnitsTable> {
 
   ColumnFilters<String> get nameAr => $composableBuilder(
     column: $table.nameAr,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get allowDecimal => $composableBuilder(
+    column: $table.allowDecimal,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -12373,6 +12439,11 @@ class $$UnitsTableOrderingComposer
     column: $table.nameAr,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get allowDecimal => $composableBuilder(
+    column: $table.allowDecimal,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$UnitsTableAnnotationComposer
@@ -12395,6 +12466,11 @@ class $$UnitsTableAnnotationComposer
 
   GeneratedColumn<String> get nameAr =>
       $composableBuilder(column: $table.nameAr, builder: (column) => column);
+
+  GeneratedColumn<bool> get allowDecimal => $composableBuilder(
+    column: $table.allowDecimal,
+    builder: (column) => column,
+  );
 
   Expression<T> productsRefs<T extends Object>(
     Expression<T> Function($$ProductsTableAnnotationComposer a) f,
@@ -12454,11 +12530,13 @@ class $$UnitsTableTableManager
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> id = const Value.absent(),
                 Value<String> nameAr = const Value.absent(),
+                Value<bool> allowDecimal = const Value.absent(),
               }) => UnitsCompanion(
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 id: id,
                 nameAr: nameAr,
+                allowDecimal: allowDecimal,
               ),
           createCompanionCallback:
               ({
@@ -12466,11 +12544,13 @@ class $$UnitsTableTableManager
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> id = const Value.absent(),
                 required String nameAr,
+                Value<bool> allowDecimal = const Value.absent(),
               }) => UnitsCompanion.insert(
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 id: id,
                 nameAr: nameAr,
+                allowDecimal: allowDecimal,
               ),
           withReferenceMapper: (p0) => p0
               .map(

@@ -18,6 +18,7 @@ class StockService {
 
   final AppDatabase db;
 
+  /// Current stock in thousandths of a unit.
   Future<int> currentStock(int productId) async {
     final total = db.stockMovements.qty.sum();
     final query = db.selectOnly(db.stockMovements)
@@ -27,7 +28,8 @@ class StockService {
     return row.read(total) ?? 0;
   }
 
-  /// Adds one movement. Positive qty adds stock, negative removes it.
+  /// Adds one movement. [qty] is in thousandths; positive adds stock,
+  /// negative removes it. [unitCost] is piastres per whole unit.
   /// Call this inside the same transaction as the document that causes it.
   Future<int> record({
     required int productId,

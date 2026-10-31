@@ -2,6 +2,7 @@ import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sanitaryware_erp/core/db/database.dart';
+import 'package:sanitaryware_erp/core/quantity.dart';
 import 'package:sanitaryware_erp/core/services/numbering_service.dart';
 import 'package:sanitaryware_erp/core/services/stock_service.dart';
 
@@ -29,20 +30,30 @@ void main() {
       expect(await stock.currentStock(id), 0);
 
       await stock.record(
-          productId: id, type: StockMovementType.purchase, qty: 10, unitCost: 5000);
-      await stock.record(productId: id, type: StockMovementType.sale, qty: -3);
-      await stock.record(productId: id, type: StockMovementType.saleReturn, qty: 1);
-      expect(await stock.currentStock(id), 8);
+          productId: id, type: StockMovementType.purchase, qty: qtyOf(10), unitCost: 5000);
+      await stock.record(productId: id, type: StockMovementType.sale, qty: -qtyOf(3));
+      await stock.record(productId: id, type: StockMovementType.saleReturn, qty: qtyOf(1));
+      expect(await stock.currentStock(id), qtyOf(8));
+    });
+
+    test('fractional quantities (meters) add up exactly', () async {
+      final stock = StockService(db);
+      final id = await addProduct('PIPE');
+      await stock.record(productId: id, type: StockMovementType.purchase, qty: qtyOf(100));
+      await stock.record(productId: id, type: StockMovementType.sale, qty: -1500);
+      await stock.record(productId: id, type: StockMovementType.sale, qty: -2250);
+      expect(await stock.currentStock(id), 96250);
+      expect(formatQty(await stock.currentStock(id)), '96.25');
     });
 
     test('stock is tracked per product', () async {
       final stock = StockService(db);
       final a = await addProduct('A1');
       final b = await addProduct('B1');
-      await stock.record(productId: a, type: StockMovementType.opening, qty: 5);
-      await stock.record(productId: b, type: StockMovementType.opening, qty: 7);
-      expect(await stock.currentStock(a), 5);
-      expect(await stock.currentStock(b), 7);
+      await stock.record(productId: a, type: StockMovementType.opening, qty: qtyOf(5));
+      await stock.record(productId: b, type: StockMovementType.opening, qty: qtyOf(7));
+      expect(await stock.currentStock(a), qtyOf(5));
+      expect(await stock.currentStock(b), qtyOf(7));
     });
 
     test('a zero movement is rejected', () async {
@@ -59,7 +70,7 @@ void main() {
       final id = await addProduct('A1');
       try {
         await db.transaction(() async {
-          await stock.record(productId: id, type: StockMovementType.purchase, qty: 10);
+          await stock.record(productId: id, type: StockMovementType.purchase, qty: qtyOf(10));
           throw StateError('simulated crash while saving the invoice');
         });
       } on StateError {

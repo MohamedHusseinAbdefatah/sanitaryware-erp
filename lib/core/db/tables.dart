@@ -1,7 +1,9 @@
 import 'package:drift/drift.dart';
 
 // All money columns are INTEGER PIASTRES (100 piastres = 1 EGP).
-// All quantities are whole numbers in v1.
+// All quantity columns are INTEGER THOUSANDTHS of a unit (1000 = 1 piece,
+// 1500 = 1.5 meters); see lib/core/quantity.dart. Unit prices and costs are
+// per whole unit.
 // Financial records are never hard-deleted: they carry a `status`.
 
 mixin Timestamps on Table {
@@ -43,6 +45,8 @@ class Brands extends Table with Timestamps {
 class Units extends Table with Timestamps {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get nameAr => text()();
+  // True for units sold in fractions (meter); false for piece, box, set.
+  BoolColumn get allowDecimal => boolean().withDefault(const Constant(false))();
 }
 
 @TableIndex(name: 'idx_products_name_ar', columns: {#nameAr})
@@ -58,6 +62,7 @@ class Products extends Table with Timestamps {
   IntColumn get priceRetail => integer().withDefault(const Constant(0))();
   IntColumn get priceWholesale => integer().withDefault(const Constant(0))();
   IntColumn get priceContractor => integer().withDefault(const Constant(0))();
+  // Thousandths, like every quantity.
   IntColumn get minStock => integer().withDefault(const Constant(0))();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   TextColumn get notes => text().nullable()();
@@ -70,7 +75,7 @@ class StockMovements extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get productId => integer().references(Products, #id)();
   TextColumn get type => text()();
-  // Positive adds stock, negative removes it.
+  // Thousandths. Positive adds stock, negative removes it.
   IntColumn get qty => integer()();
   IntColumn get unitCost => integer().withDefault(const Constant(0))();
   TextColumn get refType => text().nullable()();
