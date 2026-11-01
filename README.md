@@ -46,4 +46,7 @@ not next to the program files.
   ```
 
 - `recovery_sheet_ar.md`: the "if something goes wrong" page.
+- `reset_password.bat`: for the developer when nobody can log in (for
+  example the only admin forgot the password). Close the program first; it
+  backs up the database, sets the new password and re-activates the user.
 - `handover_checklist_ar.md`: the checklist signed at delivery.

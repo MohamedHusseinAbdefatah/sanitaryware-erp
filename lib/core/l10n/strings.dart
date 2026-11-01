@@ -374,6 +374,7 @@ class Strings {
   static const backupReasonAuto = 'عند الإغلاق';
   static const backupReasonMigration = 'قبل التحديث';
   static const backupReasonRestore = 'قبل الاستعادة';
+  static const backupReasonReset = 'قبل تغيير كلمة المرور';
 
   // Startup problems
   static const startupErrorTitle = 'تعذّر فتح قاعدة البيانات';

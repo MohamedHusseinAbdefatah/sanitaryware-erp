@@ -9,6 +9,7 @@ String backupReasonLabel(String reason) => switch (reason) {
       BackupReason.onClose => Strings.backupReasonAuto,
       BackupReason.beforeMigration => Strings.backupReasonMigration,
       BackupReason.beforeRestore => Strings.backupReasonRestore,
+      BackupReason.beforeReset => Strings.backupReasonReset,
       _ => reason,
     };
 

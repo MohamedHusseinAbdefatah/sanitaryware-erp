@@ -11,6 +11,7 @@ abstract final class BackupReason {
   static const onClose = 'auto';
   static const beforeMigration = 'before-migration';
   static const beforeRestore = 'before-restore';
+  static const beforeReset = 'before-reset';
 }
 
 class BackupInfo {
