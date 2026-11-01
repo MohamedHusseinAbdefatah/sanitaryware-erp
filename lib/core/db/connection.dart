@@ -6,10 +6,11 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sqlite3/sqlite3.dart' as sql;
 
 import '../backup/backup_service.dart';
+import 'data_dir.dart';
 import 'database.dart';
 
-/// Where the data lives: the user's app-data folder, not next to the
-/// program files, so installing an update never touches it.
+/// Where the data lives: %APPDATA%\SanitarywareERP (see data_dir.dart),
+/// not next to the program files, so installing an update never touches it.
 class AppPaths {
   const AppPaths(this.dataDir);
 
@@ -19,10 +20,8 @@ class AppPaths {
   Directory get backupDir => Directory(p.join(dataDir.path, 'backups'));
 
   static Future<AppPaths> resolve() async {
-    final support = await getApplicationSupportDirectory();
-    final dir = Directory(p.join(support.path, 'SanitarywareERP'));
-    await dir.create(recursive: true);
-    return AppPaths(dir);
+    final appData = Platform.environment['APPDATA'] ?? (await getApplicationSupportDirectory()).path;
+    return AppPaths(await prepareDataDir(appData));
   }
 }
 

@@ -3,7 +3,7 @@
 ; and passes the version from lib/core/version.dart.
 ;
 ; The client's data is NOT in the install folder: it lives in
-;   %APPDATA%\com.erp\sanitaryware_erp\SanitarywareERP
+;   %APPDATA%\SanitarywareERP
 ; (database, backups, logo), so installing an update or uninstalling never
 ; touches it. Before opening a database from an older version the app makes
 ; a backup by itself.

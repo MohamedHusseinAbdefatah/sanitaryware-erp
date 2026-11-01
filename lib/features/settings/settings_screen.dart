@@ -10,6 +10,7 @@ import '../../core/backup/backup_service.dart';
 import '../../core/backup/restart.dart';
 import '../../core/l10n/strings.dart';
 import '../../core/printing/pdf_fonts.dart';
+import '../../core/printing/print_actions.dart';
 import '../../core/printing/test_page.dart';
 import '../../core/providers.dart';
 import '../../core/version.dart';
@@ -61,7 +62,7 @@ class _SettingsScreenState extends ConsumerState<GeneralSettingsTab> {
     final logo = await settings.get(SettingKey.companyLogo);
     if (!mounted) return;
     setState(() {
-      _logoPath = (logo == null || logo.isEmpty) ? null : logo;
+      _logoPath = logoFile(logo, ref.read(databaseFileProvider).parent);
       _name.text = company.name;
       _address.text = company.address;
       _phone.text = company.phone;

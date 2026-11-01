@@ -238,7 +238,7 @@ void main() {
           textDirection: pw.TextDirection.ltr,
           child: pw.Align(
             alignment: pw.Alignment.centerRight,
-            child: pw.Text(r'%APPDATA%\com.erp\sanitaryware_erp\SanitarywareERP'),
+            child: pw.Text(r'%APPDATA%\SanitarywareERP'),
           ),
         ),
         pw.SizedBox(height: 20),

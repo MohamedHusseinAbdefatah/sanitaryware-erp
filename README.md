@@ -24,8 +24,8 @@ writes the output to `check_log.txt`.
 
 Run the app with `flutter run -d windows`.
 
-The database lives in the user's app-data folder (`SanitarywareERP\erp.sqlite`),
-not next to the program files.
+The database lives in `%APPDATA%\SanitarywareERP\erp.sqlite` (fixed on
+purpose, see `lib/core/db/data_dir.dart`), not next to the program files.
 
 ## Release and delivery
 

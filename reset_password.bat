@@ -5,16 +5,15 @@ cd /d "%~dp0"
 set "FLUTTER_BIN=E:\Apps , Software , 2026\applications\programming\flutter\bin"
 set "PATH=%FLUTTER_BIN%;%PATH%"
 
-echo Close the Sanitaryware ERP program before continuing.
-echo.
-echo Database file (press Enter for this computer's data folder):
-set "ERP_DB="
-set /p ERP_DB=
+echo Close the Sanitaryware ERP program before continuing, then press a key.
+pause >nul
+rem The program's own data folder (%APPDATA%\SanitarywareERP) is used.
+rem To fix a database copied from another PC, set ERP_DB to its erp.sqlite first.
 set "ERP_USER="
 set "ERP_PASSWORD="
 
 echo.
-echo Users in the database:
+echo Reading the users (first run takes a minute)...
 call flutter test tool\admin\reset_password_test.dart --reporter=expanded 2>&1 | findstr /b /c:"USERS:" /c:"No database"
 echo.
 set /p ERP_USER=Username to reset:

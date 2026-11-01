@@ -2,6 +2,16 @@
 
 Versions follow `version:` in `pubspec.yaml` and `lib/core/version.dart`.
 
+## 1.0.1
+
+- The data folder is now fixed at `%APPDATA%\SanitarywareERP`. Earlier
+  builds let Windows name it after the program's company and product names,
+  so 1.0.0 (renamed for the installer) started an empty database in a new
+  folder. On first start the most recently used older folder is copied in;
+  the old folder is left untouched.
+- The logo is found next to the data if its saved path has moved.
+- `reset_password.bat` for the developer when nobody can log in.
+
 ## 1.0.0 — first delivery
 
 Everything in the signed v1 scope:

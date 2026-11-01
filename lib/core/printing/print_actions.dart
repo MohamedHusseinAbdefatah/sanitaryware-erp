@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
 import 'package:printing/printing.dart';
 
 import '../db/database.dart';
@@ -14,16 +15,21 @@ import '../widgets/feedback.dart';
 import 'documents.dart';
 import 'pdf_fonts.dart';
 
+/// The saved logo path if the file is there; otherwise the same file name
+/// in [dataDir] (the logo moved with the data folder). Null if neither.
+String? logoFile(String? saved, Directory dataDir) {
+  if (saved == null || saved.isEmpty) return null;
+  if (File(saved).existsSync()) return saved;
+  final moved = p.join(dataDir.path, p.basename(saved));
+  return File(moved).existsSync() ? moved : null;
+}
+
 /// The shop's name, address, phone and logo for the top of printed pages.
 Future<PrintCompany> loadPrintCompany(WidgetRef ref) async {
   final settings = ref.read(settingsServiceProvider);
   final company = await settings.company();
-  final logoPath = await settings.get(SettingKey.companyLogo);
-  Uint8List? logo;
-  if (logoPath != null && logoPath.isNotEmpty) {
-    final file = File(logoPath);
-    if (await file.exists()) logo = await file.readAsBytes();
-  }
+  final logoPath = logoFile(await settings.get(SettingKey.companyLogo), ref.read(databaseFileProvider).parent);
+  final logo = logoPath == null ? null : await File(logoPath).readAsBytes();
   return PrintCompany(name: company.name, address: company.address, phone: company.phone, logo: logo);
 }
 

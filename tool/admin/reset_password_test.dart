@@ -3,7 +3,7 @@
 // reset_password.bat, which asks for the values; the program must be closed.
 //
 // Environment:
-//   ERP_DB        path of erp.sqlite (default: this Windows user's data folder)
+//   ERP_DB        path of erp.sqlite (default: the program's data folder)
 //   ERP_USER      username; leave empty to only list the users
 //   ERP_PASSWORD  the new password (at least 4 characters)
 //
@@ -21,16 +21,19 @@ import 'package:path/path.dart' as p;
 import 'package:sanitaryware_erp/core/auth/auth_service.dart';
 import 'package:sanitaryware_erp/core/auth/password_hasher.dart';
 import 'package:sanitaryware_erp/core/backup/backup_service.dart';
+import 'package:sanitaryware_erp/core/db/data_dir.dart';
 import 'package:sanitaryware_erp/core/db/database.dart';
 import 'package:sanitaryware_erp/core/services/audit_service.dart';
 
-String _defaultDb() =>
-    p.join(Platform.environment['APPDATA'] ?? '', 'com.erp', 'sanitaryware_erp', 'SanitarywareERP', 'erp.sqlite');
+/// The same folder the program uses (copying an older build's data in
+/// first, exactly as the program would on its next start).
+Future<String> _defaultDb() async =>
+    p.join((await prepareDataDir(Platform.environment['APPDATA'] ?? '')).path, 'erp.sqlite');
 
 void main() {
   test('reset password', () async {
     final env = Platform.environment;
-    final dbFile = File((env['ERP_DB'] ?? '').trim().isEmpty ? _defaultDb() : env['ERP_DB']!.trim());
+    final dbFile = File((env['ERP_DB'] ?? '').trim().isEmpty ? await _defaultDb() : env['ERP_DB']!.trim());
     final username = (env['ERP_USER'] ?? '').trim().toLowerCase();
     final password = env['ERP_PASSWORD'] ?? '';
 
