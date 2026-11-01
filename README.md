@@ -26,3 +26,24 @@ Run the app with `flutter run -d windows`.
 
 The database lives in the user's app-data folder (`SanitarywareERP\erp.sqlite`),
 not next to the program files.
+
+## Release and delivery
+
+- `build_release.bat` runs every test, builds the release and makes
+  `dist\SanitarywareERP-Setup-<version>.exe` (needs Inno Setup 6).
+- The version lives in `lib/core/version.dart`, `pubspec.yaml` and
+  `CHANGELOG.md` (a test keeps them in step).
+- `test/acceptance/manual_script_test.dart` is the plan's manual test
+  script with hand-calculated totals: the release gate.
+
+## Documents for the client (`docs/`)
+
+- `user_guide_ar.pdf`: the Arabic user guide. Rebuild it after UI changes:
+
+  ```bat
+  flutter test tool/docs/screenshots_test.dart
+  flutter test tool/docs/user_guide_test.dart
+  ```
+
+- `recovery_sheet_ar.md`: the "if something goes wrong" page.
+- `handover_checklist_ar.md`: the checklist signed at delivery.
