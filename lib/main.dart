@@ -9,6 +9,7 @@ import 'core/backup/backup_actions.dart';
 import 'core/backup/backup_service.dart';
 import 'core/db/connection.dart';
 import 'core/db/database.dart';
+import 'core/error_log.dart';
 import 'core/l10n/strings.dart';
 import 'core/providers.dart';
 import 'features/startup/startup_error_app.dart';
@@ -29,12 +30,14 @@ Future<void> main() async {
   });
 
   final paths = await AppPaths.resolve();
+  ErrorLog.start(paths.dataDir);
   final backups = BackupService(dir: paths.backupDir);
 
   StartupResult startup;
   try {
     startup = await openAppDatabase(paths, backups);
-  } catch (e) {
+  } catch (e, stack) {
+    ErrorLog.record(e, stack, where: 'opening the database');
     runApp(StartupErrorApp(
       message: '${Strings.startupFailed}\n$e',
       backups: backups,
@@ -92,8 +95,10 @@ class _BackupOnClose with WindowListener {
       if (await AuthService(db).hasAnyUser()) {
         await actions.backupNow(reason: BackupReason.onClose);
       }
-    } catch (_) {
-      // Never block closing the program because a backup failed.
+    } catch (e, stack) {
+      // Never block closing the program because a backup failed, but keep
+      // a record: a silent backup failure is how data gets lost.
+      ErrorLog.record(e, stack, where: 'backup on close');
     }
     await db.close();
     await windowManager.destroy();

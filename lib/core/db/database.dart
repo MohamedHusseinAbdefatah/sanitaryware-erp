@@ -32,7 +32,7 @@ class AppDatabase extends _$AppDatabase {
   @override
   int get schemaVersion => latestSchemaVersion;
 
-  static const latestSchemaVersion = 2;
+  static const latestSchemaVersion = 3;
 
   /// SQLite's own check of the file; false means the file is damaged.
   Future<bool> integrityOk() async {
@@ -51,6 +51,11 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(units, units.allowDecimal);
             await m.createIndex(Index('idx_products_name_ar',
                 'CREATE INDEX IF NOT EXISTS idx_products_name_ar ON products (name_ar)'));
+          }
+          if (from < 3) {
+            // v3: index for "paid on this invoice" (sales list was slow with a year of data).
+            await m.createIndex(Index('idx_payments_invoice_ref',
+                'CREATE INDEX IF NOT EXISTS idx_payments_invoice_ref ON payments (invoice_ref_type, invoice_ref_id)'));
           }
         },
         beforeOpen: (details) async {

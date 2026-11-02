@@ -189,6 +189,9 @@ class ReturnItems extends Table {
 }
 
 @TableIndex(name: 'idx_payments_party', columns: {#partyType, #partyId})
+// "What has been paid on this invoice" is asked for every row of the sales
+// and purchase lists (added in schema 3).
+@TableIndex(name: 'idx_payments_invoice_ref', columns: {#invoiceRefType, #invoiceRefId})
 class Payments extends Table with Timestamps {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get number => text().unique()();

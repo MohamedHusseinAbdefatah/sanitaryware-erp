@@ -2,6 +2,19 @@
 
 Versions follow `version:` in `pubspec.yaml` and `lib/core/version.dart`.
 
+## 1.0.2
+
+- Unexpected errors are written to `logs\errors.log` in the data folder
+  (time, version, place, stack), including failed backups on close, which
+  used to be silent.
+- Only one copy of the program can run; starting it again brings the open
+  window to the front. A restart after a restore waits for the old copy.
+- Database schema 3: index for "paid on this invoice"; the monthly sales
+  list with a year of data went from 0.7 s to 0.04 s.
+- Release gate tests: upgrade from 1.0.0's folder and from older schemas,
+  a busy year (15,000 invoices) with time limits, C++ files ASCII only.
+- `docs/RELEASE_CHECKLIST.md`.
+
 ## 1.0.1
 
 - The data folder is now fixed at `%APPDATA%\SanitarywareERP`. Earlier

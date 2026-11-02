@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../error_log.dart';
 import '../l10n/strings.dart';
 import '../services/errors.dart';
 
@@ -15,7 +16,8 @@ Future<T?> runGuarded<T>(BuildContext context, Future<T> Function() action) asyn
     return await action();
   } on ValidationException catch (e) {
     if (context.mounted) await showMessage(context, e.message);
-  } catch (e) {
+  } catch (e, stack) {
+    ErrorLog.record(e, stack, where: 'action');
     if (context.mounted) await showMessage(context, '${Strings.unexpectedError}\n$e');
   }
   return null;

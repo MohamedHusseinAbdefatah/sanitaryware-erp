@@ -10628,6 +10628,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     'idx_payments_party',
     'CREATE INDEX idx_payments_party ON payments (party_type, party_id)',
   );
+  late final Index idxPaymentsInvoiceRef = Index(
+    'idx_payments_invoice_ref',
+    'CREATE INDEX idx_payments_invoice_ref ON payments (invoice_ref_type, invoice_ref_id)',
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -10658,6 +10662,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     idxSalesInvoicesCustomerDate,
     idxPurchaseInvoicesSupplierDate,
     idxPaymentsParty,
+    idxPaymentsInvoiceRef,
   ];
 }
 
