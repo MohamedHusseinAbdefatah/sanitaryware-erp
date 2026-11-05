@@ -9,6 +9,7 @@ import 'balance_service.dart';
 import 'cost.dart';
 import 'doc_types.dart';
 import 'errors.dart';
+import 'fifo_service.dart';
 import 'numbering_service.dart';
 import 'query_helpers.dart';
 import 'settings_service.dart';
@@ -130,6 +131,7 @@ class PurchaseService {
           ));
 
       final stock = StockService(db);
+      final fifo = FifoService(db);
       for (final line in input.lines) {
         await db.into(db.purchaseInvoiceItems).insert(PurchaseInvoiceItemsCompanion.insert(
               invoiceId: invoiceId,
@@ -149,6 +151,15 @@ class PurchaseService {
         );
         await _setCost(p.id, newCost);
         products[p.id] = p.copyWith(costPrice: newCost);
+        await fifo.addLayer(
+          productId: p.id,
+          qty: line.qty,
+          unitCost: line.unitCost,
+          receivedAt: date,
+          supplierId: input.supplierId,
+          sourceType: 'purchase',
+          sourceId: invoiceId,
+        );
         await stock.record(
           productId: p.id,
           type: StockMovementType.purchase,
@@ -218,8 +229,10 @@ class PurchaseService {
             ..where((t) => t.invoiceId.equals(invoiceId)))
           .get();
       final stock = StockService(db);
+      final fifo = FifoService(db);
       final allowNegative = await SettingsService(db).getBool(SettingKey.allowNegativeStock);
       final note = 'سبب الإلغاء: ${reason.trim()}';
+      final voided = await fifo.voidSourceLayers('purchase', invoiceId);
       for (final item in items.reversed) {
         final p = await (db.select(db.products)..where((t) => t.id.equals(item.productId))).getSingle();
         final onHand = await stock.currentStock(p.id);
@@ -233,6 +246,20 @@ class PurchaseService {
           p.id,
           averageCostAfterRemoving(stock: onHand, cost: p.costPrice, qty: item.qty, unitCost: item.unitCost),
         );
+        // Empty the layers this purchase made; anything it made before
+        // layers existed comes off the oldest layers instead.
+        final emptied = voided[p.id] ?? 0;
+        final rest = item.qty - (emptied < item.qty ? emptied : item.qty);
+        voided[p.id] = emptied - (item.qty - rest);
+        if (rest > 0) {
+          await fifo.consume(
+            productId: p.id,
+            qty: rest,
+            refType: 'purchase_cancel',
+            refId: invoiceId,
+            fallbackCost: item.unitCost,
+          );
+        }
         await stock.record(
           productId: p.id,
           type: StockMovementType.purchaseCancel,

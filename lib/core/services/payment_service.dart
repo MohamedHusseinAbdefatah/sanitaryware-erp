@@ -87,6 +87,8 @@ class PaymentService {
     required String direction,
     required String partyType,
     int? userId,
+    String? orderRefType,
+    int? orderRefId,
   }) {
     return db.transaction(() async {
       if (input.amount <= 0) throw ValidationException('المبلغ يجب أن يكون أكبر من صفر');
@@ -102,7 +104,7 @@ class PaymentService {
         throw ArgumentError.value(input.method, 'method');
       }
 
-      String? refType;
+      String? refType = orderRefType;
       if (input.invoiceId != null) {
         refType = partyType == PartyType.customer ? RefType.salesInvoice : RefType.purchaseInvoice;
         final remaining = await invoiceRemaining(refType, input.invoiceId!, partyId: input.partyId);
@@ -123,7 +125,7 @@ class PaymentService {
             amount: input.amount,
             method: input.method,
             invoiceRefType: Value(refType),
-            invoiceRefId: Value(input.invoiceId),
+            invoiceRefId: Value(input.invoiceId ?? orderRefId),
             notes: Value(_blankToNull(input.notes)),
             createdBy: Value(userId),
           ));
@@ -145,6 +147,97 @@ class PaymentService {
       );
       return payment;
     });
+  }
+
+  /// An advance from a customer against a sales order. It counts in the
+  /// customer's balance at once (they are owed credit until invoices use it).
+  Future<Payment> receiveAdvance(
+    int salesOrderId, {
+    required int amount,
+    String method = PaymentMethod.cash,
+    ChequeInput? cheque,
+    String? notes,
+    int? userId,
+  }) async {
+    final order = await (db.select(db.salesOrders)..where((t) => t.id.equals(salesOrderId))).getSingleOrNull();
+    if (order == null) throw ValidationException('أمر البيع غير موجود');
+    if (order.status == 'cancelled') throw ValidationException('أمر البيع ملغي');
+    return _post(
+      PaymentInput(partyId: order.customerId, amount: amount, method: method, cheque: cheque, notes: notes),
+      direction: PaymentDirection.inbound,
+      partyType: PartyType.customer,
+      userId: userId,
+      orderRefType: RefType.salesOrder,
+      orderRefId: salesOrderId,
+    );
+  }
+
+  /// An advance to a supplier against a purchase order. Admin only.
+  Future<Payment> payAdvance(
+    int purchaseOrderId, {
+    required int amount,
+    String method = PaymentMethod.cash,
+    ChequeInput? cheque,
+    String? notes,
+    required User user,
+  }) async {
+    if (!user.isAdmin) throw ValidationException('الدفع للموردين للمدير فقط');
+    final order =
+        await (db.select(db.purchaseOrders)..where((t) => t.id.equals(purchaseOrderId))).getSingleOrNull();
+    if (order == null) throw ValidationException('أمر الشراء غير موجود');
+    if (order.status == 'cancelled') throw ValidationException('أمر الشراء ملغي');
+    return _post(
+      PaymentInput(partyId: order.supplierId, amount: amount, method: method, cheque: cheque, notes: notes),
+      direction: PaymentDirection.outbound,
+      partyType: PartyType.supplier,
+      userId: user.id,
+      orderRefType: RefType.purchaseOrder,
+      orderRefId: purchaseOrderId,
+    );
+  }
+
+  /// Advances paid so far against an order (counted payments only).
+  Future<int> advancesOn(String orderRefType, int orderId) =>
+      BalanceService(db).paidOnInvoice(orderRefType, orderId);
+
+  /// Moves advances taken on an order onto the invoice it produced, oldest
+  /// first, as long as each whole advance still fits in what the invoice has
+  /// left to pay. The party's balance does not change (the money was already
+  /// counted); the invoice now shows it as paid. An advance too big for the
+  /// rest of the invoice stays on the order. Returns the amount applied.
+  Future<int> applyAdvances({
+    required String orderRefType,
+    required int orderId,
+    required String invoiceRefType,
+    required int invoiceId,
+    required int invoiceTotal,
+  }) async {
+    final onInvoice = await (db.select(db.payments)
+          ..where((t) =>
+              t.invoiceRefType.equals(invoiceRefType) &
+              t.invoiceRefId.equals(invoiceId) &
+              t.status.equals(DocStatus.active)))
+        .get();
+    var remaining = invoiceTotal - onInvoice.fold<int>(0, (a, p) => a + p.amount);
+    final advances = await (db.select(db.payments)
+          ..where((t) =>
+              t.invoiceRefType.equals(orderRefType) &
+              t.invoiceRefId.equals(orderId) &
+              t.status.equals(DocStatus.active))
+          ..orderBy([(t) => OrderingTerm.asc(t.id)]))
+        .get();
+    var applied = 0;
+    for (final a in advances) {
+      if (a.amount > remaining) continue;
+      await (db.update(db.payments)..where((t) => t.id.equals(a.id))).write(PaymentsCompanion(
+        invoiceRefType: Value(invoiceRefType),
+        invoiceRefId: Value(invoiceId),
+        updatedAt: Value(DateTime.now()),
+      ));
+      remaining -= a.amount;
+      applied += a.amount;
+    }
+    return applied;
   }
 
   /// Invoice total minus what has already been paid against it. Throws if

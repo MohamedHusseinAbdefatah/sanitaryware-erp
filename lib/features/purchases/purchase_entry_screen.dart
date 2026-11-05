@@ -22,12 +22,17 @@ import '../parties/party_form_dialog.dart';
 class _Line {
   _Line(this.row)
       : qty = TextEditingController(text: '1'),
-        cost = TextEditingController(text: formatMoney(row.product.costPrice).replaceAll(',', ''));
+        cost = TextEditingController(text: formatMoney(row.product.costPrice).replaceAll(',', '')) {
+    initialCost = cost.text;
+  }
 
   final ProductRow row;
   final TextEditingController qty;
   final TextEditingController cost;
   final qtyFocus = FocusNode();
+
+  /// The cost as first shown; if it still matches, the person has not typed over it.
+  String initialCost = '';
 
   int? get qtyValue => parseQty(qty.text, allowDecimal: row.unitAllowsDecimal);
   int? get costValue => parseMoney(cost.text);
@@ -86,10 +91,33 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
       _lines.add(line);
       _searchKey++;
     });
+    _applyListCost(line);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       line.qtyFocus.requestFocus();
       line.qty.selection = TextSelection(baseOffset: 0, extentOffset: line.qty.text.length);
     });
+  }
+
+  /// With a supplier chosen, a line starts at that supplier's list price less
+  /// the supplier's discount (if any), unless the person already changed it.
+  Future<void> _applyListCost(_Line line) async {
+    final supplier = _supplier;
+    if (supplier == null) return;
+    final cost = await ref
+        .read(priceListServiceProvider)
+        .netCostFor(line.row.product.id, supplierId: supplier.id);
+    if (cost == null || !mounted || supplier.id != _supplier?.id) return;
+    if (line.cost.text != line.initialCost) return;
+    setState(() {
+      line.cost.text = formatMoney(cost).replaceAll(',', '');
+      line.initialCost = line.cost.text;
+    });
+  }
+
+  void _refreshListCosts() {
+    for (final l in List.of(_lines)) {
+      _applyListCost(l);
+    }
   }
 
   Future<void> _newSupplier() async {
@@ -98,6 +126,7 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
     final db = ref.read(databaseProvider);
     final s = await (db.select(db.suppliers)..where((t) => t.id.equals(id))).getSingle();
     setState(() => _supplier = s);
+    _refreshListCosts();
   }
 
   Future<void> _save() async {
@@ -171,7 +200,10 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                           label: Strings.supplier,
                           nameOf: (s) => s.name,
                           searchFields: (s) => [s.name, s.phone],
-                          onSelected: (s) => setState(() => _supplier = s),
+                          onSelected: (s) {
+                            setState(() => _supplier = s);
+                            _refreshListCosts();
+                          },
                         ),
                       ),
                       IconButton(

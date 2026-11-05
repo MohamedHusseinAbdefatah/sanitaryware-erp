@@ -14,6 +14,7 @@ class CustomerInput {
     this.openingBalance = 0,
     this.creditLimit = 0,
     this.priceLevel = PriceLevel.retail,
+    this.discountBp = 0,
     this.notes,
     this.isActive = true,
   });
@@ -24,6 +25,9 @@ class CustomerInput {
   final int openingBalance;
   final int creditLimit;
   final String priceLevel;
+
+  /// Usual discount in basis points (1000 = 10%).
+  final int discountBp;
   final String? notes;
   final bool isActive;
 }
@@ -79,6 +83,9 @@ class PartyService {
       if (!PriceLevel.all.contains(input.priceLevel)) {
         throw ArgumentError.value(input.priceLevel, 'priceLevel');
       }
+      if (input.discountBp < 0 || input.discountBp > 10000) {
+        throw ValidationException('نسبة الخصم يجب أن تكون بين 0 و 100');
+      }
       if (input.creditLimit < 0) throw ValidationException('حد الائتمان لا يمكن أن يكون سالباً');
       final companion = CustomersCompanion(
         name: Value(name),
@@ -87,6 +94,7 @@ class PartyService {
         openingBalance: Value(input.openingBalance),
         creditLimit: Value(input.creditLimit),
         priceLevel: Value(input.priceLevel),
+        discountBp: Value(input.discountBp),
         notes: Value(_blankToNull(input.notes)),
         isActive: Value(input.isActive),
       );

@@ -7,14 +7,22 @@ import 'backup/backup_actions.dart';
 import 'backup/backup_service.dart';
 import 'db/database.dart';
 import 'reports/report_service.dart';
+import 'services/approval_service.dart';
 import 'services/balance_service.dart';
 import 'services/catalog_service.dart';
+import 'services/discount_service.dart';
 import 'services/expense_service.dart';
+import 'services/location_service.dart';
 import 'services/party_service.dart';
 import 'services/payment_service.dart';
+import 'services/price_list_import_service.dart';
+import 'services/price_list_service.dart';
 import 'services/product_service.dart';
 import 'services/purchase_service.dart';
+import 'services/purchase_order_service.dart';
+import 'services/reservation_service.dart';
 import 'services/return_service.dart';
+import 'services/sales_order_service.dart';
 import 'services/sales_service.dart';
 import 'services/settings_service.dart';
 import 'services/statement_service.dart';
@@ -84,3 +92,27 @@ final statementServiceProvider =
 
 final reportServiceProvider =
     Provider<ReportService>((ref) => ReportService(ref.watch(databaseProvider)));
+
+final approvalServiceProvider =
+    Provider<ApprovalService>((ref) => ApprovalService(ref.watch(databaseProvider)));
+
+final salesOrderServiceProvider =
+    Provider<SalesOrderService>((ref) => SalesOrderService(ref.watch(databaseProvider)));
+
+final purchaseOrderServiceProvider =
+    Provider<PurchaseOrderService>((ref) => PurchaseOrderService(ref.watch(databaseProvider)));
+
+final reservationServiceProvider =
+    Provider<ReservationService>((ref) => ReservationService(ref.watch(databaseProvider)));
+
+final locationServiceProvider =
+    Provider<LocationService>((ref) => LocationService(ref.watch(databaseProvider)));
+
+final priceListServiceProvider =
+    Provider<PriceListService>((ref) => PriceListService(ref.watch(databaseProvider)));
+
+final priceListImportServiceProvider =
+    Provider<PriceListImportService>((ref) => PriceListImportService(ref.watch(databaseProvider)));
+
+final discountServiceProvider =
+    Provider<DiscountService>((ref) => DiscountService(ref.watch(databaseProvider)));

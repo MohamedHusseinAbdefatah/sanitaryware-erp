@@ -9,6 +9,7 @@ import '../../core/providers.dart';
 import '../../core/search_text.dart';
 import '../../core/services/sales_service.dart';
 import '../../core/widgets/data_list.dart';
+import 'sales_orders_dialog.dart';
 
 enum _Range { today, month, all }
 
@@ -42,6 +43,14 @@ class _SalesListScreenState extends ConsumerState<SalesListScreen> {
               ],
               selected: {_range},
               onSelectionChanged: (s) => setState(() => _range = s.single),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => showDialog<void>(
+                context: context,
+                builder: (_) => const SalesOrdersDialog(),
+              ),
+              icon: const Icon(Icons.assignment_outlined),
+              label: const Text('أوامر البيع'),
             ),
             FilledButton.icon(
               onPressed: () => context.go('/sales/new'),

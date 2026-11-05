@@ -221,15 +221,15 @@ void main() {
     final daily = await reports.dailySales(from: today, to: today);
     expect(daily.totals.sublist(1), [3, 160000, 30000, 130000]);
     final profit = {for (final r in (await reports.profit(from: today, to: today)).rows) r[0]: r[1]};
-    expect(profit['تكلفة البضاعة المباعة'], -101501);
-    expect(profit['تكلفة البضاعة المرتجعة'], 18667);
-    expect(profit['مجمل الربح'], 47166);
+    expect(profit['تكلفة البضاعة المباعة'], -102500);
+    expect(profit['تكلفة البضاعة المرتجعة'], 20000);
+    expect(profit['مجمل الربح'], 47500);
     expect(profit['المصروفات'], -125000);
-    expect(profit['صافي الربح'], -77834);
+    expect(profit['صافي الربح'], -77500);
     expect((await reports.expensesByCategory(from: today, to: today)).total('المبلغ'), 125000);
     expect((await reports.customersOwing()).total('الرصيد'), 40000);
     expect((await reports.supplierBalances()).total('الرصيد'), 180000);
-    expect((await reports.stockValuation()).total('القيمة'), 2307971);
+    expect((await reports.stockValuation()).total('القيمة'), 2308300);
     expect((await reports.salesByCustomer(from: today, to: today)).total('الصافي'), 130000);
 
     // 8. Printing: the invoice, the statement and a receipt build.
@@ -303,13 +303,17 @@ void main() {
       expect(both.map((i) => i.number).toSet(), {'S-000001', 'S-000002'});
     });
 
-    test('zero quantity is refused; zero price and below-cost prices are allowed', () async {
+    test('zero quantity is refused; zero price is allowed; below cost needs a manager reason', () async {
       final sales = SalesService(db);
       await expectLater(sales.post(sale(qty: 0), userId: admin.id), throwsA(isA<ValidationException>()));
       expect((await sales.post(sale(price: 0), userId: admin.id)).total, 0);
       await (db.update(db.products)..where((t) => t.id.equals(productId)))
           .write(const ProductsCompanion(costPrice: Value(50000)));
-      expect((await sales.post(sale(price: 100), userId: admin.id)).total, 100);
+      await expectLater(sales.post(sale(price: 100), userId: admin.id), throwsA(isA<BelowCostException>()));
+      expect(
+        (await sales.post(sale(price: 100), userId: admin.id, belowCostReason: 'تصفية')).total,
+        100,
+      );
     });
 
     test('a very long Arabic product name still prints', () async {

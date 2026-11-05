@@ -74,12 +74,12 @@ void main() {
       expect(await shop.costOf(shop.mixer), 45000);
     });
 
-    test('a sale copies the average cost at that moment', () async {
+    test('a sale copies the FIFO cost: the oldest purchase is used first', () async {
       await buyMixers(10, 40000);
       await buyMixers(10, 50000);
       await sellMixers(1);
       final item = await shop.db.select(shop.db.salesInvoiceItems).getSingle();
-      expect(item.unitCost, 45000);
+      expect(item.unitCost, 40000);
     });
 
     test('supplier balance: invoice minus what was paid', () async {

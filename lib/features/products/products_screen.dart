@@ -11,6 +11,8 @@ import '../../core/quantity.dart';
 import '../../core/services/product_service.dart';
 import '../../core/widgets/data_list.dart';
 import 'catalog_dialog.dart';
+import 'locations_dialog.dart';
+import 'reservations_dialog.dart';
 import 'product_form_dialog.dart';
 import 'stock_dialogs.dart';
 
@@ -47,6 +49,24 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                 ),
                 icon: const Icon(Icons.list_alt),
                 label: const Text(Strings.lists),
+              ),
+            if (isAdmin)
+              OutlinedButton.icon(
+                onPressed: () => showDialog<void>(
+                  context: context,
+                  builder: (_) => const ReservationsDialog(),
+                ),
+                icon: const Icon(Icons.bookmark_outline),
+                label: const Text('الحجوزات'),
+              ),
+            if (isAdmin)
+              OutlinedButton.icon(
+                onPressed: () => showDialog<void>(
+                  context: context,
+                  builder: (_) => const LocationsDialog(),
+                ),
+                icon: const Icon(Icons.warehouse_outlined),
+                label: const Text('الأماكن والتحويل'),
               ),
             if (isAdmin)
               FilledButton.icon(

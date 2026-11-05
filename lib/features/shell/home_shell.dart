@@ -48,10 +48,12 @@ class HomeShell extends ConsumerWidget {
                           if (isAdmin || !appSections[i].adminOnly)
                             ListTile(
                               dense: true,
-                              minTileHeight: 40,
-                              visualDensity: const VisualDensity(vertical: -2),
+                              minTileHeight: 34,
+                              visualDensity: const VisualDensity(vertical: -4),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                              minVerticalPadding: 0,
                               leading: Icon(appSections[i].icon),
-                              title: Text(appSections[i].title, style: const TextStyle(fontSize: 14)),
+                              title: Text(appSections[i].title, style: const TextStyle(fontSize: 14, height: 1.2)),
                               selected: i == navigationShell.currentIndex,
                               onTap: () => navigationShell.goBranch(i),
                             ),

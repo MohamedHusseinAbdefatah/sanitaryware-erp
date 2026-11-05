@@ -19,6 +19,7 @@ enum ReportKind {
   stockLevels('أرصدة المخزن', byCategory: true),
   lowStock('الأصناف تحت حد الطلب'),
   stockValuation('تقييم المخزون', byCategory: true),
+  purchasePlan('تخطيط الشراء'),
   customersOwing('مديونيات العملاء'),
   supplierBalances('أرصدة الموردين');
 
@@ -82,6 +83,7 @@ class ReportService {
       ReportKind.stockLevels => stockLevels(categoryId: categoryId),
       ReportKind.lowStock => lowStock(),
       ReportKind.stockValuation => stockValuation(categoryId: categoryId),
+      ReportKind.purchasePlan => purchasePlan(),
       ReportKind.customersOwing => customersOwing(),
       ReportKind.supplierBalances => supplierBalances(),
     };
@@ -356,9 +358,32 @@ class ReportService {
     );
   }
 
-  /// Stock on hand at average cost. Products at zero or below are left out.
+  /// Stock on hand valued from the cost layers (what was really paid for
+  /// the units still here). Any stock without a layer (negative-stock
+  /// history, very old data) is priced at the product's average cost.
+  /// Products at zero or below are left out.
   Future<ReportTable> stockValuation({int? categoryId}) async {
     final rows = (await _stockRows(categoryId: categoryId)).where((r) => r.stock > 0).toList();
+    final layers = await db.select(db.costLayers).get();
+    final byProduct = <int, List<CostLayer>>{};
+    for (final l in layers) {
+      if (l.qtyRemaining > 0) (byProduct[l.productId] ??= []).add(l);
+    }
+    final out = <List<Object?>>[];
+    for (final r in rows) {
+      var value = 0;
+      var layered = 0;
+      for (final l in byProduct[r.productId] ?? const <CostLayer>[]) {
+        if (layered >= r.stock) break;
+        final take = l.qtyRemaining > r.stock - layered ? r.stock - layered : l.qtyRemaining;
+        value += lineAmount(take, l.unitCost);
+        layered += take;
+      }
+      if (layered < r.stock) value += lineAmount(r.stock - layered, r.cost);
+      // Average of what is on the shelf now, per whole unit.
+      final avg = (value * qtyScale + r.stock ~/ 2) ~/ r.stock;
+      out.add([r.code, r.name, r.stock, avg, value]);
+    }
     return ReportTable(
       title: ReportKind.stockValuation.title,
       columns: const [
@@ -368,7 +393,89 @@ class ReportService {
         ReportColumn('متوسط التكلفة', ColumnType.money),
         ReportColumn('القيمة', ColumnType.money, sum: true),
       ],
-      rows: [for (final r in rows) [r.code, r.name, r.stock, r.cost, lineAmount(r.stock, r.cost)]],
+      rows: out,
+    );
+  }
+
+  /// What to order: for every item, the minimum level plus what is promised
+  /// to customers, less what is on the shelf and what is already on order.
+  /// Quantities are rounded up to whole units. Shows the supplier it was
+  /// last bought from, and the estimated cost at the current cost price.
+  Future<ReportTable> purchasePlan() async {
+    final rows = await _stockRows();
+    final now = DateTime.now();
+
+    final reservedBy = <int, int>{};
+    for (final r in await (db.select(db.reservations)..where((t) => t.status.equals('active'))).get()) {
+      if (r.expiresAt == null || r.expiresAt!.isAfter(now)) {
+        reservedBy[r.productId] = (reservedBy[r.productId] ?? 0) + r.qty;
+      }
+    }
+
+    final onOrderBy = <int, int>{};
+    final openOrders = await (db.select(db.purchaseOrders)
+          ..where((t) => t.status.isIn(['approved', 'partly_received'])))
+        .get();
+    if (openOrders.isNotEmpty) {
+      final lines = await (db.select(db.purchaseOrderLines)
+            ..where((t) => t.orderId.isIn([for (final o in openOrders) o.id])))
+          .get();
+      for (final l in lines) {
+        final left = l.qty - l.qtyReceived;
+        if (left > 0) onOrderBy[l.productId] = (onOrderBy[l.productId] ?? 0) + left;
+      }
+    }
+
+    // Last supplier per product: the newest active purchase invoice with it.
+    final lastSupplier = <int, String>{};
+    final bought = await db.customSelect(
+      '''
+      SELECT i.product_id AS pid, s.name AS supplier
+      FROM purchase_invoice_items i
+      JOIN purchase_invoices pi ON pi.id = i.invoice_id AND pi.status = '${DocStatus.active}'
+      JOIN suppliers s ON s.id = pi.supplier_id
+      ORDER BY pi.date ASC, pi.id ASC
+      ''',
+    ).get();
+    for (final r in bought) {
+      lastSupplier[r.read<int>('pid')] = r.read<String>('supplier');
+    }
+
+    final out = <List<Object?>>[];
+    for (final r in rows) {
+      final reserved = reservedBy[r.productId] ?? 0;
+      final onOrder = onOrderBy[r.productId] ?? 0;
+      final need = r.minStock + reserved - r.stock - onOrder;
+      if (need <= 0) continue;
+      // Round up to whole units.
+      final order = ((need + qtyScale - 1) ~/ qtyScale) * qtyScale;
+      out.add([
+        r.code,
+        r.name,
+        r.stock,
+        reserved,
+        onOrder,
+        r.minStock,
+        order,
+        lastSupplier[r.productId] ?? '',
+        lineAmount(order, r.cost),
+      ]);
+    }
+    out.sort((a, b) => (a[1] as String).compareTo(b[1] as String));
+    return ReportTable(
+      title: ReportKind.purchasePlan.title,
+      columns: const [
+        ReportColumn('الكود', ColumnType.text),
+        ReportColumn('الصنف', ColumnType.text),
+        ReportColumn('الرصيد', ColumnType.qty),
+        ReportColumn('محجوز', ColumnType.qty),
+        ReportColumn('على أوامر الشراء', ColumnType.qty),
+        ReportColumn('حد الطلب', ColumnType.qty),
+        ReportColumn('الكمية المقترحة', ColumnType.qty),
+        ReportColumn('آخر مورد', ColumnType.text),
+        ReportColumn('التكلفة التقديرية', ColumnType.money, sum: true),
+      ],
+      rows: out,
     );
   }
 
@@ -431,11 +538,11 @@ class ReportService {
         variables: dateRangeVariables(from, to),
       ).map((r) => db.expenses.map(r.data)).get();
 
-  Future<List<({String code, String name, String? category, String? unit, int stock, int minStock, int cost})>>
+  Future<List<({int productId, String code, String name, String? category, String? unit, int stock, int minStock, int cost})>>
       _stockRows({int? categoryId}) async {
     final rows = await db.customSelect(
       '''
-      SELECT p.code, p.name_ar, p.min_stock, p.cost_price, c.name_ar AS category, u.name_ar AS unit,
+      SELECT p.id AS pid, p.code, p.name_ar, p.min_stock, p.cost_price, c.name_ar AS category, u.name_ar AS unit,
              COALESCE((SELECT SUM(m.qty) FROM stock_movements m WHERE m.product_id = p.id), 0) AS stock
       FROM products p
       LEFT JOIN categories c ON c.id = p.category_id
@@ -448,6 +555,7 @@ class ReportService {
     return [
       for (final r in rows)
         (
+          productId: r.read<int>('pid'),
           code: r.read<String>('code'),
           name: r.read<String>('name_ar'),
           category: r.readNullable<String>('category'),

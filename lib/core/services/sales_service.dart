@@ -4,12 +4,15 @@ import '../auth/auth_service.dart';
 import '../db/database.dart';
 import '../money.dart';
 import '../quantity.dart';
+import 'approval_service.dart';
 import 'audit_service.dart';
 import 'balance_service.dart';
 import 'doc_types.dart';
 import 'errors.dart';
+import 'fifo_service.dart';
 import 'numbering_service.dart';
 import 'query_helpers.dart';
+import 'reservation_service.dart';
 import 'settings_service.dart';
 import 'stock_service.dart';
 
@@ -92,6 +95,28 @@ class CreditLimitException extends ValidationException {
   final int balanceAfter;
 }
 
+/// Stock exists but part of it is held for other customers.
+class ReservedStockException extends ValidationException {
+  ReservedStockException(this.shortages)
+      : super('الكمية المتاحة محجوزة لعملاء آخرين:\n${shortages.map((s) => '• ${s.productName}: '
+            'المتاح للبيع ${formatQty(s.available)} والمطلوب ${formatQty(s.needed)}').join('\n')}');
+
+  final List<StockShortage> shortages;
+}
+
+/// A line is priced under its real cost. A cashier cannot post it; an admin
+/// can, after writing why ([needsReason] is true for the admin).
+class BelowCostException extends ValidationException {
+  BelowCostException({required this.needsReason, required this.productNames})
+      : super(needsReason
+            ? 'السعر أقل من التكلفة — اكتب سبب البيع\n${productNames.map((n) => '• $n').join('\n')}'
+            : 'السعر أقل من التكلفة — يلزم موافقة المدير\n${productNames.map((n) => '• $n').join('\n')}');
+
+  /// True when the person is an admin and only the reason is missing.
+  final bool needsReason;
+  final List<String> productNames;
+}
+
 class SalesInvoiceRow {
   const SalesInvoiceRow(this.invoice, this.customerName, this.paid);
   final SalesInvoice invoice;
@@ -141,7 +166,12 @@ class SalesService {
   final AppDatabase db;
 
   /// [allowOverCreditLimit] is honoured only for an admin [userId].
-  Future<SalesInvoice> post(SaleInput input, {int? userId, bool allowOverCreditLimit = false}) {
+  Future<SalesInvoice> post(
+    SaleInput input, {
+    int? userId,
+    bool allowOverCreditLimit = false,
+    String? belowCostReason,
+  }) {
     return db.transaction(() async {
       // 1. Validate the lines.
       if (input.lines.isEmpty) throw ValidationException('أضف صنفاً واحداً على الأقل');
@@ -218,6 +248,23 @@ class SalesService {
         if (shortages.isNotEmpty) throw InsufficientStockException(shortages);
       }
 
+      // 3b. Stock held for other customers cannot be sold from under them.
+      final reservations = ReservationService(db);
+      final soldQty = <int, int>{};
+      for (final line in input.lines) {
+        soldQty[line.productId] = (soldQty[line.productId] ?? 0) + line.qty;
+      }
+      final held = <StockShortage>[];
+      for (final entry in soldQty.entries) {
+        final others = await reservations.reservedByOthers(entry.key, input.customerId);
+        if (others <= 0) continue;
+        final onHand = await stock.currentStock(entry.key);
+        if (onHand - others < entry.value) {
+          held.add(StockShortage(products[entry.key]!.nameAr, onHand - others < 0 ? 0 : onHand - others, entry.value));
+        }
+      }
+      if (held.isNotEmpty) throw ReservedStockException(held);
+
       // 4. Number, invoice and items, copying price and current average cost.
       final numbering = NumberingService(db);
       final date = input.date ?? DateTime.now();
@@ -232,8 +279,23 @@ class SalesService {
             notes: Value(_blankToNull(input.notes)),
             createdBy: Value(userId),
           ));
+      final fifo = FifoService(db);
+      final belowCostNames = <String>[];
       for (final line in input.lines) {
-        final cost = products[line.productId]!.costPrice;
+        // Real cost: the oldest layers first. Anything without a layer
+        // (negative stock) is priced at the product's average cost.
+        final take = await fifo.consume(
+          productId: line.productId,
+          qty: line.qty,
+          refType: RefType.salesInvoice,
+          refId: invoiceId,
+          date: date,
+          fallbackCost: products[line.productId]!.costPrice,
+        );
+        final cost = take.averageUnitCost;
+        if (line.total < lineAmount(line.qty, cost)) {
+          belowCostNames.add(products[line.productId]!.nameAr);
+        }
         await db.into(db.salesInvoiceItems).insert(SalesInvoiceItemsCompanion.insert(
               invoiceId: invoiceId,
               productId: line.productId,
@@ -256,6 +318,25 @@ class SalesService {
         );
       }
 
+      // 5b. Under cost: admin only, with a reason that is logged.
+      // (No user = a system caller, which is not checked.)
+      var belowCostApproved = false;
+      if (belowCostNames.isNotEmpty && userId != null) {
+        final user = await (db.select(db.users)..where((t) => t.id.equals(userId))).getSingleOrNull();
+        final isAdmin = user?.isAdmin ?? false;
+        if (!isAdmin || (belowCostReason ?? '').trim().isEmpty) {
+          throw BelowCostException(needsReason: isAdmin, productNames: belowCostNames);
+        }
+        belowCostApproved = true;
+      }
+
+      // 5c. The customer's own reservations are used up by what they buy.
+      if (input.customerId != null) {
+        for (final entry in soldQty.entries) {
+          await reservations.consumeForCustomer(input.customerId!, entry.key, entry.value, userId: userId);
+        }
+      }
+
       // 6. The payment made at the counter.
       if (input.paidAmount > 0) {
         await db.into(db.payments).insert(PaymentsCompanion.insert(
@@ -275,6 +356,16 @@ class SalesService {
       // 7. Audit.
       final invoice = await (db.select(db.salesInvoices)..where((t) => t.id.equals(invoiceId)))
           .getSingle();
+      if (belowCostApproved) {
+        await ApprovalService(db).record(
+          kind: ApprovalKind.belowCost,
+          docType: 'sales_invoice',
+          docId: invoiceId,
+          reason: belowCostReason!,
+          requestedBy: userId,
+          approvedBy: userId,
+        );
+      }
       await AuditService(db).log(
         action: AuditAction.create,
         entity: 'sales_invoice',
@@ -317,9 +408,30 @@ class SalesService {
       );
 
       final stock = StockService(db);
+      final fifo = FifoService(db);
       final items = await (db.select(db.salesInvoiceItems)
             ..where((t) => t.invoiceId.equals(invoiceId)))
           .get();
+      // Put back into the layers what the sale took.
+      final restored = await fifo.reverseAll(RefType.salesInvoice, invoiceId);
+      final leftBack = <int, int>{};
+      for (final item in items) {
+        leftBack[item.productId] = (leftBack[item.productId] ?? 0) + item.qty;
+      }
+      for (final e in leftBack.entries) {
+        final missing = e.value - (restored[e.key] ?? 0);
+        if (missing > 0) {
+          // Sold before layers existed, or with no layer: restore at the sale's cost.
+          final item = items.firstWhere((i) => i.productId == e.key);
+          await fifo.addLayer(
+            productId: e.key,
+            qty: missing,
+            unitCost: item.unitCost,
+            sourceType: 'sale_cancel',
+            sourceId: invoiceId,
+          );
+        }
+      }
       for (final item in items) {
         await stock.record(
           productId: item.productId,

@@ -43,9 +43,25 @@ class _PartyFormDialogState extends ConsumerState<_PartyFormDialog> {
   late final _address = TextEditingController(text: _c?.address ?? _s?.address);
   late final _opening = TextEditingController(text: _money(_c?.openingBalance ?? _s?.openingBalance));
   late final _creditLimit = TextEditingController(text: _money(_c?.creditLimit));
+  late final _discount = TextEditingController(text: _pct(_c?.discountBp));
   late final _notes = TextEditingController(text: _c?.notes ?? _s?.notes);
   late String _priceLevel = _c?.priceLevel ?? PriceLevel.retail;
   late bool _active = _c?.isActive ?? _s?.isActive ?? true;
+
+  static String _pct(int? bp) {
+    if (bp == null || bp == 0) return '';
+    final s = (bp / 100).toStringAsFixed(2);
+    return s.replaceFirst(RegExp(r'\.?0+$'), '');
+  }
+
+  /// Percent text -> basis points; null if not a number from 0 to 100.
+  static int? _bp(String text) {
+    final t = text.trim().replaceAll(',', '.');
+    if (t.isEmpty) return 0;
+    final v = double.tryParse(t);
+    if (v == null || v < 0 || v > 100) return null;
+    return (v * 100).round();
+  }
 
   static String _money(int? v) => v == null || v == 0 ? '' : formatMoney(v).replaceAll(',', '');
 
@@ -53,7 +69,7 @@ class _PartyFormDialogState extends ConsumerState<_PartyFormDialog> {
 
   @override
   void dispose() {
-    for (final c in [_name, _phone, _address, _opening, _creditLimit, _notes]) {
+    for (final c in [_name, _phone, _address, _opening, _creditLimit, _discount, _notes]) {
       c.dispose();
     }
     super.dispose();
@@ -73,6 +89,7 @@ class _PartyFormDialogState extends ConsumerState<_PartyFormDialog> {
             openingBalance: moneyOrZero(_opening),
             creditLimit: moneyOrZero(_creditLimit),
             priceLevel: _priceLevel,
+            discountBp: _bp(_discount.text) ?? 0,
             notes: _notes.text,
             isActive: _active,
           ),
@@ -135,6 +152,14 @@ class _PartyFormDialogState extends ConsumerState<_PartyFormDialog> {
                         DropdownMenuItem(value: l, child: Text(priceLevelLabel(l))),
                     ],
                     onChanged: (v) => setState(() => _priceLevel = v!),
+                  ),
+                if (widget.isCustomer)
+                  TextFormField(
+                    controller: _discount,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                        labelText: 'خصم العميل المعتاد %', hintText: 'اختياري'),
+                    validator: (v) => _bp(v ?? '') == null ? 'من 0 إلى 100' : null,
                   ),
                 if (isAdmin) ...[
                   MoneyField(

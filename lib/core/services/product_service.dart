@@ -6,6 +6,7 @@ import '../quantity.dart';
 import '../search_text.dart';
 import 'audit_service.dart';
 import 'errors.dart';
+import 'fifo_service.dart';
 import 'stock_service.dart';
 
 abstract final class PriceLevel {
@@ -174,6 +175,12 @@ class ProductService {
           qty: openingQty,
           unitCost: input.costPrice,
           createdBy: userId,
+        );
+        await FifoService(db).addLayer(
+          productId: id,
+          qty: openingQty,
+          unitCost: input.costPrice,
+          sourceType: 'opening',
         );
       }
       await AuditService(db).log(

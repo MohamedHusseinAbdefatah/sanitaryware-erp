@@ -1,9 +1,13 @@
 import 'package:drift/drift.dart';
 
 import '../db/database.dart';
+import 'fifo_service.dart';
 import '../quantity.dart';
 import 'audit_service.dart';
 import 'errors.dart';
+
+/// The main warehouse; every location-less call means this one.
+const mainLocationId = 1;
 
 abstract final class StockMovementType {
   static const opening = 'opening';
@@ -15,6 +19,8 @@ abstract final class StockMovementType {
   static const purchaseReturn = 'purchase_return';
   static const adjustment = 'adjustment';
   static const returnCancel = 'return_cancel';
+  static const transferOut = 'transfer_out';
+  static const transferIn = 'transfer_in';
 }
 
 /// Stock is never edited directly. Every change is a row in
@@ -24,12 +30,17 @@ class StockService {
 
   final AppDatabase db;
 
-  /// Current stock in thousandths of a unit.
-  Future<int> currentStock(int productId) async {
+  /// Current stock in thousandths of a unit, in all locations or only in
+  /// [locationId].
+  Future<int> currentStock(int productId, {int? locationId}) async {
     final total = db.stockMovements.qty.sum();
+    Expression<bool> where = db.stockMovements.productId.equals(productId);
+    if (locationId != null) {
+      where = where & db.stockMovements.locationId.equals(locationId);
+    }
     final query = db.selectOnly(db.stockMovements)
       ..addColumns([total])
-      ..where(db.stockMovements.productId.equals(productId));
+      ..where(where);
     final row = await query.getSingle();
     return row.read(total) ?? 0;
   }
@@ -47,6 +58,7 @@ class StockService {
     String? note,
     int? createdBy,
     DateTime? date,
+    int locationId = mainLocationId,
   }) {
     if (qty == 0) {
       throw ArgumentError.value(qty, 'qty', 'A stock movement cannot be zero');
@@ -61,6 +73,7 @@ class StockService {
             refId: Value(refId),
             note: Value(note),
             createdBy: Value(createdBy),
+            locationId: Value(locationId),
             date: date == null ? const Value.absent() : Value(date),
           ),
         );
@@ -97,6 +110,18 @@ class StockService {
         note: reason.trim(),
         createdBy: userId,
       );
+      final fifo = FifoService(db);
+      if (delta > 0) {
+        await fifo.addLayer(
+            productId: productId, qty: delta, unitCost: product.costPrice, sourceType: 'adjustment');
+      } else {
+        await fifo.consume(
+          productId: productId,
+          qty: -delta,
+          refType: 'adjustment',
+          fallbackCost: product.costPrice,
+        );
+      }
       await AuditService(db).log(
         action: AuditAction.update,
         entity: 'stock',

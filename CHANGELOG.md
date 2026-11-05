@@ -2,6 +2,29 @@
 
 Versions follow `version:` in `pubspec.yaml` and `lib/core/version.dart`.
 
+## 1.1.0
+
+For the supplier-price-list and orders upgrade. The database upgrades in
+place (schema 10) and keeps all existing data.
+
+- Stock is costed first-in, first-out: every purchase makes a cost layer,
+  sales and returns use and restore the layers, and the cost on each sale
+  line is the exact cost of the goods sold.
+- Places: main warehouse, showroom and others, with transfers between them
+  that keep the cost (Products, "Places and transfers").
+- Reservations hold stock for a customer without moving it (Products).
+- Supplier price lists (Excel import, new edition = new list) and optional
+  supplier discounts by supplier, brand, category or product. A purchase
+  invoice starts each line at the list price less the discount; it can be
+  changed.
+- Customer usual discount: filled into the discount of each sale line.
+- Purchase orders: draft, approve (locks price and discount), receive in
+  parts; each receipt is a normal purchase invoice.
+- Sales orders and quotations: confirm (locks price and discount), deliver
+  in parts; each delivery is a normal sales invoice. Channel and outside
+  order id are kept. A cashier can give up to 5% extra discount; a sale
+  below cost needs the admin and a reason. Exceptions are logged.
+
 ## 1.0.2
 
 - Unexpected errors are written to `logs\errors.log` in the data folder

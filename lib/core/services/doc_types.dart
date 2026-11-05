@@ -42,6 +42,10 @@ abstract final class RefType {
   static const salesInvoice = 'sales_invoice';
   static const purchaseInvoice = 'purchase_invoice';
   static const returnDoc = 'return';
+
+  /// An advance paid or received against an order before any invoice.
+  static const purchaseOrder = 'purchase_order';
+  static const salesOrder = 'sales_order';
 }
 
 /// Party id on a payment for a cash sale with no named customer. It never

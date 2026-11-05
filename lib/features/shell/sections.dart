@@ -7,6 +7,7 @@ import '../dashboard/dashboard_screen.dart';
 import '../expenses/expenses_screen.dart';
 import '../parties/parties_screen.dart';
 import '../payments/payments_screen.dart';
+import '../price_lists/price_lists_screen.dart';
 import '../products/products_screen.dart';
 import '../reports/reports_screen.dart';
 import '../purchases/purchase_entry_screen.dart';
@@ -103,6 +104,13 @@ final appSections = <AppSection>[
         },
       ),
     ],
+  ),
+  AppSection(
+    path: '/price-lists',
+    title: 'قوائم الأسعار',
+    icon: Icons.price_change_outlined,
+    adminOnly: true,
+    builder: (_) => const PriceListsScreen(),
   ),
   AppSection(
     path: '/returns',

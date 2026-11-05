@@ -10,6 +10,7 @@ import '../../core/search_text.dart';
 import '../../core/services/doc_types.dart';
 import '../../core/services/purchase_service.dart';
 import '../../core/widgets/data_list.dart';
+import 'purchase_orders_dialog.dart';
 
 class PurchaseListScreen extends ConsumerStatefulWidget {
   const PurchaseListScreen({super.key});
@@ -32,6 +33,14 @@ class _PurchaseListScreenState extends ConsumerState<PurchaseListScreen> {
           title: Strings.purchases,
           actions: [
             SearchBox(hint: Strings.searchPurchases, onChanged: (v) => setState(() => _search = v)),
+            OutlinedButton.icon(
+              onPressed: () => showDialog<void>(
+                context: context,
+                builder: (_) => const PurchaseOrdersDialog(),
+              ),
+              icon: const Icon(Icons.assignment_outlined),
+              label: const Text('أوامر الشراء'),
+            ),
             FilledButton.icon(
               onPressed: () => context.go('/purchases/new'),
               icon: const Icon(Icons.add),

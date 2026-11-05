@@ -134,6 +134,7 @@ void main() {
     final sale = await timed('save a credit sale', 1000, () => sales.post(
           SaleInput(customerId: 42, lines: [SaleLineInput(productId: 5, qty: 1000, unitPrice: 1500)]),
           userId: admin.id,
+          belowCostReason: 'اختبار الأداء',
         ));
     expect(sale.number, 'S-${(invoices + 1).toString().padLeft(6, '0')}');
     await timed('open one invoice', 300, () => sales.detail(sale.id));

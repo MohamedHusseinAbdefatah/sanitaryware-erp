@@ -8,6 +8,7 @@ import 'audit_service.dart';
 import 'cost.dart';
 import 'doc_types.dart';
 import 'errors.dart';
+import 'fifo_service.dart';
 import 'numbering_service.dart';
 import 'settings_service.dart';
 import 'stock_service.dart';
@@ -283,6 +284,14 @@ class ReturnService {
           createdBy: user.id,
           date: date,
         );
+        await FifoService(db).addLayer(
+          productId: p.id,
+          qty: line.qty,
+          unitCost: cost,
+          receivedAt: date,
+          sourceType: 'return',
+          sourceId: returnId,
+        );
       }
       if (input.refundAmount > 0) {
         await _refund(
@@ -356,6 +365,14 @@ class ReturnService {
           createdBy: user.id,
           date: date,
         );
+        await FifoService(db).consume(
+          productId: p.id,
+          qty: line.qty,
+          refType: 'purchase_return',
+          refId: returnId,
+          date: date,
+          fallbackCost: cost,
+        );
       }
       if (input.refundAmount > 0) {
         await _refund(
@@ -408,6 +425,23 @@ class ReturnService {
           note: note,
           createdBy: user.id,
         );
+        final fifo = FifoService(db);
+        if (m.qty > 0) {
+          // A sale return is undone: its stock leaves the layers again.
+          await fifo.consume(
+              productId: p.id,
+              qty: m.qty,
+              refType: 'return_cancel',
+              refId: returnId,
+              fallbackCost: m.unitCost);
+        } else {
+          await fifo.addLayer(
+              productId: p.id,
+              qty: -m.qty,
+              unitCost: m.unitCost,
+              sourceType: 'return_cancel',
+              sourceId: returnId);
+        }
       }
       await (db.update(db.returns)..where((t) => t.id.equals(returnId))).write(ReturnsCompanion(
             status: const Value(DocStatus.cancelled),

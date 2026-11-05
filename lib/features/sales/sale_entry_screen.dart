@@ -12,6 +12,7 @@ import '../../core/money.dart';
 import '../../core/printing/print_actions.dart';
 import '../../core/providers.dart';
 import '../../core/quantity.dart';
+import '../../core/services/discount_service.dart';
 import '../../core/services/errors.dart';
 import '../../core/services/product_service.dart';
 import '../../core/services/sales_service.dart';
@@ -38,6 +39,9 @@ class _Line {
 
   /// Once the person types a price, a customer change no longer reprices it.
   bool priceEdited = false;
+
+  /// Once the person types a discount, the customer's usual one stops filling it.
+  bool discountEdited = false;
 
   Product get product => row.product;
   int? get qtyValue => parseQty(qty.text, allowDecimal: row.unitAllowsDecimal);
@@ -103,8 +107,25 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
 
   /// Recomputes after any edit. A cash sale is paid in full by default.
   void _changed() {
+    _fillCustomerDiscounts();
     if (_customer == null && !_paidEdited) _paid.text = _plain(_total);
     setState(() {});
+  }
+
+  /// A customer with a usual discount gets it on every line the person has
+  /// not typed a discount into.
+  void _fillCustomerDiscounts() {
+    final bp = _customer?.discountBp ?? 0;
+    for (final l in _lines.where((l) => !l.discountEdited)) {
+      final q = l.qtyValue, p = l.priceValue;
+      var text = '';
+      if (bp > 0 && q != null && p != null) {
+        final gross = lineAmount(q, p);
+        final off = gross - applyDiscount(gross, bp);
+        if (off > 0) text = _plain(off);
+      }
+      if (l.discount.text != text) l.discount.text = text;
+    }
   }
 
   void _addProduct(ProductRow row) {
@@ -189,9 +210,9 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       notes: _notes.text,
     );
     final user = ref.read(currentUserProvider);
-    Future<SalesInvoice> post({bool override = false}) => ref
-        .read(salesServiceProvider)
-        .post(input, userId: user?.id, allowOverCreditLimit: override);
+    Future<SalesInvoice> post({bool override = false, String? reason}) =>
+        ref.read(salesServiceProvider).post(input,
+            userId: user?.id, allowOverCreditLimit: override, belowCostReason: reason);
     SalesInvoice? invoice;
     try {
       invoice = await post();
@@ -200,6 +221,14 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       if (mounted && (user?.isAdmin ?? false) && await _confirmOverLimit(e.message)) {
         if (mounted) invoice = await runGuarded(context, () => post(override: true));
       } else if (mounted) {
+        await showMessage(context, e.message);
+      }
+    } on BelowCostException catch (e) {
+      // A cashier is refused; an admin gives a reason, which is logged.
+      final reason = (mounted && e.needsReason) ? await _askBelowCostReason(e.message) : null;
+      if (mounted && reason != null) {
+        invoice = await runGuarded(context, () => post(reason: reason));
+      } else if (mounted && !e.needsReason) {
         await showMessage(context, e.message);
       }
     } on ValidationException catch (e) {
@@ -214,6 +243,40 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       if (andPrint) await printSalesInvoice(context, ref, invoice.id);
       if (mounted) context.go('/sales/${invoice.id}');
     }
+  }
+
+  Future<String?> _askBelowCostReason(String message) async {
+    final controller = TextEditingController();
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('بيع أقل من التكلفة'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(message),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: 'سبب البيع بأقل من التكلفة'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text(Strings.cancel)),
+          FilledButton(
+            onPressed: () {
+              if (controller.text.trim().isNotEmpty) Navigator.pop(context, controller.text.trim());
+            },
+            child: const Text(Strings.saveAnyway),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return reason;
   }
 
   Future<bool> _confirmOverLimit(String message) async {
@@ -557,7 +620,10 @@ class _LineRow extends StatelessWidget {
               controller: line.discount,
               label: Strings.discount,
               dense: true,
-              onChanged: (_) => onChanged(),
+              onChanged: (_) {
+                line.discountEdited = true;
+                onChanged();
+              },
             ),
           ),
           cell(

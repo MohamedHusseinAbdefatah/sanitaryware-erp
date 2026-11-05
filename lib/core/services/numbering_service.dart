@@ -11,6 +11,8 @@ class NumberingService {
   static const prefixes = {
     'sales': 'S',
     'purchase': 'P',
+    'purchase_order': 'PO',
+    'sales_order': 'SO',
     'payment': 'R',
     'return': 'T',
   };
