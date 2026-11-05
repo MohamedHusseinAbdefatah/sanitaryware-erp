@@ -7,6 +7,7 @@ abstract final class ApprovalKind {
   static const extraDiscount = 'extra_discount';
   static const belowCost = 'below_cost';
   static const priceOverride = 'price_override';
+  static const lowMargin = 'low_margin';
 }
 
 /// One log of every exception a manager allowed (extra discount above the

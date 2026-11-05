@@ -4,12 +4,11 @@ import '../auth/auth_service.dart';
 import '../db/database.dart';
 import '../quantity.dart';
 import 'audit_service.dart';
-import 'discount_service.dart';
+import 'buying_policy_service.dart';
 import 'doc_types.dart';
 import 'errors.dart';
 import 'numbering_service.dart';
 import 'payment_service.dart';
-import 'price_list_service.dart';
 import 'purchase_service.dart';
 
 abstract final class PoStatus {
@@ -110,45 +109,48 @@ class PurchaseOrderService {
     });
   }
 
-  /// Approves a draft and freezes each line's price: the supplier's list
-  /// price on the approval date, less any discount, or [manualCosts]
-  /// (line id -> piastres) where given. A line with neither uses the
-  /// product's current cost. Later price lists never change it.
+  /// Approves a draft and freezes each line's cost: the version in force
+  /// today less this supplier's recorded buying policy, or [manualCosts]
+  /// (line id -> piastres) where given. A line with neither cannot be approved:
+  /// no percentage is assumed. Later versions never change it.
   Future<void> approve(int id, {Map<int, int> manualCosts = const {}, required User user}) {
     return db.transaction(() async {
       _admin(user);
       final order = await _order(id);
       if (order.status != PoStatus.draft) throw ValidationException('يمكن اعتماد المسودة فقط');
       final now = DateTime.now();
-      final lists = PriceListService(db);
-      final discounts = DiscountService(db);
+      final policies = BuyingPolicyService(db);
       final lines = await (db.select(db.purchaseOrderLines)..where((t) => t.orderId.equals(id))).get();
       for (final l in lines) {
         final manual = manualCosts[l.id];
         if (manual != null && manual < 0) throw ValidationException('التكلفة لا يمكن أن تكون سالبة');
-        int? listId, listPrice;
-        var bp = 0;
-        int cost;
         if (manual != null) {
-          cost = manual;
-        } else {
-          final quote = await lists.priceFor(l.productId, supplierId: order.supplierId, asOf: now);
-          if (quote != null) {
-            listId = quote.priceListId;
-            listPrice = quote.price;
-            bp = await discounts.percentFor(supplierId: order.supplierId, productId: l.productId, asOf: now);
-            cost = applyDiscount(quote.price, bp);
-          } else {
-            final p = await (db.select(db.products)..where((t) => t.id.equals(l.productId))).getSingle();
-            cost = p.costPrice;
-          }
+          await (db.update(db.purchaseOrderLines)..where((t) => t.id.equals(l.id))).write(
+              PurchaseOrderLinesCompanion(unitCost: Value(manual)));
+          continue;
         }
+        final p = await (db.select(db.products)..where((t) => t.id.equals(l.productId))).getSingle();
+        final quotes = await policies.quotes(l.productId, supplierId: order.supplierId, asOf: now);
+        if (quotes.isEmpty) {
+          throw ValidationException('لا يوجد سعر قائمة ساري للصنف "${p.nameAr}"؛ أدخل التكلفة يدوياً');
+        }
+        final backed = quotes.where((q) => !q.missingPolicy).toList();
+        if (backed.isEmpty) {
+          throw ValidationException('لا توجد سياسة شراء مسجلة لهذا المورد على الصنف "${p.nameAr}"؛ '
+              'سجل السياسة أو أدخل التكلفة يدوياً (لا يُفترض خصم)');
+        }
+        if (backed.length > 1) {
+          throw ValidationException('الصنف "${p.nameAr}" له أكثر من قائمة سارية بسياسة شراء؛ أدخل التكلفة يدوياً');
+        }
+        final q = backed.single;
         await (db.update(db.purchaseOrderLines)..where((t) => t.id.equals(l.id))).write(
             PurchaseOrderLinesCompanion(
-                priceListId: Value(listId),
-                listPrice: Value(listPrice),
-                discountBp: Value(bp),
-                unitCost: Value(cost)));
+                priceListId: Value(q.quote.priceListId),
+                listPrice: Value(q.listPrice),
+                buyingPolicyId: Value(q.policy!.id),
+                discountBp: Value(q.baseBp),
+                extraDiscountBp: Value(q.extraBp),
+                unitCost: Value(q.netCost!)));
       }
       await (db.update(db.purchaseOrders)..where((t) => t.id.equals(id))).write(PurchaseOrdersCompanion(
           status: const Value(PoStatus.approved),
@@ -188,7 +190,16 @@ class PurchaseOrderService {
         if (e.value > l.qty - l.qtyReceived) {
           throw ValidationException('الكمية المستلمة أكبر من المتبقي في الأمر');
         }
-        inputs.add(PurchaseLineInput(productId: l.productId, qty: e.value, unitCost: l.unitCost));
+        inputs.add(PurchaseLineInput(
+          productId: l.productId,
+          qty: e.value,
+          unitCost: l.unitCost,
+          priceListId: l.priceListId,
+          listPrice: l.listPrice,
+          buyingPolicyId: l.buyingPolicyId,
+          baseDiscountBp: l.discountBp,
+          extraDiscountBp: l.extraDiscountBp,
+        ));
       }
       if (inputs.isEmpty) throw ValidationException('أدخل كمية مستلمة لصنف واحد على الأقل');
 

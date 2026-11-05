@@ -14,13 +14,13 @@ class ProductSearchField extends ConsumerStatefulWidget {
   const ProductSearchField({
     super.key,
     required this.onSelected,
-    required this.trailing,
+    this.trailing,
     this.focusNode,
     this.autofocus = true,
   });
 
   final ValueChanged<ProductRow> onSelected;
-  final String Function(ProductRow row) trailing;
+  final String Function(ProductRow row)? trailing;
   final FocusNode? focusNode;
   final bool autofocus;
 
@@ -81,9 +81,11 @@ class _ProductSearchFieldState extends ConsumerState<ProductSearchField> {
                       dense: true,
                       selected: highlighted,
                       selectedTileColor: Theme.of(context).colorScheme.secondaryContainer,
-                      title: Text('${r.product.code} — ${r.product.nameAr}'),
-                      subtitle: Text('${Strings.available}: ${formatQty(r.stock)} ${r.unitName ?? ''}'),
-                      trailing: Text(widget.trailing(r)),
+                      title: Text('${r.product.code} — ${r.product.nameAr}'
+                          '${r.product.variant == null ? '' : ' (${r.product.variant})'}'),
+                      subtitle: Text('${r.product.manufacturerCode.isEmpty ? '' : '${r.product.manufacturerCode} · '}'
+                          '${Strings.available}: ${formatQty(r.stock)} ${r.unitName ?? ''}'),
+                      trailing: widget.trailing == null ? null : Text(widget.trailing!(r)),
                       onTap: () => onPick(r),
                     );
                   }),

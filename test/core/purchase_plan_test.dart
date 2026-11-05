@@ -20,7 +20,6 @@ void main() {
         code: 'M1',
         nameAr: 'خلاط',
         unitId: shop.mixer.unitId,
-        priceRetail: 50000,
         minStock: shop.pieces(10),
       ),
     );
@@ -52,7 +51,8 @@ void main() {
       lines: [PoLineInput(productId: shop.mixer.id, qty: shop.pieces(3))],
       user: shop.admin,
     );
-    await orders.approve(id, user: shop.admin);
+    final line = (await orders.detail(id)).lines.single.line.id;
+    await orders.approve(id, manualCosts: {line: 40000}, user: shop.admin);
     t = await reports.purchasePlan();
     expect(t.rows.single[4], shop.pieces(3));
     expect(t.rows.single[6], shop.pieces(5));

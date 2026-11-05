@@ -10,6 +10,7 @@ import '../../core/money.dart';
 import '../../core/providers.dart';
 import '../../core/quantity.dart';
 import '../../core/services/doc_types.dart';
+import '../../core/services/fifo_service.dart';
 import '../../core/services/product_service.dart';
 import '../../core/services/return_service.dart';
 import '../../core/widgets/amounts.dart';
@@ -156,7 +157,17 @@ class _ReturnEntryScreenState extends ConsumerState<ReturnEntryScreen> {
     _changed();
   }
 
-  void _addProduct(ProductRow row) {
+  Future<void> _addProduct(ProductRow row) async {
+    // With no original invoice the price starts at the approved list price or
+    // the last known cost, if there is one; otherwise the person types it.
+    var price = 0;
+    if (_isSale) {
+      final quotes = await ref.read(sellingPolicyServiceProvider).quotes(row.product.id, customer: _customer);
+      if (quotes.length == 1) price = quotes.single.unitPrice;
+    } else {
+      price = await FifoService(ref.read(databaseProvider)).lastKnownCost(row.product.id) ?? 0;
+    }
+    if (!mounted) return;
     setState(() {
       _lines.add(_Line(
         productId: row.product.id,
@@ -164,7 +175,7 @@ class _ReturnEntryScreenState extends ConsumerState<ReturnEntryScreen> {
         name: row.product.nameAr,
         unitName: row.unitName,
         allowDecimal: row.unitAllowsDecimal,
-        price: _isSale ? row.product.priceFor(_customer?.priceLevel ?? PriceLevel.retail) : row.product.costPrice,
+        price: price,
         qty: '1',
       ));
       _searchKey++;
@@ -288,7 +299,6 @@ class _ReturnEntryScreenState extends ConsumerState<ReturnEntryScreen> {
                 child: ProductSearchField(
                   key: ValueKey(_searchKey),
                   autofocus: false,
-                  trailing: (r) => formatMoney(_isSale ? r.product.priceRetail : r.product.costPrice),
                   onSelected: _addProduct,
                 ),
               ),

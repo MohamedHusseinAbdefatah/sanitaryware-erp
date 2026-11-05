@@ -10,7 +10,19 @@ class CatalogService {
 
   final AppDatabase db;
 
+  /// Main categories, without subcategories.
   Stream<List<Category>> watchCategories() => (db.select(db.categories)
+        ..where((t) => t.parentId.isNull())
+        ..orderBy([(t) => OrderingTerm(expression: t.nameAr)]))
+      .watch();
+
+  /// Categories and subcategories together.
+  Stream<List<Category>> watchAllCategories() =>
+      (db.select(db.categories)..orderBy([(t) => OrderingTerm(expression: t.nameAr)])).watch();
+
+  /// Subcategories only.
+  Stream<List<Category>> watchSubcategories() => (db.select(db.categories)
+        ..where((t) => t.parentId.isNotNull())
         ..orderBy([(t) => OrderingTerm(expression: t.nameAr)]))
       .watch();
 
@@ -35,12 +47,14 @@ class CatalogService {
     }
   }
 
-  Future<int> saveCategory({int? id, required String name}) async {
+  /// A category, or a subcategory when [parentId] is given. A name must be
+  /// unique under its own parent.
+  Future<int> saveCategory({int? id, required String name, int? parentId}) async {
     final n = await _checkName(name, (await db.select(db.categories).get())
-        .where((c) => c.id != id)
+        .where((c) => c.id != id && c.parentId == parentId)
         .map((c) => c.nameAr));
     if (id == null) {
-      return db.into(db.categories).insert(CategoriesCompanion.insert(nameAr: n));
+      return db.into(db.categories).insert(CategoriesCompanion.insert(nameAr: n, parentId: Value(parentId)));
     }
     await (db.update(db.categories)..where((t) => t.id.equals(id))).write(
       CategoriesCompanion(nameAr: Value(n), updatedAt: Value(DateTime.now())),

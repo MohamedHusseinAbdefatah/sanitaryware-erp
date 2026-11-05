@@ -50,18 +50,34 @@ class Units extends Table with Timestamps {
 }
 
 @TableIndex(name: 'idx_products_name_ar', columns: {#nameAr})
+@TableIndex(name: 'idx_products_match_key', columns: {#matchKey})
 class Products extends Table with Timestamps {
   IntColumn get id => integer().autoIncrement()();
+  // Blueprint 3.1: the internal Product ID. It never changes once given.
   TextColumn get code => text().unique()();
+  // The maker's own code, kept as text so leading zeros, letters and hyphens
+  // survive. Empty when the item has no maker's code.
+  TextColumn get manufacturerCode => text().withDefault(const Constant(''))();
+  // manufacturerCode normalized for search and for stopping duplicates.
+  TextColumn get matchKey => text().withDefault(const Constant(''))();
   TextColumn get nameAr => text()();
+  TextColumn get description => text().nullable()();
   IntColumn get categoryId => integer().nullable().references(Categories, #id)();
+  IntColumn get subcategoryId => integer().nullable().references(Categories, #id)();
   IntColumn get brandId => integer().nullable().references(Brands, #id)();
+  TextColumn get series => text().nullable()();
+  TextColumn get dimensions => text().nullable()();
+  // Color or variant.
+  TextColumn get variant => text().nullable()();
+  TextColumn get finish => text().nullable()();
   IntColumn get unitId => integer().nullable().references(Units, #id)();
-  // Weighted average cost, updated on each purchase.
-  IntColumn get costPrice => integer().withDefault(const Constant(0))();
-  IntColumn get priceRetail => integer().withDefault(const Constant(0))();
-  IntColumn get priceWholesale => integer().withDefault(const Constant(0))();
-  IntColumn get priceContractor => integer().withDefault(const Constant(0))();
+  TextColumn get barcode => text().nullable()();
+  TextColumn get technicalSpecs => text().nullable()();
+  // Filled only when verified: 'inclusive' or 'exclusive', and the rate.
+  TextColumn get vatBasis => text().nullable()();
+  IntColumn get vatRateBp => integer().nullable()();
+  // No price, cost or balance here (blueprint 3.1): prices live in price list
+  // versions, cost in FIFO layers, quantities in stock movements.
   // Thousandths, like every quantity.
   IntColumn get minStock => integer().withDefault(const Constant(0))();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
@@ -112,51 +128,102 @@ class LayerConsumptions extends Table {
   DateTimeColumn get date => dateTime().withDefault(currentDateAndTime)();
 }
 
-// A supplier's price list as it was issued on a date (schema 5). A new
-// edition is a new list; old ones are kept.
+// One dated version of an official price list (blueprint 3.3). The id is the
+// Price List ID. A later price is a new version; old rows are never overwritten.
 class PriceLists extends Table with Timestamps {
   IntColumn get id => integer().autoIncrement()();
-  IntColumn get supplierId => integer().references(Suppliers, #id)();
-  IntColumn get brandId => integer().nullable().references(Brands, #id)();
   TextColumn get name => text()();
-  // The date the supplier's list takes effect.
-  DateTimeColumn get effectiveDate => dateTime()();
-  BoolColumn get vatIncluded => boolean().withDefault(const Constant(false))();
-  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+  // Required by the service; null only on lists brought over from before
+  // schema 11, which stay pending until someone reviews them.
+  IntColumn get brandId => integer().nullable().references(Brands, #id)();
+  // One brand may have several lists: ceramic, bathtubs, premium, economic...
+  TextColumn get listType => text()();
+  // 1, 2, 3... within one brand and list type.
+  IntColumn get versionNo => integer().withDefault(const Constant(1))();
+  TextColumn get currency => text().withDefault(const Constant('EGP'))();
+  DateTimeColumn get effectiveFrom => dateTime()();
+  // Null while open. The next full version closes it.
+  DateTimeColumn get effectiveTo => dateTime().nullable()();
+  DateTimeColumn get importDate => dateTime()();
+  TextColumn get sourceFile => text().nullable()();
+  TextColumn get sourcePages => text().nullable()();
+  // Rows on the source, including those stopped for review.
+  IntColumn get rowCount => integer().withDefault(const Constant(0))();
+  // 'inclusive', 'exclusive' or 'unverified'. Set only after checking the source.
+  TextColumn get vatStatus => text().withDefault(const Constant('unverified'))();
+  IntColumn get vatRateBp => integer().nullable()();
+  // 'active', 'pending_review' (not usable yet) or 'withdrawn'.
+  TextColumn get status => text().withDefault(const Constant('active'))();
+  // Set only on lists made from the old per-level product prices: such a list
+  // prices one pricing type only.
+  TextColumn get pricingTypeOnly => text().nullable()();
   TextColumn get note => text().nullable()();
 }
 
-// One line of a list. productId stays empty until the line is matched to
-// a product in the shop's catalogue.
+// One row of a version. A row that could not be matched safely stays 'review'
+// and is never used for pricing until a person resolves it.
 @TableIndex(name: 'idx_price_list_items_list', columns: {#priceListId})
 @TableIndex(name: 'idx_price_list_items_product', columns: {#productId})
 class PriceListItems extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get priceListId => integer().references(PriceLists, #id)();
   IntColumn get productId => integer().nullable().references(Products, #id)();
-  TextColumn get supplierCode => text().withDefault(const Constant(''))();
+  TextColumn get manufacturerCode => text().withDefault(const Constant(''))();
   TextColumn get name => text()();
-  // 'white', 'pergamon', ... one line per colour.
-  TextColumn get colour => text().nullable()();
-  // Piastres per unit.
-  IntColumn get price => integer()();
-  // Pieces in a carton or pack, if the supplier sells that way.
+  TextColumn get variant => text().nullable()();
+  // Piastres per unit. Null only on a review row whose price is missing or
+  // unreadable: a price is never made up.
+  IntColumn get price => integer().nullable()();
+  // Pieces in a carton or pack, if sold that way.
   IntColumn get packSize => integer().nullable()();
+  // 'ok', 'review' or 'skipped'.
+  TextColumn get status => text().withDefault(const Constant('ok'))();
+  TextColumn get reviewReason => text().nullable()();
+  // The row number on the source file.
+  IntColumn get sourceRow => integer().nullable()();
 }
 
-// An optional discount a supplier gives us. The most specific rule wins:
-// product, then category, then brand, then the whole supplier.
-@TableIndex(name: 'idx_discount_rules_supplier', columns: {#supplierId})
-class DiscountRules extends Table with Timestamps {
+// What a supplier gives us (blueprint 3.4): Supplier + Brand + Price List, then
+// scope. A product rule beats a category rule, which beats an "all" rule.
+// Independent of selling policies: changing one never touches the other.
+@TableIndex(name: 'idx_buying_policies_supplier', columns: {#supplierId})
+class BuyingPolicies extends Table with Timestamps {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get supplierId => integer().references(Suppliers, #id)();
-  // 'supplier', 'brand', 'category' or 'product'
-  TextColumn get scope => text()();
+  // Required by the service; null only on rules brought over from before
+  // schema 11, which stay inactive until reviewed.
   IntColumn get brandId => integer().nullable().references(Brands, #id)();
+  IntColumn get priceListId => integer().nullable().references(PriceLists, #id)();
+  // 'all', 'category' or 'product'
+  TextColumn get scope => text()();
   IntColumn get categoryId => integer().nullable().references(Categories, #id)();
   IntColumn get productId => integer().nullable().references(Products, #id)();
-  // Basis points: 2100 = 21%.
-  IntColumn get percentBp => integer()();
+  // Basis points: 2100 = 21%. The two add up.
+  IntColumn get baseDiscountBp => integer().withDefault(const Constant(0))();
+  IntColumn get extraDiscountBp => integer().withDefault(const Constant(0))();
+  DateTimeColumn get validFrom => dateTime().nullable()();
+  DateTimeColumn get validTo => dateTime().nullable()();
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+  TextColumn get note => text().nullable()();
+}
+
+// What we give customers (blueprint 3.4): Brand + Price List + Pricing Type,
+// then scope. A product rule beats a category rule, which beats an "all" rule.
+@TableIndex(name: 'idx_selling_policies_list', columns: {#priceListId})
+class SellingPolicies extends Table with Timestamps {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get brandId => integer().references(Brands, #id)();
+  IntColumn get priceListId => integer().references(PriceLists, #id)();
+  // 'b2c', 'b2b' or 'project'
+  TextColumn get pricingType => text()();
+  // 'all', 'category' or 'product'
+  TextColumn get scope => text()();
+  IntColumn get categoryId => integer().nullable().references(Categories, #id)();
+  IntColumn get productId => integer().nullable().references(Products, #id)();
+  IntColumn get discountBp => integer().withDefault(const Constant(0))();
+  // Limits: going past either needs a manager's approval. Null = not set.
+  IntColumn get maxDiscountBp => integer().nullable()();
+  IntColumn get minMarginBp => integer().nullable()();
   DateTimeColumn get validFrom => dateTime().nullable()();
   DateTimeColumn get validTo => dateTime().nullable()();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
@@ -206,7 +273,10 @@ class PurchaseOrderLines extends Table {
   // Copied at approval (the price lock); 0 / null until then.
   IntColumn get priceListId => integer().nullable()();
   IntColumn get listPrice => integer().nullable()();
+  IntColumn get buyingPolicyId => integer().nullable()();
+  // The policy's base discount, and its extra purchase discount.
   IntColumn get discountBp => integer().withDefault(const Constant(0))();
+  IntColumn get extraDiscountBp => integer().withDefault(const Constant(0))();
   IntColumn get unitCost => integer().withDefault(const Constant(0))();
 }
 
@@ -244,11 +314,18 @@ class SalesOrderLines extends Table {
   // Thousandths of a unit.
   IntColumn get qty => integer()();
   IntColumn get qtyDelivered => integer().withDefault(const Constant(0))();
-  // Basis points. Extra is typed on the order; base comes from the customer.
+  // Basis points, typed on the order (the negotiation).
   IntColumn get extraDiscountBp => integer().withDefault(const Constant(0))();
-  // Copied at confirmation (the price lock); 0 until then.
+  // Copied at confirmation (the price lock); 0 / null until then. The order
+  // keeps the version it was approved on, whatever comes later.
+  IntColumn get priceListId => integer().nullable()();
   IntColumn get listPrice => integer().withDefault(const Constant(0))();
-  IntColumn get baseDiscountBp => integer().withDefault(const Constant(0))();
+  TextColumn get pricingType => text().nullable()();
+  IntColumn get sellingPolicyId => integer().nullable()();
+  IntColumn get policyDiscountBp => integer().withDefault(const Constant(0))();
+  IntColumn get customerDiscountBp => integer().withDefault(const Constant(0))();
+  TextColumn get vatStatus => text().nullable()();
+  IntColumn get vatRateBp => integer().nullable()();
   IntColumn get unitPrice => integer().withDefault(const Constant(0))();
 }
 
@@ -338,11 +415,28 @@ class SalesInvoiceItems extends Table {
   IntColumn get invoiceId => integer().references(SalesInvoices, #id)();
   IntColumn get productId => integer().references(Products, #id)();
   IntColumn get qty => integer()();
-  // Copied from the product at sale time so later changes never alter history.
+  // Fixed at sale time so later changes never alter history.
   IntColumn get unitPrice => integer()();
   IntColumn get unitCost => integer().withDefault(const Constant(0))();
   IntColumn get discount => integer().withDefault(const Constant(0))();
   IntColumn get lineTotal => integer()();
+  // The version this line used and where each discount came from (blueprint
+  // 3.3, 3.4). Null priceListId = a manual price, logged in approvals.
+  IntColumn get priceListId => integer().nullable()();
+  IntColumn get listPrice => integer().nullable()();
+  TextColumn get pricingType => text().nullable()();
+  IntColumn get sellingPolicyId => integer().nullable()();
+  IntColumn get policyDiscountBp => integer().withDefault(const Constant(0))();
+  IntColumn get customerDiscountBp => integer().withDefault(const Constant(0))();
+  IntColumn get extraDiscountBp => integer().withDefault(const Constant(0))();
+  // This line's part of the invoice discount, and what is left after it.
+  // The shares of an invoice add up exactly to its discount.
+  IntColumn get invoiceDiscountShare => integer().withDefault(const Constant(0))();
+  IntColumn get netTotal => integer().withDefault(const Constant(0))();
+  // Null vatAmount = the VAT basis or rate is not verified; none is invented.
+  TextColumn get vatStatus => text().nullable()();
+  IntColumn get vatRateBp => integer().nullable()();
+  IntColumn get vatAmount => integer().nullable()();
 }
 
 @TableIndex(name: 'idx_purchase_invoices_supplier_date', columns: {#supplierId, #date})
@@ -368,6 +462,12 @@ class PurchaseInvoiceItems extends Table {
   IntColumn get qty => integer()();
   IntColumn get unitCost => integer()();
   IntColumn get lineTotal => integer()();
+  // The version and buying policy this cost came from; null = typed by hand.
+  IntColumn get priceListId => integer().nullable()();
+  IntColumn get listPrice => integer().nullable()();
+  IntColumn get buyingPolicyId => integer().nullable()();
+  IntColumn get baseDiscountBp => integer().withDefault(const Constant(0))();
+  IntColumn get extraDiscountBp => integer().withDefault(const Constant(0))();
 }
 
 @DataClassName('ReturnDoc')

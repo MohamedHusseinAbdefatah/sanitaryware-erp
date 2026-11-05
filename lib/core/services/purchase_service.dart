@@ -6,7 +6,6 @@ import '../money.dart';
 import '../quantity.dart';
 import 'audit_service.dart';
 import 'balance_service.dart';
-import 'cost.dart';
 import 'doc_types.dart';
 import 'errors.dart';
 import 'fifo_service.dart';
@@ -16,7 +15,16 @@ import 'settings_service.dart';
 import 'stock_service.dart';
 
 class PurchaseLineInput {
-  const PurchaseLineInput({required this.productId, required this.qty, required this.unitCost});
+  const PurchaseLineInput({
+    required this.productId,
+    required this.qty,
+    required this.unitCost,
+    this.priceListId,
+    this.listPrice,
+    this.buyingPolicyId,
+    this.baseDiscountBp = 0,
+    this.extraDiscountBp = 0,
+  });
 
   final int productId;
 
@@ -25,6 +33,13 @@ class PurchaseLineInput {
 
   /// Piastres per whole unit.
   final int unitCost;
+
+  /// The version and buying policy this cost came from; null = typed by hand.
+  final int? priceListId;
+  final int? listPrice;
+  final int? buyingPolicyId;
+  final int baseDiscountBp;
+  final int extraDiscountBp;
 
   int get total => lineAmount(qty, unitCost);
 }
@@ -79,7 +94,7 @@ class PurchaseInvoiceDetail {
   final int paid;
 }
 
-/// Purchase invoices: stock in, weighted average cost updated, supplier owed.
+/// Purchase invoices: stock in, a FIFO layer at the invoice's cost, supplier owed.
 /// Admin only.
 class PurchaseService {
   PurchaseService(this.db);
@@ -139,18 +154,13 @@ class PurchaseService {
               qty: line.qty,
               unitCost: line.unitCost,
               lineTotal: line.total,
+              priceListId: Value(line.priceListId),
+              listPrice: Value(line.listPrice),
+              buyingPolicyId: Value(line.buyingPolicyId),
+              baseDiscountBp: Value(line.baseDiscountBp),
+              extraDiscountBp: Value(line.extraDiscountBp),
             ));
-        // Average cost uses the stock before this line, so the same product
-        // on two lines is averaged step by step.
         final p = products[line.productId]!;
-        final newCost = averageCostAfterAdding(
-          stock: await stock.currentStock(p.id),
-          cost: p.costPrice,
-          qty: line.qty,
-          unitCost: line.unitCost,
-        );
-        await _setCost(p.id, newCost);
-        products[p.id] = p.copyWith(costPrice: newCost);
         await fifo.addLayer(
           productId: p.id,
           qty: line.qty,
@@ -204,7 +214,7 @@ class PurchaseService {
   }
 
   /// Admin only. Takes the stock back out (refused if it has been sold,
-  /// unless negative stock is allowed), undoes the average cost and cancels
+  /// unless negative stock is allowed), empties its layers and cancels
   /// the payments linked to it.
   Future<void> cancel(int invoiceId, {required String reason, required User user}) {
     return db.transaction(() async {
@@ -242,10 +252,6 @@ class PurchaseService {
             'وكمية الفاتورة ${formatQty(item.qty)} (تم بيع جزء منها)',
           );
         }
-        await _setCost(
-          p.id,
-          averageCostAfterRemoving(stock: onHand, cost: p.costPrice, qty: item.qty, unitCost: item.unitCost),
-        );
         // Empty the layers this purchase made; anything it made before
         // layers existed comes off the oldest layers instead.
         final emptied = voided[p.id] ?? 0;
@@ -346,11 +352,6 @@ class PurchaseService {
       await BalanceService(db).paidOnInvoice(RefType.purchaseInvoice, invoiceId),
     );
   }
-
-  Future<void> _setCost(int productId, int cost) =>
-      (db.update(db.products)..where((t) => t.id.equals(productId))).write(
-        ProductsCompanion(costPrice: Value(cost), updatedAt: Value(DateTime.now())),
-      );
 
   static String? _blankToNull(String? s) =>
       (s == null || s.trim().isEmpty) ? null : s.trim();

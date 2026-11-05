@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sanitaryware_erp/core/db/database.dart';
@@ -10,6 +9,7 @@ import 'package:sanitaryware_erp/core/services/doc_types.dart';
 import 'package:sanitaryware_erp/core/services/errors.dart';
 import 'package:sanitaryware_erp/core/services/party_service.dart';
 import 'package:sanitaryware_erp/core/services/payment_service.dart';
+import 'package:sanitaryware_erp/core/services/price_list_service.dart';
 import 'package:sanitaryware_erp/core/services/purchase_service.dart';
 import 'package:sanitaryware_erp/core/services/sales_order_service.dart';
 
@@ -45,12 +45,15 @@ void main() {
   test('confirming freezes the price: base 10% + extra 5%', () async {
     final id = await draft(10, extra: 500);
     await orders.confirm(id, user: shop.admin);
-    // The shop raises the retail price afterwards.
-    await (shop.db.update(shop.db.products)..where((t) => t.id.equals(shop.mixer.id)))
-        .write(const ProductsCompanion(priceRetail: Value(60000)));
+    // A dearer version starts afterwards.
+    await PriceListService(shop.db).createVersion(
+      PriceListHeader(name: 'V2', brandId: shop.brandId, listType: 'عام', effectiveFrom: DateTime.now()),
+      rows: [PriceRowInput(name: 'خلاط', price: 60000, productId: shop.mixer.id)],
+      user: shop.admin,
+    );
     final line = (await orders.detail(id)).lines.single.line;
     expect(line.listPrice, 50000);
-    expect(line.baseDiscountBp, 1000);
+    expect(line.customerDiscountBp, 1000);
     expect(line.extraDiscountBp, 500);
     expect(line.unitPrice, 42500); // 500.00 less 15%
   });

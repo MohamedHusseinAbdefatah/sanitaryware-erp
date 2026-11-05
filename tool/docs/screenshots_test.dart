@@ -69,23 +69,24 @@ Future<(Shop, SalesInvoice)> _shopWithData() async {
   final products = ProductService(db);
   await products.update(
     shop.mixer.id,
-    ProductInput(code: 'M1', nameAr: 'خلاط حوض جروهي كروم', categoryId: mixers, brandId: grohe, unitId: piece,
-        priceRetail: 125000, priceWholesale: 115000, priceContractor: 110000, minStock: qtyOf(5)),
+    ProductInput(code: 'M1', manufacturerCode: 'M1', nameAr: 'خلاط حوض جروهي كروم', categoryId: mixers, brandId: grohe,
+        unitId: piece, minStock: qtyOf(5)),
   );
   await products.update(
     shop.pipe.id,
-    ProductInput(code: 'P1', nameAr: 'ماسورة بولي بروبلين 25 مم', categoryId: pipes, unitId: meter,
-        priceRetail: 3500, priceWholesale: 3000, priceContractor: 2800, minStock: qtyOf(50)),
+    ProductInput(code: 'P1', manufacturerCode: 'P1', nameAr: 'ماسورة بولي بروبلين 25 مم', categoryId: pipes, unitId: meter,
+        minStock: qtyOf(50)),
   );
   final basin = await products.create(
-    ProductInput(code: 'B10', nameAr: 'حوض معلق أبيض 60 سم', categoryId: basins, unitId: piece,
-        costPrice: 90000, priceRetail: 140000, priceWholesale: 125000, priceContractor: 120000),
+    ProductInput(code: 'B10', manufacturerCode: 'B10', nameAr: 'حوض معلق أبيض 60 سم', categoryId: basins, unitId: piece),
     openingQty: qtyOf(12),
+    openingCost: 90000,
   );
   await products.create(
-    ProductInput(code: 'M2', nameAr: 'خلاط مطبخ جروهي', categoryId: mixers, brandId: grohe, unitId: piece,
-        costPrice: 150000, priceRetail: 210000, priceWholesale: 195000, priceContractor: 190000, minStock: qtyOf(3)),
+    ProductInput(code: 'M2', manufacturerCode: 'M2', nameAr: 'خلاط مطبخ جروهي', categoryId: mixers, brandId: grohe,
+        unitId: piece, minStock: qtyOf(3)),
     openingQty: qtyOf(2),
+    openingCost: 150000,
   );
 
   final parties = PartyService(db);
@@ -122,7 +123,7 @@ Future<(Shop, SalesInvoice)> _shopWithData() async {
       lines: [SaleLineInput(productId: shop.mixer.id, qty: qtyOf(1), unitPrice: 125000)],
       paidAmount: 125000,
     ),
-    userId: shop.cashier.id,
+    userId: shop.admin.id,
   );
   final credit = await sales.post(
     SaleInput(

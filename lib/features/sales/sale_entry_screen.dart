@@ -9,29 +9,39 @@ import '../../core/dates.dart';
 import '../../core/db/database.dart';
 import '../../core/l10n/strings.dart';
 import '../../core/money.dart';
+import '../../core/pricing_math.dart';
 import '../../core/printing/print_actions.dart';
 import '../../core/providers.dart';
 import '../../core/quantity.dart';
-import '../../core/services/discount_service.dart';
 import '../../core/services/errors.dart';
+import '../../core/services/fifo_service.dart';
 import '../../core/services/product_service.dart';
 import '../../core/services/sales_service.dart';
+import '../../core/services/selling_policy_service.dart';
 import '../../core/widgets/amounts.dart';
 import '../../core/widgets/feedback.dart';
 import '../../core/widgets/number_fields.dart';
 import '../../core/widgets/pickers.dart';
 import '../parties/party_form_dialog.dart';
 import '../parties/parties_screen.dart';
+import 'sale_preview_dialog.dart';
 
 /// One editable line. Text fields are parsed on every change; an invalid
 /// field shows its error and blocks saving.
 class _Line {
-  _Line(this.row, int price)
+  _Line(this.row, this.quote, this.costHint)
       : qty = TextEditingController(text: '1'),
-        price = TextEditingController(text: _plain(price)),
+        price = TextEditingController(text: quote == null ? '' : _plain(quote.listPrice)),
         discount = TextEditingController();
 
   final ProductRow row;
+
+  /// The approved price this line starts from. Null = none exists, so the
+  /// person types a price, which needs a manager.
+  SellQuote? quote;
+
+  /// The next FIFO cost per unit, for the admin's warning. Null = none on record.
+  final int? costHint;
   final TextEditingController qty;
   final TextEditingController price;
   final TextEditingController discount;
@@ -40,7 +50,7 @@ class _Line {
   /// Once the person types a price, a customer change no longer reprices it.
   bool priceEdited = false;
 
-  /// Once the person types a discount, the customer's usual one stops filling it.
+  /// Once the person types a discount, the policy and customer ones stop filling it.
   bool discountEdited = false;
 
   Product get product => row.product;
@@ -86,8 +96,6 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
   bool _saving = false;
   int _searchKey = 0; // bumped to clear the product search field
 
-  String get _priceLevel => _customer?.priceLevel ?? PriceLevel.retail;
-
   int get _subtotal => _lines.fold(0, (s, l) => s + (l.total ?? 0));
   int get _discount => moneyOrZero(_invoiceDiscount);
   int get _total => _subtotal - _discount;
@@ -112,12 +120,12 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
     setState(() {});
   }
 
-  /// A customer with a usual discount gets it on every line the person has
-  /// not typed a discount into.
+  /// Each line gets its policy and customer discount unless the person has
+  /// typed one. 21% from the policy and 1% more is 22%.
   void _fillCustomerDiscounts() {
-    final bp = _customer?.discountBp ?? 0;
     for (final l in _lines.where((l) => !l.discountEdited)) {
       final q = l.qtyValue, p = l.priceValue;
+      final bp = l.quote?.totalBp ?? 0;
       var text = '';
       if (bp > 0 && q != null && p != null) {
         final gross = lineAmount(q, p);
@@ -128,8 +136,16 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
     }
   }
 
-  void _addProduct(ProductRow row) {
-    final line = _Line(row, row.product.priceFor(_priceLevel));
+  Future<void> _addProduct(ProductRow row) async {
+    final quotes = await ref.read(sellingPolicyServiceProvider).quotes(row.product.id, customer: _customer);
+    final cost = await FifoService(ref.read(databaseProvider)).peek(row.product.id, qtyScale);
+    if (!mounted) return;
+    var quote = quotes.length == 1 ? quotes.single : null;
+    if (quotes.length > 1) {
+      quote = await pickSellQuote(context, quotes, row.product.nameAr);
+      if (quote == null || !mounted) return;
+    }
+    final line = _Line(row, quote, cost?.averageUnitCost);
     setState(() {
       _lines.add(line);
       _searchKey++;
@@ -147,12 +163,20 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
     _changed();
   }
 
-  void _setCustomer(Customer? c) {
+  Future<void> _setCustomer(Customer? c) async {
     _customer = c;
     _customerBalance = null;
-    for (final l in _lines.where((l) => !l.priceEdited)) {
-      l.price.text = _plain(l.product.priceFor(_priceLevel));
+    // The pricing type and the customer's discount come with the customer.
+    final policies = ref.read(sellingPolicyServiceProvider);
+    for (final l in List.of(_lines)) {
+      if (l.priceEdited) continue;
+      final current = l.quote?.quote.priceListId;
+      final fresh = await policies.quotes(l.product.id, customer: c);
+      final same = fresh.where((q) => q.quote.priceListId == current).firstOrNull;
+      l.quote = same ?? (fresh.length == 1 ? fresh.single : null);
+      l.price.text = l.quote == null ? '' : _plain(l.quote!.listPrice);
     }
+    if (!mounted) return;
     if (c != null && !_paidEdited) _paid.text = '';
     _changed();
     if (c != null) {
@@ -202,6 +226,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
             qty: l.qtyValue!,
             unitPrice: l.priceValue!,
             discount: l.discountValue,
+            priceListId: l.quote?.quote.priceListId,
           ),
       ],
       discount: _discount,
@@ -210,9 +235,22 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       notes: _notes.text,
     );
     final user = ref.read(currentUserProvider);
+    // Blueprint 3.4: everything is shown before approval.
+    final preview = await runGuarded(context, () => ref.read(salePreviewServiceProvider).preview(input));
+    final approvalReason = preview == null || !mounted
+        ? null
+        : await showSalePreview(context, preview, isAdmin: user?.isAdmin ?? false);
+    if (!mounted) return;
+    if (approvalReason == null) {
+      setState(() => _saving = false);
+      return;
+    }
     Future<SalesInvoice> post({bool override = false, String? reason}) =>
         ref.read(salesServiceProvider).post(input,
-            userId: user?.id, allowOverCreditLimit: override, belowCostReason: reason);
+            userId: user?.id,
+            allowOverCreditLimit: override,
+            belowCostReason: reason,
+            approvalReason: approvalReason);
     SalesInvoice? invoice;
     try {
       invoice = await post();
@@ -378,7 +416,6 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
               child: ProductSearchField(
                 key: ValueKey(_searchKey),
                 focusNode: _productSearchFocus,
-                trailing: (r) => formatMoney(r.product.priceFor(_priceLevel)),
                 onSelected: _addProduct,
               ),
             ),
@@ -550,7 +587,7 @@ class _LineRow extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final short = qtyOnInvoice > line.row.stock;
     final price = line.priceValue;
-    final belowCost = showCost && price != null && price < line.product.costPrice;
+    final belowCost = showCost && price != null && line.costHint != null && price < line.costHint!;
     final total = line.total;
 
     Widget cell(int i, Widget child) => Expanded(
@@ -569,7 +606,12 @@ class _LineRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(line.product.nameAr),
-                Text(line.product.code, style: Theme.of(context).textTheme.bodySmall),
+                Text(
+                  line.quote == null
+                      ? '${line.product.code} · لا يوجد سعر معتمد'
+                      : '${line.product.code} · ${line.quote!.quote.label}',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
               ],
             ),
           ),
@@ -601,7 +643,7 @@ class _LineRow extends StatelessWidget {
           cell(
             5,
             Tooltip(
-              message: belowCost ? '${Strings.belowCost} (${formatMoney(line.product.costPrice)})' : '',
+              message: belowCost ? '${Strings.belowCost} (${formatMoney(line.costHint!)})' : '',
               child: MoneyField(
                 controller: line.price,
                 label: Strings.price,

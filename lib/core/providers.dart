@@ -10,7 +10,9 @@ import 'reports/report_service.dart';
 import 'services/approval_service.dart';
 import 'services/balance_service.dart';
 import 'services/catalog_service.dart';
-import 'services/discount_service.dart';
+import 'services/buying_policy_service.dart';
+import 'services/sale_preview_service.dart';
+import 'services/selling_policy_service.dart';
 import 'services/expense_service.dart';
 import 'services/location_service.dart';
 import 'services/party_service.dart';
@@ -114,5 +116,11 @@ final priceListServiceProvider =
 final priceListImportServiceProvider =
     Provider<PriceListImportService>((ref) => PriceListImportService(ref.watch(databaseProvider)));
 
-final discountServiceProvider =
-    Provider<DiscountService>((ref) => DiscountService(ref.watch(databaseProvider)));
+final buyingPolicyServiceProvider =
+    Provider<BuyingPolicyService>((ref) => BuyingPolicyService(ref.watch(databaseProvider)));
+
+final sellingPolicyServiceProvider =
+    Provider<SellingPolicyService>((ref) => SellingPolicyService(ref.watch(databaseProvider)));
+
+final salePreviewServiceProvider =
+    Provider<SalePreviewService>((ref) => SalePreviewService(ref.watch(databaseProvider)));

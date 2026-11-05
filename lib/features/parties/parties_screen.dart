@@ -14,9 +14,9 @@ import 'party_form_dialog.dart';
 import 'statement_dialog.dart';
 
 String priceLevelLabel(String level) => switch (level) {
-      PriceLevel.wholesale => Strings.priceWholesale,
-      PriceLevel.contractor => Strings.priceContractor,
-      _ => Strings.priceRetail,
+      PriceLevel.wholesale => 'جملة (B2B)',
+      PriceLevel.contractor => 'مشروعات ومقاولون (Project)',
+      _ => 'قطاعي (B2C)',
     };
 
 class CustomersScreen extends ConsumerStatefulWidget {

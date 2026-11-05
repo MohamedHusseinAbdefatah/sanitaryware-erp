@@ -2,15 +2,16 @@ import 'package:drift/drift.dart';
 
 import '../auth/auth_service.dart';
 import '../db/database.dart';
+import '../pricing_math.dart';
 import '../quantity.dart';
 import 'approval_service.dart';
 import 'audit_service.dart';
-import 'discount_service.dart';
 import 'errors.dart';
 import 'numbering_service.dart';
 import 'payment_service.dart';
-import 'product_service.dart';
+import 'price_list_service.dart';
 import 'sales_service.dart';
+import 'selling_policy_service.dart';
 
 abstract final class SoStatus {
   static const quotation = 'quotation';
@@ -40,15 +41,18 @@ abstract final class SaleChannel {
 }
 
 class SoLineInput {
-  const SoLineInput({required this.productId, required this.qty, this.extraDiscountBp = 0});
+  const SoLineInput({required this.productId, required this.qty, this.extraDiscountBp = 0, this.priceListId});
 
   final int productId;
 
   /// Thousandths of a unit.
   final int qty;
 
-  /// Extra discount points typed on top of the customer's usual discount.
+  /// Extra discount points typed on top of the policy and the customer's discount.
   final int extraDiscountBp;
+
+  /// The version chosen when more than one can price the product.
+  final int? priceListId;
 }
 
 class SoLineRow {
@@ -81,10 +85,6 @@ class SalesOrderService {
   SalesOrderService(this.db);
 
   final AppDatabase db;
-
-  /// The most extra discount (basis points) a cashier may give without a
-  /// manager. Higher needs the admin to enter or confirm it.
-  static const cashierMaxExtraBp = 500;
 
   Future<SalesOrder> _order(int id) async {
     final o = await (db.select(db.salesOrders)..where((t) => t.id.equals(id))).getSingleOrNull();
@@ -148,7 +148,8 @@ class SalesOrderService {
             orderId: id,
             productId: l.productId,
             qty: l.qty,
-            extraDiscountBp: Value(l.extraDiscountBp)));
+            extraDiscountBp: Value(l.extraDiscountBp),
+            priceListId: Value(l.priceListId)));
       }
       await AuditService(db).log(action: AuditAction.create, entity: 'sales_order', entityId: id, userId: user.id);
       if (lines.any((l) => l.extraDiscountBp > cashierMaxExtraBp)) {
@@ -166,10 +167,40 @@ class SalesOrderService {
     });
   }
 
-  /// Confirms a draft and freezes each line's price: the product's price for
-  /// the customer's price level, less the customer's usual discount and the
-  /// line's extra points. Later price changes never alter it.
-  Future<void> confirm(int id, {required User user}) {
+  /// What each line would be if the order were approved today, for the
+  /// display before approval. One row per line; a line with no approved price
+  /// has no quote.
+  Future<List<(SalesOrderLine, SellQuote?)>> quotesForApproval(int id) async {
+    final order = await _order(id);
+    final customer = await (db.select(db.customers)..where((t) => t.id.equals(order.customerId))).getSingle();
+    final lines = await (db.select(db.salesOrderLines)..where((t) => t.orderId.equals(id))).get();
+    final now = DateTime.now();
+    return [for (final l in lines) (l, await _quote(l, customer, now))];
+  }
+
+  Future<SellQuote?> _quote(SalesOrderLine l, Customer customer, DateTime now) async {
+    final policies = SellingPolicyService(db);
+    if (l.priceListId != null) {
+      return policies.quoteIn(l.priceListId!, l.productId, customer: customer, asOf: now, extraBp: l.extraDiscountBp);
+    }
+    final quotes = await policies.quotes(l.productId, customer: customer, asOf: now, extraBp: l.extraDiscountBp);
+    if (quotes.length > 1) {
+      final p = await (db.select(db.products)..where((t) => t.id.equals(l.productId))).getSingle();
+      throw ValidationException('الصنف "${p.nameAr}" له أكثر من قائمة سارية؛ حدد القائمة في السطر');
+    }
+    return quotes.firstOrNull;
+  }
+
+  /// Approves a draft or quotation and freezes each line: the version in force
+  /// today, its list price, each discount and the VAT status. The order keeps
+  /// them whatever versions come later (the price lock). A line with no
+  /// approved price needs [manualPrices] (line id -> piastres), admin only.
+  Future<void> confirm(
+    int id, {
+    Map<int, int> manualPrices = const {},
+    String? approvalReason,
+    required User user,
+  }) {
     return db.transaction(() async {
       final order = await _order(id);
       if (order.status != SoStatus.draft && order.status != SoStatus.quotation) {
@@ -177,17 +208,65 @@ class SalesOrderService {
       }
       final customer = await (db.select(db.customers)..where((t) => t.id.equals(order.customerId))).getSingle();
       final lines = await (db.select(db.salesOrderLines)..where((t) => t.orderId.equals(id))).get();
-      for (final l in lines) {
-        _checkExtra(l.extraDiscountBp, user);
-        final p = await (db.select(db.products)..where((t) => t.id.equals(l.productId))).getSingle();
-        final list = p.priceFor(customer.priceLevel);
-        final base = customer.discountBp;
-        final sum = base + l.extraDiscountBp;
-        final total = sum > 10000 ? 10000 : sum;
-        await (db.update(db.salesOrderLines)..where((t) => t.id.equals(l.id))).write(SalesOrderLinesCompanion(
-            listPrice: Value(list), baseDiscountBp: Value(base), unitPrice: Value(applyDiscount(list, total))));
-      }
       final now = DateTime.now();
+      final exceptions = <String>[];
+      final alreadyLogged = (await ApprovalService(db).forDocument('sales_order', id))
+          .any((a) => a.kind == ApprovalKind.extraDiscount);
+      for (final l in lines) {
+        final p = await (db.select(db.products)..where((t) => t.id.equals(l.productId))).getSingle();
+        final manual = manualPrices[l.id];
+        if (manual != null) {
+          if (!user.isAdmin) throw ValidationException('السعر اليدوي يلزمه موافقة المدير (${p.nameAr})');
+          if (manual < 0) throw ValidationException('السعر لا يمكن أن يكون سالباً (${p.nameAr})');
+          exceptions.add('سعر يدوي: ${p.nameAr}');
+          await (db.update(db.salesOrderLines)..where((t) => t.id.equals(l.id))).write(SalesOrderLinesCompanion(
+              listPrice: Value(manual),
+              unitPrice: Value(applyDiscount(manual, l.extraDiscountBp > 10000 ? 10000 : l.extraDiscountBp)),
+              pricingType: Value(PricingType.ofLevel(customer.priceLevel)),
+              vatStatus: Value(p.vatBasis),
+              vatRateBp: Value(p.vatRateBp)));
+          continue;
+        }
+        final q = await _quote(l, customer, now);
+        if (q == null) {
+          throw ValidationException('لا يوجد سعر معتمد للصنف "${p.nameAr}"؛ أضفه لقائمة أسعار أو أدخل سعراً يدوياً بموافقة المدير');
+        }
+        if (!PriceListService.inForce(q.quote.priceList, now)) {
+          throw ValidationException('القائمة المختارة للصنف "${p.nameAr}" غير سارية اليوم');
+        }
+        final max = q.policy?.maxDiscountBp;
+        final over = max != null ? q.totalBp > max : l.extraDiscountBp > cashierMaxExtraBp;
+        if (l.extraDiscountBp < 0 || l.extraDiscountBp > 10000) {
+          throw ValidationException('نسبة الخصم يجب أن تكون بين 0 و 100');
+        }
+        if (over) {
+          if (!user.isAdmin) {
+            throw ValidationException('الخصم أكبر من المسموح للصنف "${p.nameAr}" — يلزم موافقة المدير');
+          }
+          if (!alreadyLogged) exceptions.add('خصم أكبر من الحد: ${p.nameAr}');
+        }
+        await (db.update(db.salesOrderLines)..where((t) => t.id.equals(l.id))).write(SalesOrderLinesCompanion(
+            priceListId: Value(q.quote.priceListId),
+            listPrice: Value(q.listPrice),
+            pricingType: Value(q.pricingType),
+            sellingPolicyId: Value(q.policy?.id),
+            policyDiscountBp: Value(q.policyBp),
+            customerDiscountBp: Value(q.customerBp),
+            vatStatus: Value(q.quote.priceList.vatStatus),
+            vatRateBp: Value(q.quote.priceList.vatRateBp ?? p.vatRateBp),
+            unitPrice: Value(q.unitPrice)));
+      }
+      if (exceptions.isNotEmpty) {
+        final why = (approvalReason ?? '').trim().isEmpty ? 'موافقة المدير عند التأكيد' : approvalReason!.trim();
+        await ApprovalService(db).record(
+          kind: manualPrices.isNotEmpty ? ApprovalKind.priceOverride : ApprovalKind.extraDiscount,
+          docType: 'sales_order',
+          docId: id,
+          reason: '$why: ${exceptions.join('، ')}',
+          requestedBy: user.id,
+          approvedBy: user.id,
+        );
+      }
       await (db.update(db.salesOrders)..where((t) => t.id.equals(id))).write(SalesOrdersCompanion(
           status: const Value(SoStatus.confirmed),
           confirmedBy: Value(user.id),
@@ -225,22 +304,24 @@ class SalesOrderService {
         if (e.value > l.qty - l.qtyDelivered) {
           throw ValidationException('الكمية المسلّمة أكبر من المتبقي في الأمر');
         }
-        inputs.add(SaleLineInput(productId: l.productId, qty: e.value, unitPrice: l.unitPrice));
+        inputs.add(SaleLineInput(
+          productId: l.productId,
+          qty: e.value,
+          unitPrice: l.unitPrice,
+          locked: PricingSnapshot(
+            priceListId: l.priceListId,
+            listPrice: l.priceListId == null ? null : l.listPrice,
+            pricingType: l.pricingType,
+            sellingPolicyId: l.sellingPolicyId,
+            policyBp: l.policyDiscountBp,
+            customerBp: l.customerDiscountBp,
+            extraBp: l.extraDiscountBp,
+            vatStatus: l.vatStatus,
+            vatRateBp: l.vatRateBp,
+          ),
+        ));
       }
       if (inputs.isEmpty) throw ValidationException('أدخل كمية مسلّمة لصنف واحد على الأقل');
-
-      // A price under cost needs the manager and a reason, which is logged.
-      var belowCost = false;
-      for (final i in inputs) {
-        final p = await (db.select(db.products)..where((t) => t.id.equals(i.productId))).getSingle();
-        if (i.unitPrice < p.costPrice) belowCost = true;
-      }
-      if (belowCost) {
-        if (!user.isAdmin) throw ValidationException('السعر أقل من التكلفة — يلزم موافقة المدير');
-        if ((belowCostReason ?? '').trim().isEmpty) {
-          throw ValidationException('السعر أقل من التكلفة — اكتب سبب البيع');
-        }
-      }
 
       final invoice = await SalesService(db).post(
         SaleInput(

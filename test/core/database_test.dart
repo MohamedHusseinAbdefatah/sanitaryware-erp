@@ -1,4 +1,3 @@
-import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sanitaryware_erp/core/db/database.dart';
@@ -99,17 +98,15 @@ void main() {
       );
     });
 
-    test('money columns default to zero and keep integers', () async {
+    test('the master holds no price: quantities default to zero', () async {
       final id = await db.into(db.products).insert(
             ProductsCompanion.insert(
               code: 'M1',
               nameAr: 'خلاط',
-              priceRetail: const Value(123456),
             ),
           );
       final p = await (db.select(db.products)..where((t) => t.id.equals(id))).getSingle();
-      expect(p.priceRetail, 123456);
-      expect(p.costPrice, 0);
+      expect(p.minStock, 0);
       expect(p.isActive, isTrue);
     });
   });

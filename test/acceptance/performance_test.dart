@@ -46,8 +46,6 @@ void main() {
             code: 'P$i',
             nameAr: 'ØµÙ†Ù Ø±Ù‚Ù… $i Ø®Ù„Ø§Ø· Ø­ÙˆØ¶',
             unitId: Value(unit),
-            costPrice: Value(1000 + i),
-            priceRetail: Value(1500 + i),
             minStock: Value(i % 7 == 0 ? 50000 : 0),
           ),
       ]);

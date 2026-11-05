@@ -45,8 +45,9 @@ void main() {
     );
     final piece = (await db.select(db.units).get()).first.id;
     final product = await ProductService(db).create(
-      ProductInput(code: 'M1', nameAr: 'خلاط', unitId: piece, costPrice: 40000, priceRetail: 50000),
+      ProductInput(code: 'M1', nameAr: 'خلاط', unitId: piece),
       openingQty: qtyOf(10),
+      openingCost: 40000,
     );
     final customer = await PartyService(db).saveCustomer(const CustomerInput(name: 'عميل', openingBalance: 10000));
     await SalesService(db).post(

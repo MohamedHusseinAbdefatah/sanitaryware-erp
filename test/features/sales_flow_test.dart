@@ -16,6 +16,8 @@ import 'package:sanitaryware_erp/core/db/database.dart';
 import 'package:sanitaryware_erp/core/l10n/strings.dart';
 import 'package:sanitaryware_erp/core/providers.dart';
 import 'package:sanitaryware_erp/core/quantity.dart';
+import 'package:sanitaryware_erp/core/services/catalog_service.dart';
+import 'package:sanitaryware_erp/core/services/price_list_service.dart';
 import 'package:sanitaryware_erp/core/services/product_service.dart';
 import 'package:sanitaryware_erp/core/services/settings_service.dart';
 import 'package:sanitaryware_erp/core/services/stock_service.dart';
@@ -48,15 +50,22 @@ void main() {
         password: '1234',
       );
       final pieceId = (await db.select(db.units).get()).first.id;
-      await ProductService(db).create(
+      final brand = await CatalogService(db).saveBrand(name: 'ماركة');
+      final mixer = await ProductService(db).create(
         ProductInput(
           code: 'M1',
+          manufacturerCode: 'M1',
           nameAr: 'خلاط حوض',
+          brandId: brand,
           unitId: pieceId,
-          costPrice: 40000,
-          priceRetail: 50000,
         ),
         openingQty: qtyOf(5),
+        openingCost: 40000,
+      );
+      await PriceListService(db).createVersion(
+        PriceListHeader(name: 'قائمة', brandId: brand, listType: 'عام', effectiveFrom: DateTime(2020)),
+        rows: [PriceRowInput(name: 'خلاط حوض', price: 50000, productId: mixer.id)],
+        user: admin,
       );
     });
     tester.view.physicalSize = const Size(1400, 900);
@@ -108,6 +117,11 @@ void main() {
     expect(find.text('1,000.00'), findsWidgets); // line total and invoice total
 
     await tester.tap(find.text('${Strings.save} (Ctrl+S)'));
+    await settle(tester);
+    // Everything is shown before approval; then it saves.
+    expect(find.text('سعر القائمة'), findsWidgets);
+    expect(find.text('تكلفة FIFO المتوقعة'), findsOneWidget);
+    await tester.tap(find.text('اعتماد وحفظ'));
     await settle(tester);
 
     expect(find.textContaining('S-000001'), findsWidgets);

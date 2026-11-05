@@ -47,20 +47,18 @@ void main() {
         code: 'M1',
         nameAr: 'خلاط',
         unitId: units.firstWhere((u) => !u.allowDecimal).id,
-        costPrice: 40000,
-        priceRetail: 50000,
       ),
       openingQty: qtyOf(10),
+      openingCost: 40000,
     );
     pipe = await products.create(
       ProductInput(
         code: 'P1',
         nameAr: 'ماسورة',
         unitId: units.firstWhere((u) => u.allowDecimal).id,
-        costPrice: 2000,
-        priceRetail: 3500,
       ),
       openingQty: qtyOf(100),
+      openingCost: 2000,
     );
     customerId = await PartyService(db).saveCustomer(const CustomerInput(name: 'عميل'));
   });
@@ -93,7 +91,7 @@ void main() {
           ],
           paidAmount: 100000 + 43750,
         ),
-        userId: cashier.id,
+        userId: admin.id,
       );
       expect(invoice.number, 'S-000001');
       expect(invoice.total, 143750);

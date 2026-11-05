@@ -1,6 +1,7 @@
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sanitaryware_erp/core/db/database.dart';
+import 'package:sanitaryware_erp/core/pricing_math.dart';
 import 'package:sanitaryware_erp/core/quantity.dart';
 import 'package:sanitaryware_erp/core/search_text.dart';
 import 'package:sanitaryware_erp/core/services/catalog_service.dart';
@@ -61,15 +62,20 @@ void main() {
   });
 
   group('products', () {
-    test('opening stock becomes a movement', () async {
+    test('opening stock becomes a movement and a FIFO layer at its actual cost', () async {
       final p = await products.create(
-        ProductInput(code: 'A1', nameAr: 'خلاط', unitId: pieceId, costPrice: 50000),
+        ProductInput(code: 'A1', nameAr: 'خلاط', unitId: pieceId),
         openingQty: qtyOf(4),
+        openingCost: 50000,
       );
       expect(await StockService(db).currentStock(p.id), qtyOf(4));
       final m = await db.select(db.stockMovements).getSingle();
       expect(m.type, StockMovementType.opening);
       expect(m.unitCost, 50000);
+      final layer = await db.select(db.costLayers).getSingle();
+      expect(layer.unitCost, 50000);
+      expect(layer.qtyRemaining, qtyOf(4));
+      expect(layer.sourceType, 'opening');
     });
 
     test('duplicate code is rejected with the other product named', () async {
@@ -82,22 +88,113 @@ void main() {
 
     test('a fraction of a piece is rejected, a fraction of a meter is fine', () async {
       await expectLater(
-        products.create(ProductInput(code: 'A1', nameAr: 'خلاط', unitId: pieceId), openingQty: 1500),
+        products.create(ProductInput(code: 'A1', nameAr: 'خلاط', unitId: pieceId), openingQty: 1500, openingCost: 1),
         throwsA(isA<ValidationException>()),
       );
       expect(await db.select(db.products).get(), isEmpty);
       final pipe = await products.create(
         ProductInput(code: 'P1', nameAr: 'ماسورة', unitId: meterId),
         openingQty: 12500,
+        openingCost: 100,
       );
       expect(await StockService(db).currentStock(pipe.id), 12500);
     });
 
-    test('negative prices are rejected', () async {
+    test('opening stock needs its actual cost; no cost is made up', () async {
       await expectLater(
-        products.create(const ProductInput(code: 'A1', nameAr: 'خلاط', priceRetail: -1)),
+        products.create(ProductInput(code: 'A1', nameAr: 'خلاط', unitId: pieceId), openingQty: qtyOf(1)),
         throwsA(isA<ValidationException>()),
       );
+      await expectLater(
+        products.create(ProductInput(code: 'A1', nameAr: 'خلاط', unitId: pieceId), openingQty: qtyOf(1), openingCost: -1),
+        throwsA(isA<ValidationException>()),
+      );
+    });
+
+    test('blank code: a Product ID is given; it never changes afterwards', () async {
+      final a = await products.create(const ProductInput(nameAr: 'خلاط'));
+      final b = await products.create(const ProductInput(nameAr: 'حوض'));
+      expect(a.code, startsWith('P-'));
+      expect(b.code, isNot(a.code));
+      await expectLater(
+        products.update(a.id, const ProductInput(code: 'NEW', nameAr: 'خلاط')),
+        throwsA(isA<ValidationException>()),
+      );
+      await products.update(a.id, ProductInput(code: a.code, nameAr: 'خلاط كروم'));
+      final after = await (db.select(db.products)..where((t) => t.id.equals(a.id))).getSingle();
+      expect(after.code, a.code);
+      expect(after.nameAr, 'خلاط كروم');
+    });
+
+    test('maker codes stay text: leading zeros, letters and hyphens are not lost', () async {
+      for (final code in ['00123', '0-12-A', 'SP-0090X']) {
+        final p = await products.create(ProductInput(nameAr: code, manufacturerCode: code));
+        final back = await (db.select(db.products)..where((t) => t.id.equals(p.id))).getSingle();
+        expect(back.manufacturerCode, code);
+      }
+    });
+
+    test('the match key ignores spaces, case and Arabic digits but not zeros or hyphens', () {
+      expect(matchKeyOf(' ab 12 '), 'AB12');
+      expect(matchKeyOf('٠١٢'), '012');
+      expect(matchKeyOf('012'), isNot(matchKeyOf('12')));
+      expect(matchKeyOf('A-1'), isNot(matchKeyOf('A1')));
+    });
+
+    test('the same maker code under the same brand and variant is a duplicate', () async {
+      final brand = await catalog.saveBrand(name: 'Ideal');
+      final other = await catalog.saveBrand(name: 'SaniPure');
+      await products.create(ProductInput(nameAr: 'خلاط', manufacturerCode: 'A-1', brandId: brand));
+      await expectLater(
+        products.create(ProductInput(nameAr: 'حوض', manufacturerCode: ' a-1', brandId: brand)),
+        throwsA(isA<ValidationException>().having((e) => e.message, 'message', contains('خلاط'))),
+      );
+      // Another variant, or another brand, is another product.
+      await products.create(ProductInput(nameAr: 'خلاط أسود', manufacturerCode: 'A-1', variant: 'أسود', brandId: brand));
+      await products.create(ProductInput(nameAr: 'خلاط', manufacturerCode: 'A-1', brandId: other));
+    });
+
+    test('every master field is kept', () async {
+      final brand = await catalog.saveBrand(name: 'Ideal');
+      final cat = await catalog.saveCategory(name: 'أحواض');
+      final sub = await catalog.saveCategory(name: 'معلقة', parentId: cat);
+      final p = await products.create(ProductInput(
+        nameAr: 'حوض',
+        manufacturerCode: 'A-1',
+        description: 'وصف',
+        brandId: brand,
+        categoryId: cat,
+        subcategoryId: sub,
+        series: 'Connect',
+        dimensions: '60x40',
+        variant: 'أبيض',
+        finish: 'لامع',
+        unitId: pieceId,
+        barcode: '622000',
+        technicalSpecs: 'مواصفات',
+        vatBasis: VatStatus.inclusive,
+        vatRateBp: 1400,
+      ));
+      expect(p.description, 'وصف');
+      expect(p.subcategoryId, sub);
+      expect(p.series, 'Connect');
+      expect(p.dimensions, '60x40');
+      expect(p.variant, 'أبيض');
+      expect(p.finish, 'لامع');
+      expect(p.barcode, '622000');
+      expect(p.technicalSpecs, 'مواصفات');
+      expect(p.vatBasis, VatStatus.inclusive);
+      expect(p.vatRateBp, 1400);
+      // Search finds it by maker code and by barcode.
+      expect((await products.search('a-1')).single.product.id, p.id);
+      expect((await products.search('622000')).single.product.id, p.id);
+    });
+
+    test('subcategories stay under their category and out of the main list', () async {
+      final cat = await catalog.saveCategory(name: 'أحواض');
+      await catalog.saveCategory(name: 'معلقة', parentId: cat);
+      expect((await catalog.watchCategories().first).map((c) => c.nameAr), ['أحواض']);
+      expect((await catalog.watchSubcategories().first).single.parentId, cat);
     });
 
     test('list shows stock, names and low-stock flag', () async {
@@ -105,10 +202,12 @@ void main() {
       await products.create(
         ProductInput(code: 'A1', nameAr: 'خلاط حوض', categoryId: cat, unitId: pieceId, minStock: qtyOf(5)),
         openingQty: qtyOf(3),
+        openingCost: 100,
       );
       await products.create(
         ProductInput(code: 'B1', nameAr: 'حوض', unitId: pieceId, minStock: qtyOf(1)),
         openingQty: qtyOf(10),
+        openingCost: 100,
       );
       final all = await products.watchList().first;
       expect(all.map((r) => r.product.code), ['B1', 'A1']); // ordered by name
@@ -132,24 +231,11 @@ void main() {
       expect(hits.map((r) => r.product.code), ['X1', 'X10']);
     });
 
-    test('price changes are audited', () async {
-      final p = await products.create(const ProductInput(code: 'A1', nameAr: 'خلاط', priceRetail: 10000));
-      await products.update(p.id, const ProductInput(code: 'A1', nameAr: 'خلاط', priceRetail: 12000));
-      final log = (await db.select(db.auditLogs).get()).last;
-      expect(log.details, contains('120.00'));
-    });
-
-    test('customer price level picks the right price', () async {
-      final p = await products.create(const ProductInput(
-        code: 'A1',
-        nameAr: 'خلاط',
-        priceRetail: 300,
-        priceWholesale: 200,
-        priceContractor: 100,
-      ));
-      expect(p.priceFor(PriceLevel.retail), 300);
-      expect(p.priceFor(PriceLevel.wholesale), 200);
-      expect(p.priceFor(PriceLevel.contractor), 100);
+    test('a customer level maps to a pricing type', () {
+      expect(PricingType.ofLevel(PriceLevel.retail), PricingType.b2c);
+      expect(PricingType.ofLevel(PriceLevel.wholesale), PricingType.b2b);
+      expect(PricingType.ofLevel(PriceLevel.contractor), PricingType.project);
+      expect(PricingType.ofLevel(null), PricingType.b2c);
     });
   });
 
@@ -158,6 +244,7 @@ void main() {
       final p = await products.create(
         ProductInput(code: 'A1', nameAr: 'خلاط', unitId: pieceId),
         openingQty: qtyOf(2),
+        openingCost: 100,
       );
       final stock = StockService(db);
       await expectLater(

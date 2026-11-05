@@ -102,24 +102,24 @@ class StockService {
       if (delta < 0 && after < 0) {
         throw ValidationException('الرصيد بعد التسوية سيكون أقل من صفر');
       }
+      final fifo = FifoService(db);
+      final cost = await fifo.lastKnownCost(productId) ?? 0;
       await record(
         productId: productId,
         type: StockMovementType.adjustment,
         qty: delta,
-        unitCost: product.costPrice,
+        unitCost: cost,
         note: reason.trim(),
         createdBy: userId,
       );
-      final fifo = FifoService(db);
       if (delta > 0) {
-        await fifo.addLayer(
-            productId: productId, qty: delta, unitCost: product.costPrice, sourceType: 'adjustment');
+        await fifo.addLayer(productId: productId, qty: delta, unitCost: cost, sourceType: 'adjustment');
       } else {
         await fifo.consume(
           productId: productId,
           qty: -delta,
           refType: 'adjustment',
-          fallbackCost: product.costPrice,
+          fallbackCost: cost,
         );
       }
       await AuditService(db).log(

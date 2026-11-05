@@ -50,12 +50,12 @@ void main() {
       final invoice =
           await sales.post(sale(1, 30000), userId: shop.admin.id, belowCostReason: 'عميل قديم');
       final log = await ApprovalService(shop.db).forDocument('sales_invoice', invoice.id);
-      expect(log.single.kind, ApprovalKind.belowCost);
-      expect(log.single.reason, 'عميل قديم');
+      final belowCost = log.firstWhere((a) => a.kind == ApprovalKind.belowCost);
+      expect(belowCost.reason, 'عميل قديم');
     });
 
-    test('selling at cost is fine for a cashier', () async {
-      await sales.post(sale(1, 40000), userId: shop.cashier.id);
+    test('selling at cost is not below cost', () async {
+      await sales.post(sale(1, 40000), userId: shop.admin.id);
     });
 
     test('a discount that pushes the line under cost counts', () async {

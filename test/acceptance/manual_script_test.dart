@@ -26,6 +26,7 @@ import 'package:sanitaryware_erp/core/services/party_service.dart';
 import 'package:sanitaryware_erp/core/services/payment_service.dart';
 import 'package:sanitaryware_erp/core/services/purchase_service.dart';
 import 'package:sanitaryware_erp/core/services/return_service.dart';
+import 'package:sanitaryware_erp/core/services/fifo_service.dart';
 import 'package:sanitaryware_erp/core/services/sales_service.dart';
 import 'package:sanitaryware_erp/core/services/settings_service.dart';
 import 'package:sanitaryware_erp/core/services/statement_service.dart';
@@ -137,17 +138,18 @@ void main() {
       user: admin,
     );
 
-    // 3. Cash, credit and partial sales (by the cashier).
+    // 3. Cash, credit and partial sales. Typed prices need the admin; a
+    // cashier selling from a price list is in pricing_policy_test.
     final c1 = await parties.saveCustomer(const CustomerInput(name: 'عميل آجل'));
     final c2 = await parties.saveCustomer(const CustomerInput(name: 'مقاول', priceLevel: 'contractor'));
     final sales = SalesService(db);
     final s1 = await sales.post(
       SaleInput(lines: [SaleLineInput(productId: byCode['P01']!, qty: qtyOf(2), unitPrice: 15000)], paidAmount: 30000),
-      userId: cashier.id,
+      userId: admin.id,
     );
     final s2 = await sales.post(
       SaleInput(customerId: c1, lines: [SaleLineInput(productId: byCode['P02']!, qty: qtyOf(3), unitPrice: 30000)]),
-      userId: cashier.id,
+      userId: admin.id,
     );
     await sales.post(
       SaleInput(
@@ -158,7 +160,7 @@ void main() {
         ],
         paidAmount: 10000,
       ),
-      userId: cashier.id,
+      userId: admin.id,
     );
 
     // 4. One cheque clears, one bounces.
@@ -172,7 +174,7 @@ void main() {
           cheque: ChequeInput(number: no, dueDate: DateTime.now().add(const Duration(days: 3))),
           invoiceId: invoiceId,
         ),
-        userId: cashier.id,
+        userId: admin.id,
       );
       return (await (db.select(db.cheques)..where((t) => t.paymentId.equals(pay.id))).getSingle()).id;
     }
@@ -192,7 +194,7 @@ void main() {
     // 6. The admin cancels an invoice; the cashier cannot.
     final s4 = await sales.post(
       SaleInput(customerId: c2, lines: [SaleLineInput(productId: byCode['P01']!, qty: qtyOf(1), unitPrice: 15000)]),
-      userId: cashier.id,
+      userId: admin.id,
     );
     await sales.cancel(s4.id, reason: 'خطأ في العميل', user: admin);
     await expectLater(sales.cancel(s1.id, reason: 'x', user: cashier), throwsA(isA<ValidationException>()));
@@ -255,7 +257,7 @@ void main() {
     final backup = await actions.backupNow(userId: admin.id);
     await sales.post(
       SaleInput(customerId: c2, lines: [SaleLineInput(productId: byCode['P02']!, qty: qtyOf(5), unitPrice: 30000)]),
-      userId: cashier.id,
+      userId: admin.id,
     );
     expect(await balances.customerBalance(c2), 180000);
     await actions.restore(backup, userId: admin.id);
@@ -307,8 +309,13 @@ void main() {
       final sales = SalesService(db);
       await expectLater(sales.post(sale(qty: 0), userId: admin.id), throwsA(isA<ValidationException>()));
       expect((await sales.post(sale(price: 0), userId: admin.id)).total, 0);
-      await (db.update(db.products)..where((t) => t.id.equals(productId)))
-          .write(const ProductsCompanion(costPrice: Value(50000)));
+      // Stock arrives at a cost of 500.00, ahead of anything else in FIFO order.
+      await FifoService(db).addLayer(
+        productId: productId,
+        qty: 5000,
+        unitCost: 50000,
+        receivedAt: DateTime(2000),
+      );
       await expectLater(sales.post(sale(price: 100), userId: admin.id), throwsA(isA<BelowCostException>()));
       expect(
         (await sales.post(sale(price: 100), userId: admin.id, belowCostReason: 'تصفية')).total,

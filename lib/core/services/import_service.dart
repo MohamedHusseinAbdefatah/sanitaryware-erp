@@ -32,16 +32,16 @@ class _Field {
 const _fields = {
   ImportKind.products: [
     _Field('code', ['الكود', 'كود', 'كود الصنف', 'code'], required: true),
+    _Field('manufacturerCode', ['كود الشركة', 'manufacturer code']),
     _Field('name', ['اسم الصنف', 'الاسم', 'الصنف', 'name'], required: true),
     _Field('category', ['التصنيف', 'الفئة', 'category']),
     _Field('brand', ['الماركة', 'brand']),
     _Field('unit', ['الوحدة', 'unit']),
-    _Field('cost', ['سعر التكلفة', 'التكلفة', 'cost']),
-    _Field('retail', ['سعر القطاعي', 'قطاعي', 'السعر', 'price']),
-    _Field('wholesale', ['سعر الجملة', 'جملة']),
-    _Field('contractor', ['سعر المقاولين', 'مقاولين']),
+    _Field('variant', ['اللون', 'color', 'variant']),
     _Field('minStock', ['حد الطلب']),
     _Field('opening', ['رصيد أول المدة', 'الرصيد', 'الكمية']),
+    // The actual cost of the opening stock, not a list price.
+    _Field('openingCost', ['تكلفة رصيد أول المدة', 'سعر التكلفة', 'التكلفة', 'cost']),
   ],
   ImportKind.customers: [
     _Field('name', ['اسم العميل', 'الاسم', 'العميل', 'name'], required: true),
@@ -73,6 +73,7 @@ class ImportRow {
   /// Parsed values ready to save, filled in when the row is valid.
   Object? input;
   int openingQty = 0;
+  int? openingCost;
   String? categoryName;
   String? brandName;
 }
@@ -202,17 +203,16 @@ class ImportService {
             await products.create(
               ProductInput(
                 code: p.code,
+                manufacturerCode: p.manufacturerCode,
+                variant: p.variant,
                 nameAr: p.nameAr,
                 categoryId: categoryId,
                 brandId: brandId,
                 unitId: p.unitId,
-                costPrice: p.costPrice,
-                priceRetail: p.priceRetail,
-                priceWholesale: p.priceWholesale,
-                priceContractor: p.priceContractor,
                 minStock: p.minStock,
               ),
               openingQty: row.openingQty,
+              openingCost: row.openingCost,
               userId: user.id,
             );
           }
@@ -256,17 +256,6 @@ class ImportService {
       }
       final allowDecimal = unit?.allowDecimal ?? false;
 
-      int money(String key, String label) {
-        final text = (v[key] ?? '').trim();
-        if (text.isEmpty) return 0;
-        final m = parseMoney(text);
-        if (m == null || m < 0) {
-          row.errors.add('$label غير صحيح: "$text"');
-          return 0;
-        }
-        return m;
-      }
-
       int qty(String key, String label) {
         final text = (v[key] ?? '').trim();
         if (text.isEmpty) return 0;
@@ -280,15 +269,25 @@ class ImportService {
 
       final input = ProductInput(
         code: code,
+        manufacturerCode: (v['manufacturerCode'] ?? '').trim().isEmpty ? code : v['manufacturerCode']!.trim(),
+        variant: (v['variant'] ?? '').trim().isEmpty ? null : v['variant']!.trim(),
         nameAr: name,
         unitId: unit?.id,
-        costPrice: money('cost', 'سعر التكلفة'),
-        priceRetail: money('retail', 'سعر القطاعي'),
-        priceWholesale: money('wholesale', 'سعر الجملة'),
-        priceContractor: money('contractor', 'سعر المقاولين'),
         minStock: qty('minStock', 'حد الطلب'),
       );
       row.openingQty = qty('opening', 'رصيد أول المدة');
+      final costText = (v['openingCost'] ?? '').trim();
+      if (costText.isNotEmpty) {
+        final c = parseMoney(costText);
+        if (c == null || c < 0) {
+          row.errors.add('تكلفة رصيد أول المدة غير صحيحة: "$costText"');
+        } else {
+          row.openingCost = c;
+        }
+      }
+      if (row.openingQty > 0 && costText.isEmpty) {
+        row.errors.add('رصيد أول المدة يحتاج التكلفة الفعلية؛ لا تُفترض تكلفة');
+      }
       final category = (v['category'] ?? '').trim();
       final brand = (v['brand'] ?? '').trim();
       row.categoryName = category.isEmpty ? null : category;

@@ -150,7 +150,6 @@ class _NewOrderDialogState extends ConsumerState<_NewOrderDialog> {
               ProductSearchField(
                 autofocus: false,
                 onSelected: (r) => setState(() => _lines.add(_NewLine(r))),
-                trailing: (r) => formatMoney(r.product.costPrice),
               ),
               for (final l in _lines)
                 Row(
@@ -175,7 +174,7 @@ class _NewOrderDialogState extends ConsumerState<_NewOrderDialog> {
                 ),
               TextField(controller: _notes, decoration: const InputDecoration(labelText: Strings.notes)),
               const SizedBox(height: 8),
-              const Text('السعر يُثبَّت عند الاعتماد من قائمة أسعار المورد.',
+              const Text('التكلفة تُثبَّت عند الاعتماد من القائمة السارية وسياسة الشراء المسجلة لهذا المورد؛ بدون سياسة لا يُفترض خصم وتُدخل التكلفة يدوياً.',
                   style: TextStyle(fontSize: 12)),
             ],
           ),
@@ -327,7 +326,7 @@ class _OrderDetailDialogState extends ConsumerState<_OrderDetailDialog> {
                       Text(formatQty(l.line.qtyReceived)),
                       Text(formatQty(l.remaining)),
                       Text(l.line.listPrice == null ? '—' : formatMoney(l.line.listPrice!)),
-                      Text(status == PoStatus.draft ? '—' : (l.line.discountBp / 100).toString()),
+                      Text(status == PoStatus.draft ? '—' : ((l.line.discountBp + l.line.extraDiscountBp) / 100).toString()),
                       Text(status == PoStatus.draft ? 'عند الاعتماد' : formatMoney(l.line.unitCost)),
                     ]),
                 ],
@@ -404,7 +403,25 @@ class _OrderDetailDialogState extends ConsumerState<_OrderDetailDialog> {
       actions: [
         if (status == PoStatus.draft)
           FilledButton(
-            onPressed: () => _act((u) => svc.approve(widget.orderId, user: u)),
+            onPressed: () async {
+              // A line with no recorded policy needs its cost typed; none is assumed.
+              final d = await svc.detail(widget.orderId);
+              final buying = ref.read(buyingPolicyServiceProvider);
+              final missing = <PoLineRow>[];
+              for (final l in d.lines) {
+                final quotes = await buying.quotes(l.line.productId, supplierId: d.order.supplierId);
+                if (quotes.where((q) => !q.missingPolicy).length != 1) missing.add(l);
+              }
+              if (!context.mounted) return;
+              var manual = const <int, int>{};
+              if (missing.isNotEmpty) {
+                final typed = await showDialog<Map<int, int>>(
+                    context: context, builder: (_) => _ManualCostsDialog(lines: missing));
+                if (typed == null) return;
+                manual = typed;
+              }
+              await _act((u) => svc.approve(widget.orderId, manualCosts: manual, user: u));
+            },
             child: const Text('اعتماد وتثبيت السعر'),
           ),
         if (status == PoStatus.draft || status == PoStatus.approved)
@@ -413,6 +430,65 @@ class _OrderDetailDialogState extends ConsumerState<_OrderDetailDialog> {
             child: const Text('إلغاء الأمر'),
           ),
         TextButton(onPressed: () => Navigator.pop(context), child: const Text(Strings.close)),
+      ],
+    );
+  }
+}
+
+/// The cost of lines with no recorded buying policy, typed from the supplier's
+/// own offer.
+class _ManualCostsDialog extends StatefulWidget {
+  const _ManualCostsDialog({required this.lines});
+
+  final List<PoLineRow> lines;
+
+  @override
+  State<_ManualCostsDialog> createState() => _ManualCostsDialogState();
+}
+
+class _ManualCostsDialogState extends State<_ManualCostsDialog> {
+  late final _fields = {for (final l in widget.lines) l.line.id: TextEditingController()};
+
+  @override
+  void dispose() {
+    for (final c in _fields.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  void _save() {
+    final result = <int, int>{};
+    for (final e in _fields.entries) {
+      final v = parseMoney(e.value.text);
+      if (v == null) return;
+      result[e.key] = v;
+    }
+    Navigator.pop(context, result);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('تكلفة أصناف بلا سياسة شراء مسجلة'),
+      content: SizedBox(
+        width: 480,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final l in widget.lines)
+                TextField(
+                  controller: _fields[l.line.id],
+                  decoration: InputDecoration(labelText: '${l.productCode} — ${l.productName}'),
+                ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text(Strings.cancel)),
+        FilledButton(onPressed: _save, child: const Text('اعتماد')),
       ],
     );
   }

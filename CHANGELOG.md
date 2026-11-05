@@ -2,6 +2,40 @@
 
 Versions follow `version:` in `pubspec.yaml` and `lib/core/version.dart`.
 
+## 1.2.0
+
+Blueprint section 3, Product Master & Price Lists. Each requirement is traced
+to its code and test in `docs/section3_product_master_price_lists.md`. The
+database upgrades in place (schema 11) and keeps all existing data.
+
+- The product is master data only: a fixed Product ID, the maker's code kept
+  as text, a match key, and brand, category, subcategory, series, description,
+  dimensions, variant, finish, unit, barcode, specs and verified VAT. It no
+  longer holds any price, cost or balance.
+- Cost comes only from FIFO layers. Weighted average cost is gone. Opening
+  stock needs its quantity, location and actual cost.
+- Every price list is a dated version with its own ID, brand, type, currency,
+  period, import date, source, row count and VAT status. A new full version
+  closes the earlier period; old rows are never changed.
+- Two ways in: a full file, or a single product or small group with no file.
+  Known codes get a price, new codes get a Product ID, and duplicate or
+  ambiguous rows stop in a review queue.
+- Buying policies (supplier + brand + list) and selling policies (brand + list
+  + pricing type) are separate. Priority is product, then category, then all.
+  With no buying policy no discount is assumed.
+- Every document line keeps the version it used and each discount. An approved
+  order keeps its version when a later one starts.
+- An invoice discount is split over its lines exactly, for profit and tax.
+- Before approval a sale shows the list price, each discount and its source,
+  the final price, VAT, FIFO cost, gross profit, margin, markup and any
+  approval needed.
+- A cashier cannot post a price that is not the approved list price, a discount
+  past the limit, or a margin under the minimum; an admin can, and it is logged.
+
+After upgrading: prices that were on products, old supplier lists and old
+supplier discounts are kept but wait for review on the Price Lists screen.
+Until then those products have no approved price.
+
 ## 1.1.0
 
 For the supplier-price-list and orders upgrade. The database upgrades in

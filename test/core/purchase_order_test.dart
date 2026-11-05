@@ -4,7 +4,7 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sanitaryware_erp/core/db/database.dart';
 import 'package:sanitaryware_erp/core/services/balance_service.dart';
-import 'package:sanitaryware_erp/core/services/discount_service.dart';
+import 'package:sanitaryware_erp/core/services/buying_policy_service.dart';
 import 'package:sanitaryware_erp/core/services/doc_types.dart';
 import 'package:sanitaryware_erp/core/services/errors.dart';
 import 'package:sanitaryware_erp/core/services/payment_service.dart';
@@ -22,15 +22,33 @@ void main() {
     shop = await Shop.open();
     orders = PurchaseOrderService(shop.db);
     lists = PriceListService(shop.db);
-    await lists.create(
-      supplierId: shop.supplierId,
-      name: 'القديمة',
-      effectiveDate: DateTime(2026, 1, 1),
-      rows: const [PriceRowInput(name: 'خلاط', price: 100000, supplierCode: 'M1')],
+    final list = await lists.createVersion(
+      PriceListHeader(
+        name: 'القديمة',
+        brandId: shop.brandId,
+        listType: 'عام',
+        effectiveFrom: DateTime.now().subtract(const Duration(days: 30)),
+      ),
+      rows: [PriceRowInput(name: 'خلاط', price: 100000, productId: shop.mixer.id)],
+      user: shop.admin,
     );
-    await DiscountService(shop.db)
-        .addRule(supplierId: shop.supplierId, scope: DiscountScope.supplier, percentBp: 1000);
+    await BuyingPolicyService(shop.db).add(
+      BuyingPolicyInput(
+        supplierId: shop.supplierId,
+        brandId: shop.brandId,
+        priceListId: list.id,
+        baseDiscountBp: 1000,
+      ),
+      user: shop.admin,
+    );
   });
+
+  /// A new, dearer version arrives after approval.
+  Future<void> newVersion() => lists.createVersion(
+        PriceListHeader(name: 'الجديدة', brandId: shop.brandId, listType: 'عام', effectiveFrom: DateTime.now()),
+        rows: [PriceRowInput(name: 'خلاط', price: 120000, productId: shop.mixer.id)],
+        user: shop.admin,
+      );
   tearDown(() => shop.close());
 
   Future<int> draft(int count) => orders.createDraft(
@@ -42,13 +60,7 @@ void main() {
   test('approval freezes the list price and discount', () async {
     final id = await draft(10);
     await orders.approve(id, user: shop.admin);
-    // A new, dearer list arrives after approval.
-    await lists.create(
-      supplierId: shop.supplierId,
-      name: 'الجديدة',
-      effectiveDate: DateTime(2026, 6, 1),
-      rows: const [PriceRowInput(name: 'خلاط', price: 120000, supplierCode: 'M1')],
-    );
+    await newVersion();
     final d = await orders.detail(id);
     final line = d.lines.single.line;
     expect(d.order.status, PoStatus.approved);
@@ -61,12 +73,7 @@ void main() {
   test('partial receipts use the frozen price and keep the order open', () async {
     final id = await draft(10);
     await orders.approve(id, user: shop.admin);
-    await lists.create(
-      supplierId: shop.supplierId,
-      name: 'الجديدة',
-      effectiveDate: DateTime(2026, 6, 1),
-      rows: const [PriceRowInput(name: 'خلاط', price: 120000, supplierCode: 'M1')],
-    );
+    await newVersion();
     final lineId = (await orders.detail(id)).lines.single.line.id;
 
     final inv = await orders.receive(id, qtyByLine: {lineId: shop.pieces(4)}, user: shop.admin);
@@ -90,7 +97,7 @@ void main() {
         throwsA(isA<ValidationException>()));
   });
 
-  test('a manual cost overrides the lists, and no list falls back to product cost', () async {
+  test('a manual cost overrides the lists; a line with neither list nor cost is refused', () async {
     final id = await orders.createDraft(
       supplierId: shop.supplierId,
       lines: [
@@ -100,11 +107,17 @@ void main() {
       user: shop.admin,
     );
     final mixerLine = (await orders.detail(id)).lines.first.line.id;
-    await orders.approve(id, manualCosts: {mixerLine: 80000}, user: shop.admin);
+    // The first version's list closed for the mixer's list type, so the pipe has no price in force.
+    await expectLater(
+      orders.approve(id, manualCosts: {mixerLine: 80000}, user: shop.admin),
+      throwsA(isA<ValidationException>()),
+    );
+    final pipeLine = (await orders.detail(id)).lines.last.line.id;
+    await orders.approve(id, manualCosts: {mixerLine: 80000, pipeLine: 1500}, user: shop.admin);
     final d = await orders.detail(id);
     expect(d.lines[0].line.unitCost, 80000);
     expect(d.lines[0].line.listPrice, isNull);
-    expect(d.lines[1].line.unitCost, 0); // no list, product cost still 0
+    expect(d.lines[1].line.unitCost, 1500);
   });
 
   test('drafts can be cancelled, received orders cannot', () async {

@@ -1,7 +1,7 @@
 import 'package:drift/drift.dart';
 
 import '../db/database.dart';
-import '../money.dart';
+import '../pricing_math.dart';
 import '../quantity.dart';
 import '../search_text.dart';
 import 'audit_service.dart';
@@ -15,15 +15,6 @@ abstract final class PriceLevel {
   static const contractor = 'contractor';
 
   static const all = [retail, wholesale, contractor];
-}
-
-extension ProductPrices on Product {
-  /// Default selling price for a customer's price level.
-  int priceFor(String level) => switch (level) {
-        PriceLevel.wholesale => priceWholesale,
-        PriceLevel.contractor => priceContractor,
-        _ => priceRetail,
-      };
 }
 
 /// A product with the names of its category, brand and unit and its
@@ -48,17 +39,26 @@ class ProductRow {
   bool get isLowStock => product.minStock > 0 && stock <= product.minStock;
 }
 
+/// Master data only (blueprint 3.1): no price, no cost, no balance. Blank
+/// [code] means the next Product ID is given automatically.
 class ProductInput {
   const ProductInput({
-    required this.code,
+    this.code = '',
     required this.nameAr,
+    this.manufacturerCode = '',
+    this.description,
     this.categoryId,
+    this.subcategoryId,
     this.brandId,
+    this.series,
+    this.dimensions,
+    this.variant,
+    this.finish,
     this.unitId,
-    this.costPrice = 0,
-    this.priceRetail = 0,
-    this.priceWholesale = 0,
-    this.priceContractor = 0,
+    this.barcode,
+    this.technicalSpecs,
+    this.vatBasis,
+    this.vatRateBp,
     this.minStock = 0,
     this.isActive = true,
     this.notes,
@@ -66,13 +66,20 @@ class ProductInput {
 
   final String code;
   final String nameAr;
+  final String manufacturerCode;
+  final String? description;
   final int? categoryId;
+  final int? subcategoryId;
   final int? brandId;
+  final String? series;
+  final String? dimensions;
+  final String? variant;
+  final String? finish;
   final int? unitId;
-  final int costPrice;
-  final int priceRetail;
-  final int priceWholesale;
-  final int priceContractor;
+  final String? barcode;
+  final String? technicalSpecs;
+  final String? vatBasis;
+  final int? vatRateBp;
   final int minStock;
   final bool isActive;
   final String? notes;
@@ -125,7 +132,7 @@ class ProductService {
         .where((r) => categoryId == null || r.product.categoryId == categoryId)
         .where((r) => !lowStockOnly || r.isLowStock)
         .where((r) => matchesSearch(
-            search, [r.product.code, r.product.nameAr, r.brandName, r.categoryName]))
+            search, [r.product.code, r.product.manufacturerCode, r.product.barcode, r.product.nameAr, r.brandName, r.categoryName]))
         .toList());
   }
 
@@ -134,12 +141,15 @@ class ProductService {
     final rows = await _rows(where: 'WHERE p.is_active = 1').get();
     final folded = foldForSearch(query);
     final hits = rows
-        .where((r) => matchesSearch(query, [r.product.code, r.product.nameAr, r.brandName]))
+        .where((r) => matchesSearch(query, [r.product.code, r.product.manufacturerCode, r.product.barcode, r.product.nameAr, r.brandName]))
         .toList()
       ..sort((a, b) {
-        final ac = foldForSearch(a.product.code) == folded ? 0 : 1;
-        final bc = foldForSearch(b.product.code) == folded ? 0 : 1;
-        return ac - bc;
+        int rank(ProductRow r) => foldForSearch(r.product.code) == folded ||
+                foldForSearch(r.product.manufacturerCode) == folded ||
+                foldForSearch(r.product.barcode ?? '') == folded
+            ? 0
+            : 1;
+        return rank(a) - rank(b);
       });
     return hits.take(limit).toList();
   }
@@ -147,39 +157,65 @@ class ProductService {
   Future<ProductRow> row(int id) =>
       _rows(where: 'WHERE p.id = ?', args: [Variable.withInt(id)]).getSingle();
 
-  /// Creates a product, with an opening stock movement if [openingQty] > 0.
-  Future<Product> create(ProductInput input, {int openingQty = 0, int? userId}) {
+  /// Creates a product. Opening stock is by quantity, location and actual
+  /// cost (blueprint 10), never by list price: [openingQty] > 0 needs
+  /// [openingCost], and makes a FIFO layer.
+  Future<Product> create(
+    ProductInput input, {
+    int openingQty = 0,
+    int? openingCost,
+    int locationId = mainLocationId,
+    int? userId,
+  }) {
     return db.transaction(() async {
       final unit = await _validate(input);
       if (openingQty < 0) throw ValidationException('رصيد أول المدة لا يمكن أن يكون سالباً');
+      if (openingQty > 0 && openingCost == null) {
+        throw ValidationException('أدخل التكلفة الفعلية لرصيد أول المدة');
+      }
+      if ((openingCost ?? 0) < 0) throw ValidationException('التكلفة لا يمكن أن تكون سالبة');
       _checkWholeQty(openingQty, unit, 'رصيد أول المدة');
 
+      final code = input.code.trim().isEmpty ? await _nextProductId() : input.code.trim();
+      final clash = await (db.select(db.products)..where((t) => t.code.equals(code))).getSingleOrNull();
+      if (clash != null) throw ValidationException('الكود "$code" مستخدم للصنف "${clash.nameAr}"');
+
       final id = await db.into(db.products).insert(ProductsCompanion.insert(
-            code: input.code.trim(),
+            code: code,
             nameAr: input.nameAr.trim(),
             categoryId: Value(input.categoryId),
             brandId: Value(input.brandId),
             unitId: Value(input.unitId),
-            costPrice: Value(input.costPrice),
-            priceRetail: Value(input.priceRetail),
-            priceWholesale: Value(input.priceWholesale),
-            priceContractor: Value(input.priceContractor),
             minStock: Value(input.minStock),
             isActive: Value(input.isActive),
             notes: Value(_blankToNull(input.notes)),
+            manufacturerCode: Value(input.manufacturerCode.trim()),
+            matchKey: Value(matchKeyOf(input.manufacturerCode)),
+            description: Value(_blankToNull(input.description)),
+            subcategoryId: Value(input.subcategoryId),
+            series: Value(_blankToNull(input.series)),
+            dimensions: Value(_blankToNull(input.dimensions)),
+            variant: Value(_blankToNull(input.variant)),
+            finish: Value(_blankToNull(input.finish)),
+            barcode: Value(_blankToNull(input.barcode)),
+            technicalSpecs: Value(_blankToNull(input.technicalSpecs)),
+            vatBasis: Value(_blankToNull(input.vatBasis)),
+            vatRateBp: Value(input.vatRateBp),
           ));
       if (openingQty > 0) {
         await StockService(db).record(
           productId: id,
           type: StockMovementType.opening,
           qty: openingQty,
-          unitCost: input.costPrice,
+          unitCost: openingCost!,
           createdBy: userId,
+          locationId: locationId,
         );
         await FifoService(db).addLayer(
           productId: id,
           qty: openingQty,
-          unitCost: input.costPrice,
+          unitCost: openingCost,
+          locationId: locationId,
           sourceType: 'opening',
         );
       }
@@ -194,66 +230,88 @@ class ProductService {
     });
   }
 
-  /// Updates a product. Price changes are written to the audit log.
+  /// Updates a product. The Product ID itself can never change.
   Future<void> update(int id, ProductInput input, {int? userId}) {
     return db.transaction(() async {
       final old = await (db.select(db.products)..where((t) => t.id.equals(id))).getSingle();
+      if (input.code.trim().isNotEmpty && input.code.trim() != old.code) {
+        throw ValidationException('رقم الصنف ثابت ولا يتغير (${old.code})');
+      }
       await _validate(input, ignoreId: id);
       await (db.update(db.products)..where((t) => t.id.equals(id))).write(ProductsCompanion(
-            code: Value(input.code.trim()),
             nameAr: Value(input.nameAr.trim()),
             categoryId: Value(input.categoryId),
             brandId: Value(input.brandId),
             unitId: Value(input.unitId),
-            costPrice: Value(input.costPrice),
-            priceRetail: Value(input.priceRetail),
-            priceWholesale: Value(input.priceWholesale),
-            priceContractor: Value(input.priceContractor),
             minStock: Value(input.minStock),
             isActive: Value(input.isActive),
             notes: Value(_blankToNull(input.notes)),
+            manufacturerCode: Value(input.manufacturerCode.trim()),
+            matchKey: Value(matchKeyOf(input.manufacturerCode)),
+            description: Value(_blankToNull(input.description)),
+            subcategoryId: Value(input.subcategoryId),
+            series: Value(_blankToNull(input.series)),
+            dimensions: Value(_blankToNull(input.dimensions)),
+            variant: Value(_blankToNull(input.variant)),
+            finish: Value(_blankToNull(input.finish)),
+            barcode: Value(_blankToNull(input.barcode)),
+            technicalSpecs: Value(_blankToNull(input.technicalSpecs)),
+            vatBasis: Value(_blankToNull(input.vatBasis)),
+            vatRateBp: Value(input.vatRateBp),
             updatedAt: Value(DateTime.now()),
           ));
-
-      final changes = <String>[
-        if (old.costPrice != input.costPrice)
-          'التكلفة ${formatMoney(old.costPrice)} ← ${formatMoney(input.costPrice)}',
-        if (old.priceRetail != input.priceRetail)
-          'قطاعي ${formatMoney(old.priceRetail)} ← ${formatMoney(input.priceRetail)}',
-        if (old.priceWholesale != input.priceWholesale)
-          'جملة ${formatMoney(old.priceWholesale)} ← ${formatMoney(input.priceWholesale)}',
-        if (old.priceContractor != input.priceContractor)
-          'مقاولين ${formatMoney(old.priceContractor)} ← ${formatMoney(input.priceContractor)}',
-      ];
       await AuditService(db).log(
         action: AuditAction.update,
         entity: 'product',
         entityId: id,
         userId: userId,
-        details: changes.isEmpty ? null : changes.join('، '),
       );
     });
   }
 
+  /// Products with this maker's code under this brand, in any variant.
+  Future<List<Product>> withMatchKey(String manufacturerCode, int? brandId) {
+    final key = matchKeyOf(manufacturerCode);
+    if (key.isEmpty) return Future.value(const []);
+    return (db.select(db.products)
+          ..where((t) =>
+              t.matchKey.equals(key) & (brandId == null ? t.brandId.isNull() : t.brandId.equals(brandId))))
+        .get();
+  }
+
+  Future<String> _nextProductId() async {
+    // Taken from the highest id ever used, so an id is never reused.
+    final row = await db.customSelect('SELECT COALESCE(MAX(id), 0) + 1 AS n FROM products').getSingle();
+    var n = row.read<int>('n');
+    while (true) {
+      final code = 'P-${n.toString().padLeft(6, '0')}';
+      final used = await (db.select(db.products)..where((t) => t.code.equals(code))).getSingleOrNull();
+      if (used == null) return code;
+      n++;
+    }
+  }
+
   /// Returns the product's unit (null if none) after checking [input].
   Future<Unit?> _validate(ProductInput input, {int? ignoreId}) async {
-    final code = input.code.trim();
-    if (code.isEmpty) throw ValidationException('كود الصنف مطلوب');
     if (input.nameAr.trim().isEmpty) throw ValidationException('اسم الصنف مطلوب');
-    for (final price in [
-      input.costPrice,
-      input.priceRetail,
-      input.priceWholesale,
-      input.priceContractor,
-    ]) {
-      if (price < 0) throw ValidationException('الأسعار لا يمكن أن تكون سالبة');
-    }
     if (input.minStock < 0) throw ValidationException('حد الطلب لا يمكن أن يكون سالباً');
+    if (input.vatBasis != null &&
+        input.vatBasis!.trim().isNotEmpty &&
+        !const [VatStatus.inclusive, VatStatus.exclusive].contains(input.vatBasis)) {
+      throw ArgumentError.value(input.vatBasis, 'vatBasis');
+    }
+    if (input.vatRateBp != null && (input.vatRateBp! < 0 || input.vatRateBp! > 10000)) {
+      throw ValidationException('نسبة الضريبة يجب أن تكون بين 0 و 100');
+    }
 
-    final clash = await (db.select(db.products)..where((t) => t.code.equals(code)))
-        .getSingleOrNull();
-    if (clash != null && clash.id != ignoreId) {
-      throw ValidationException('الكود "$code" مستخدم للصنف "${clash.nameAr}"');
+    // The same maker's code under the same brand and variant is a duplicate.
+    final same = await withMatchKey(input.manufacturerCode, input.brandId);
+    final variant = variantKeyOf(input.variant);
+    for (final p in same) {
+      if (p.id != ignoreId && variantKeyOf(p.variant) == variant) {
+        throw ValidationException(
+            'كود الشركة "${input.manufacturerCode.trim()}" موجود للصنف "${p.nameAr}" (${p.code})؛ لا يُكرر الصنف');
+      }
     }
 
     final unit = input.unitId == null

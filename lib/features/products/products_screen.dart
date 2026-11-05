@@ -5,7 +5,6 @@ import '../../core/auth/auth_service.dart';
 import '../../core/auth/session.dart';
 import '../../core/db/database.dart';
 import '../../core/l10n/strings.dart';
-import '../../core/money.dart';
 import '../../core/providers.dart';
 import '../../core/quantity.dart';
 import '../../core/services/product_service.dart';
@@ -13,6 +12,7 @@ import '../../core/widgets/data_list.dart';
 import 'catalog_dialog.dart';
 import 'locations_dialog.dart';
 import 'reservations_dialog.dart';
+import 'price_history_dialog.dart';
 import 'product_form_dialog.dart';
 import 'stock_dialogs.dart';
 
@@ -124,7 +124,8 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
               rowColor: (r) => r.product.isActive ? null : scheme.surfaceContainerHighest,
               trailing: (r) => _ProductMenu(row: r, isAdmin: isAdmin),
               columns: [
-                DataListColumn(Strings.code, (r) => Text(r.product.code)),
+                DataListColumn('رقم الصنف', (r) => Text(r.product.code)),
+                DataListColumn('كود الشركة', (r) => Text(r.product.manufacturerCode)),
                 DataListColumn(Strings.productName, flex: 3, (r) => Text(r.product.nameAr)),
                 DataListColumn(Strings.category, (r) => Text(r.categoryName ?? '')),
                 DataListColumn(Strings.brand, (r) => Text(r.brandName ?? '')),
@@ -139,9 +140,6 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                         : null,
                   ),
                 ),
-                DataListColumn(Strings.priceRetail, numeric: true, (r) => Text(formatMoney(r.product.priceRetail))),
-                if (isAdmin)
-                  DataListColumn(Strings.costPrice, numeric: true, (r) => Text(formatMoney(r.product.costPrice))),
               ],
             ),
           ),
@@ -175,6 +173,10 @@ class _ProductMenu extends StatelessWidget {
         PopupMenuItem(
           value: () => showStockCard(context, row),
           child: const Text(Strings.stockCard),
+        ),
+        PopupMenuItem(
+          value: () => showPriceHistory(context, row),
+          child: const Text('سجل الأسعار'),
         ),
       ],
     );

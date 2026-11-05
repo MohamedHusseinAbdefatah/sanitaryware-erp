@@ -66,10 +66,6 @@ class Strings {
   static const allowsFractionsHint = 'مثل المتر: يمكن بيع 1.5';
   static const stock = 'الرصيد';
   static const currentStock = 'الرصيد الحالي';
-  static const costPrice = 'التكلفة';
-  static const priceRetail = 'قطاعي';
-  static const priceWholesale = 'جملة';
-  static const priceContractor = 'مقاولين';
   static const minStock = 'حد الطلب';
   static const openingStock = 'رصيد أول المدة';
   static const inactiveHint = 'الصنف الموقوف لا يظهر في البيع';

@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 
+import '../pricing_math.dart';
 import 'tables.dart';
 
 part 'database.g.dart';
@@ -30,7 +31,8 @@ part 'database.g.dart';
   LayerConsumptions,
   PriceLists,
   PriceListItems,
-  DiscountRules,
+  BuyingPolicies,
+  SellingPolicies,
   Reservations,
   PurchaseOrders,
   PurchaseOrderLines,
@@ -46,7 +48,7 @@ class AppDatabase extends _$AppDatabase {
   @override
   int get schemaVersion => latestSchemaVersion;
 
-  static const latestSchemaVersion = 10;
+  static const latestSchemaVersion = 11;
 
   /// SQLite's own check of the file; false means the file is damaged.
   Future<bool> integrityOk() async {
@@ -92,6 +94,208 @@ class AppDatabase extends _$AppDatabase {
     ''');
   }
 
+  Future<void> _addColumns(Migrator m, TableInfo table, List<GeneratedColumn> columns) async {
+    if (!await _tableExists(table.actualTableName)) return;
+    for (final c in columns) {
+      if (!await _columnExists(table.actualTableName, c.name)) await m.addColumn(table, c);
+    }
+  }
+
+  /// Schema 11, blueprint section 3. Nothing is thrown away: old prices and
+  /// discounts move to where the blueprint keeps them, marked for review,
+  /// because nobody has verified them against a source yet.
+  Future<void> _upgradeToV11(Migrator m) async {
+    // Product master: new fields; the maker's code starts as the old code.
+    await _addColumns(m, products, [
+      products.manufacturerCode,
+      products.matchKey,
+      products.description,
+      products.subcategoryId,
+      products.series,
+      products.dimensions,
+      products.variant,
+      products.finish,
+      products.barcode,
+      products.technicalSpecs,
+      products.vatBasis,
+      products.vatRateBp,
+    ]);
+    final codes = await _columnExists('products', 'code')
+        ? await customSelect('SELECT id, code FROM products').get()
+        : const <QueryRow>[];
+    for (final r in codes) {
+      final code = r.read<String>('code');
+      await customStatement(
+        'UPDATE products SET manufacturer_code = ?, match_key = ? WHERE id = ?',
+        [code, matchKeyOf(code), r.read<int>('id')],
+      );
+    }
+    await m.createIndex(Index('idx_products_match_key',
+        'CREATE INDEX IF NOT EXISTS idx_products_match_key ON products (match_key)'));
+
+    // Price lists: no longer tied to a supplier. Each old list becomes a
+    // version waiting for review; its supplier and VAT tick go into the note.
+    final now = DateTime.now();
+    if (await _columnExists('price_lists', 'supplier_id')) {
+      await customStatement('ALTER TABLE price_list_items RENAME TO price_list_items_v10');
+      await customStatement('ALTER TABLE price_lists RENAME TO price_lists_v10');
+      await m.createTable(priceLists);
+      await m.createTable(priceListItems);
+      await customStatement('''
+        INSERT INTO price_lists (id, name, brand_id, list_type, version_no, currency, effective_from,
+          import_date, source_file, row_count, vat_status, status, note, created_at, updated_at)
+        SELECT l.id, l.name, l.brand_id, 'قائمة المورد ' || s.name,
+          (SELECT COUNT(*) FROM price_lists_v10 x
+            WHERE x.supplier_id = l.supplier_id AND COALESCE(x.brand_id, 0) = COALESCE(l.brand_id, 0) AND x.id <= l.id),
+          'EGP', l.effective_date, l.created_at, 'ترحيل من الإصدار السابق',
+          (SELECT COUNT(*) FROM price_list_items_v10 i WHERE i.price_list_id = l.id),
+          'unverified', 'pending_review',
+          'كانت قائمة المورد: ' || s.name ||
+            CASE l.vat_included WHEN 1 THEN ' — مسجلة شاملة الضريبة دون تحقق' ELSE ' — مسجلة بدون ضريبة دون تحقق' END ||
+            COALESCE(' — ' || l.note, ''),
+          l.created_at, l.updated_at
+        FROM price_lists_v10 l JOIN suppliers s ON s.id = l.supplier_id
+      ''');
+      await customStatement('''
+        INSERT INTO price_list_items (id, price_list_id, product_id, manufacturer_code, name, variant,
+          price, pack_size, status, review_reason)
+        SELECT id, price_list_id, product_id, supplier_code, name, colour, price, pack_size,
+          CASE WHEN product_id IS NULL THEN 'review' ELSE 'ok' END,
+          CASE WHEN product_id IS NULL THEN 'لم يطابق صنفاً في الأصناف' END
+        FROM price_list_items_v10
+      ''');
+      await customStatement('DROP TABLE price_list_items_v10');
+      await customStatement('DROP TABLE price_lists_v10');
+    }
+    await m.createIndex(Index('idx_price_list_items_list',
+        'CREATE INDEX IF NOT EXISTS idx_price_list_items_list ON price_list_items (price_list_id)'));
+    await m.createIndex(Index('idx_price_list_items_product',
+        'CREATE INDEX IF NOT EXISTS idx_price_list_items_product ON price_list_items (product_id)'));
+
+    // The old prices on the product become lists of their own, one per brand
+    // and level, waiting for review. A price of zero meant "no price".
+    if (await _columnExists('products', 'price_retail')) {
+      const levels = [
+        ('price_retail', 'legacy_retail', 'b2c', 'قطاعي'),
+        ('price_wholesale', 'legacy_wholesale', 'b2b', 'جملة'),
+        ('price_contractor', 'legacy_contractor', 'project', 'مقاولين'),
+      ];
+      for (final (column, type, pricing, label) in levels) {
+        final brands =
+            await customSelect('SELECT DISTINCT brand_id FROM products WHERE $column > 0').get();
+        for (final b in brands) {
+          final brandId = b.readNullable<int>('brand_id');
+          final listId = await into(priceLists).insert(PriceListsCompanion.insert(
+            name: 'أسعار سابقة — $label',
+            brandId: Value(brandId),
+            listType: type,
+            effectiveFrom: dayOf(now),
+            importDate: now,
+            sourceFile: const Value('ترحيل من الإصدار السابق'),
+            status: const Value('pending_review'),
+            pricingTypeOnly: Value(pricing),
+            note: const Value('أسعار كانت مسجلة على الصنف. راجعها وحدد الماركة والضريبة قبل اعتمادها.'),
+          ));
+          await customStatement(
+            'INSERT INTO price_list_items (price_list_id, product_id, manufacturer_code, name, variant, price, status) '
+            "SELECT ?, id, manufacturer_code, name_ar, variant, $column, 'ok' FROM products "
+            'WHERE $column > 0 AND ${brandId == null ? 'brand_id IS NULL' : 'brand_id = ?'}',
+            [listId, if (brandId != null) brandId],
+          );
+          await customStatement(
+            'UPDATE price_lists SET row_count = (SELECT COUNT(*) FROM price_list_items WHERE price_list_id = ?) WHERE id = ?',
+            [listId, listId],
+          );
+        }
+      }
+    }
+    // Master data holds no price and no changing cost any more.
+    for (final c in ['cost_price', 'price_retail', 'price_wholesale', 'price_contractor']) {
+      if (await _columnExists('products', c)) {
+        await customStatement('ALTER TABLE products DROP COLUMN $c');
+      }
+    }
+
+    // Policies. Old supplier discounts wait, switched off, until someone ties
+    // each to a brand and a price list.
+    await m.createTable(buyingPolicies);
+    await m.createTable(sellingPolicies);
+    await m.createIndex(Index('idx_buying_policies_supplier',
+        'CREATE INDEX IF NOT EXISTS idx_buying_policies_supplier ON buying_policies (supplier_id)'));
+    await m.createIndex(Index('idx_selling_policies_list',
+        'CREATE INDEX IF NOT EXISTS idx_selling_policies_list ON selling_policies (price_list_id)'));
+    if (await _tableExists('discount_rules')) {
+      await customStatement('''
+        INSERT INTO buying_policies (supplier_id, brand_id, scope, category_id, product_id, base_discount_bp,
+          valid_from, valid_to, is_active, note)
+        SELECT supplier_id, brand_id,
+          CASE scope WHEN 'category' THEN 'category' WHEN 'product' THEN 'product' ELSE 'all' END,
+          category_id, product_id, percent_bp, valid_from, valid_to, 0,
+          'مرحّل من خصومات الموردين — يحتاج ماركة وقائمة أسعار' || COALESCE(' — ' || note, '')
+        FROM discount_rules
+      ''');
+      await customStatement('DROP TABLE discount_rules');
+    }
+
+    // Documents keep which version they used.
+    await _addColumns(m, salesInvoiceItems, [
+      salesInvoiceItems.priceListId,
+      salesInvoiceItems.listPrice,
+      salesInvoiceItems.pricingType,
+      salesInvoiceItems.sellingPolicyId,
+      salesInvoiceItems.policyDiscountBp,
+      salesInvoiceItems.customerDiscountBp,
+      salesInvoiceItems.extraDiscountBp,
+      salesInvoiceItems.invoiceDiscountShare,
+      salesInvoiceItems.netTotal,
+      salesInvoiceItems.vatStatus,
+      salesInvoiceItems.vatRateBp,
+      salesInvoiceItems.vatAmount,
+    ]);
+    await _addColumns(m, purchaseInvoiceItems, [
+      purchaseInvoiceItems.priceListId,
+      purchaseInvoiceItems.listPrice,
+      purchaseInvoiceItems.buyingPolicyId,
+      purchaseInvoiceItems.baseDiscountBp,
+      purchaseInvoiceItems.extraDiscountBp,
+    ]);
+    await _addColumns(m, purchaseOrderLines, [
+      purchaseOrderLines.buyingPolicyId,
+      purchaseOrderLines.extraDiscountBp,
+    ]);
+    if (await _columnExists('sales_order_lines', 'base_discount_bp')) {
+      await customStatement(
+          'ALTER TABLE sales_order_lines RENAME COLUMN base_discount_bp TO customer_discount_bp');
+    }
+    await _addColumns(m, salesOrderLines, [
+      salesOrderLines.priceListId,
+      salesOrderLines.pricingType,
+      salesOrderLines.sellingPolicyId,
+      salesOrderLines.policyDiscountBp,
+      salesOrderLines.vatStatus,
+      salesOrderLines.vatRateBp,
+    ]);
+
+    // Past invoices: split each invoice discount over its lines, exactly.
+    if (!await _tableExists('sales_invoice_items') || !await _columnExists('sales_invoice_items', 'line_total')) return;
+    await customStatement('UPDATE sales_invoice_items SET net_total = line_total');
+    final discounted = await customSelect('SELECT id, discount FROM sales_invoices WHERE discount > 0').get();
+    for (final inv in discounted) {
+      final items = await customSelect(
+        'SELECT id, line_total FROM sales_invoice_items WHERE invoice_id = ? ORDER BY id',
+        variables: [Variable.withInt(inv.read<int>('id'))],
+      ).get();
+      final shares = allocateProportionally(
+          inv.read<int>('discount'), [for (final i in items) i.read<int>('line_total')]);
+      for (var k = 0; k < items.length; k++) {
+        await customStatement(
+          'UPDATE sales_invoice_items SET invoice_discount_share = ?, net_total = line_total - ? WHERE id = ?',
+          [shares[k], shares[k], items[k].read<int>('id')],
+        );
+      }
+    }
+  }
+
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) async {
@@ -132,16 +336,9 @@ class AppDatabase extends _$AppDatabase {
             }
           }
           if (from < 5) {
-            // v5: supplier price lists and optional discount rules.
+            // v5: price lists. (Their discount rules became buying policies in v11.)
             if (!await _tableExists('price_lists')) await m.createTable(priceLists);
             if (!await _tableExists('price_list_items')) await m.createTable(priceListItems);
-            if (!await _tableExists('discount_rules')) await m.createTable(discountRules);
-            await m.createIndex(Index('idx_price_list_items_list',
-                'CREATE INDEX IF NOT EXISTS idx_price_list_items_list ON price_list_items (price_list_id)'));
-            await m.createIndex(Index('idx_price_list_items_product',
-                'CREATE INDEX IF NOT EXISTS idx_price_list_items_product ON price_list_items (product_id)'));
-            await m.createIndex(Index('idx_discount_rules_supplier',
-                'CREATE INDEX IF NOT EXISTS idx_discount_rules_supplier ON discount_rules (supplier_id)'));
           }
           if (from < 6) {
             // v6: a customer's usual discount (optional, 0 = none).
@@ -177,6 +374,7 @@ class AppDatabase extends _$AppDatabase {
             await m.createIndex(Index('idx_approvals_doc',
                 'CREATE INDEX IF NOT EXISTS idx_approvals_doc ON approvals (doc_type, doc_id)'));
           }
+          if (from < 11) await _upgradeToV11(m);
         },
         beforeOpen: (details) async {
           // Make SQLite enforce references between tables.

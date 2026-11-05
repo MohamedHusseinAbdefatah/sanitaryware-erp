@@ -10,6 +10,7 @@ import '../../core/l10n/strings.dart';
 import '../../core/money.dart';
 import '../../core/providers.dart';
 import '../../core/quantity.dart';
+import '../../core/services/buying_policy_service.dart';
 import '../../core/services/doc_types.dart';
 import '../../core/services/product_service.dart';
 import '../../core/services/purchase_service.dart';
@@ -22,9 +23,7 @@ import '../parties/party_form_dialog.dart';
 class _Line {
   _Line(this.row)
       : qty = TextEditingController(text: '1'),
-        cost = TextEditingController(text: formatMoney(row.product.costPrice).replaceAll(',', '')) {
-    initialCost = cost.text;
-  }
+        cost = TextEditingController();
 
   final ProductRow row;
   final TextEditingController qty;
@@ -33,6 +32,9 @@ class _Line {
 
   /// The cost as first shown; if it still matches, the person has not typed over it.
   String initialCost = '';
+
+  /// Where the shown cost came from; dropped once the person types over it.
+  BuyQuote? quote;
 
   int? get qtyValue => parseQty(qty.text, allowDecimal: row.unitAllowsDecimal);
   int? get costValue => parseMoney(cost.text);
@@ -48,8 +50,9 @@ class _Line {
   }
 }
 
-/// New purchase invoice (admin). Unit cost starts at the product's current
-/// average cost; saving updates the average.
+/// New purchase invoice (admin). With a supplier chosen, a line starts at the
+/// list price less that supplier's recorded buying policy. With no policy the
+/// cost stays empty: no discount is assumed, and the person types the cost.
 class PurchaseEntryScreen extends ConsumerStatefulWidget {
   const PurchaseEntryScreen({super.key});
 
@@ -98,18 +101,20 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
     });
   }
 
-  /// With a supplier chosen, a line starts at that supplier's list price less
-  /// the supplier's discount (if any), unless the person already changed it.
+  /// With a supplier chosen, a line starts at the cost its recorded policy
+  /// gives, when exactly one version has one and the person has not typed over.
   Future<void> _applyListCost(_Line line) async {
     final supplier = _supplier;
     if (supplier == null) return;
-    final cost = await ref
-        .read(priceListServiceProvider)
-        .netCostFor(line.row.product.id, supplierId: supplier.id);
-    if (cost == null || !mounted || supplier.id != _supplier?.id) return;
+    final quotes = await ref
+        .read(buyingPolicyServiceProvider)
+        .quotes(line.row.product.id, supplierId: supplier.id);
+    final backed = quotes.where((q) => !q.missingPolicy).toList();
+    if (!mounted || supplier.id != _supplier?.id) return;
     if (line.cost.text != line.initialCost) return;
     setState(() {
-      line.cost.text = formatMoney(cost).replaceAll(',', '');
+      line.quote = backed.length == 1 ? backed.single : null;
+      line.cost.text = line.quote == null ? '' : formatMoney(line.quote!.netCost!).replaceAll(',', '');
       line.initialCost = line.cost.text;
     });
   }
@@ -146,7 +151,17 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
       supplierInvoiceNo: _supplierInvoiceNo.text,
       lines: [
         for (final l in _lines)
-          PurchaseLineInput(productId: l.row.product.id, qty: l.qtyValue!, unitCost: l.costValue!),
+          PurchaseLineInput(
+            productId: l.row.product.id,
+            qty: l.qtyValue!,
+            unitCost: l.costValue!,
+            // Typed over: the cost no longer comes from the policy.
+            priceListId: l.cost.text == l.initialCost ? l.quote?.quote.priceListId : null,
+            listPrice: l.cost.text == l.initialCost ? l.quote?.listPrice : null,
+            buyingPolicyId: l.cost.text == l.initialCost ? l.quote?.policy?.id : null,
+            baseDiscountBp: l.cost.text == l.initialCost ? (l.quote?.baseBp ?? 0) : 0,
+            extraDiscountBp: l.cost.text == l.initialCost ? (l.quote?.extraBp ?? 0) : 0,
+          ),
       ],
       discount: moneyOrZero(_discount),
       paidAmount: moneyOrZero(_paid),
@@ -232,7 +247,6 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
               child: ProductSearchField(
                 key: ValueKey(_searchKey),
                 focusNode: _searchFocus,
-                trailing: (r) => '${Strings.costPrice}: ${formatMoney(r.product.costPrice)}',
                 onSelected: _add,
               ),
             ),

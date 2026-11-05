@@ -79,8 +79,54 @@ class FifoService {
     return (await q.getSingle()).read(total) ?? 0;
   }
 
+  /// What taking [qty] would cost now, without taking it: the FIFO cost for
+  /// the sale preview. The part with no layer is priced at [lastKnownCost].
+  /// Null when the product has never had a cost.
+  Future<FifoTake?> peek(int productId, int qty, {int locationId = mainLocationId}) async {
+    final layers = await (db.select(db.costLayers)
+          ..where((l) =>
+              l.productId.equals(productId) &
+              l.locationId.equals(locationId) &
+              l.qtyRemaining.isBiggerThanValue(0))
+          ..orderBy([(l) => OrderingTerm.asc(l.receivedAt), (l) => OrderingTerm.asc(l.id)]))
+        .get();
+    var need = qty;
+    final pieces = <LayerPiece>[];
+    for (final l in layers) {
+      if (need <= 0) break;
+      final take = need < l.qtyRemaining ? need : l.qtyRemaining;
+      pieces.add(LayerPiece(layerId: l.id, qty: take, unitCost: l.unitCost, receivedAt: l.receivedAt));
+      need -= take;
+    }
+    if (need > 0) {
+      final last = await lastKnownCost(productId);
+      if (last == null) return null;
+      pieces.add(LayerPiece(layerId: -1, qty: need, unitCost: last, receivedAt: DateTime.now()));
+    }
+    return FifoTake(pieces);
+  }
+
+  /// The newest cost on record: the last layer received, else the last stock
+  /// movement that carried a cost. Null when there is none: no cost is made up.
+  Future<int?> lastKnownCost(int productId) async {
+    final layer = await (db.select(db.costLayers)
+          ..where((l) => l.productId.equals(productId))
+          ..orderBy([(l) => OrderingTerm.desc(l.receivedAt), (l) => OrderingTerm.desc(l.id)])
+          ..limit(1))
+        .getSingleOrNull();
+    if (layer != null) return layer.unitCost;
+    final move = await (db.select(db.stockMovements)
+          ..where((m) => m.productId.equals(productId) & m.unitCost.isBiggerThanValue(0))
+          ..orderBy([(m) => OrderingTerm.desc(m.date), (m) => OrderingTerm.desc(m.id)])
+          ..limit(1))
+        .getSingleOrNull();
+    return move?.unitCost;
+  }
+
   /// Takes [qty] from the oldest layers first. Throws [ValidationException]
-  /// (and changes nothing) when there is not enough.
+  /// (and changes nothing) when there is not enough. With [fromPurchaseId],
+  /// that purchase's own layers are taken first: goods sent back to the
+  /// supplier leave at the cost they came in at.
   Future<FifoTake> consume({
     required int productId,
     required int qty,
@@ -89,16 +135,21 @@ class FifoService {
     int locationId = mainLocationId,
     DateTime? date,
     int? fallbackCost,
+    int? fromPurchaseId,
   }) {
     if (qty <= 0) throw ArgumentError.value(qty, 'qty', 'Quantity must be positive');
     return db.transaction(() async {
-      final layers = await (db.select(db.costLayers)
+      final oldestFirst = await (db.select(db.costLayers)
             ..where((l) =>
                 l.productId.equals(productId) &
                 l.locationId.equals(locationId) &
                 l.qtyRemaining.isBiggerThanValue(0))
             ..orderBy([(l) => OrderingTerm.asc(l.receivedAt), (l) => OrderingTerm.asc(l.id)]))
           .get();
+      bool own(CostLayer l) => l.sourceType == 'purchase' && l.sourceId == fromPurchaseId;
+      final layers = fromPurchaseId == null
+          ? oldestFirst
+          : [...oldestFirst.where(own), ...oldestFirst.where((l) => !own(l))];
       final available = layers.fold<int>(0, (s, l) => s + l.qtyRemaining);
       if (available < qty && fallbackCost == null) {
         throw ValidationException(

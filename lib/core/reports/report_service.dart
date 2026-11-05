@@ -187,7 +187,7 @@ class ReportService {
       if (!invoiceIds.contains(i.invoiceId)) continue;
       final x = v.putIfAbsent(i.productId, () => [0, 0, 0, 0]);
       x[0] += i.qty;
-      x[1] += i.lineTotal;
+      x[1] += i.netTotal;
     }
     for (final i in await db.select(db.returnItems).get()) {
       if (!returnIds.contains(i.returnId)) continue;
@@ -202,7 +202,7 @@ class ReportService {
     ]..sort((a, b) => (b[6] as int).compareTo(a[6] as int));
     return ReportTable(
       title: ReportKind.salesByProduct.title,
-      subtitle: 'القيم قبل خصم الفاتورة الإجمالي',
+      subtitle: 'القيم بعد توزيع خصم الفاتورة على السطور',
       columns: const [
         ReportColumn('الكود', ColumnType.text),
         ReportColumn('الصنف', ColumnType.text),
@@ -542,8 +542,10 @@ class ReportService {
       _stockRows({int? categoryId}) async {
     final rows = await db.customSelect(
       '''
-      SELECT p.id AS pid, p.code, p.name_ar, p.min_stock, p.cost_price, c.name_ar AS category, u.name_ar AS unit,
-             COALESCE((SELECT SUM(m.qty) FROM stock_movements m WHERE m.product_id = p.id), 0) AS stock
+      SELECT p.id AS pid, p.code, p.name_ar, p.min_stock, c.name_ar AS category, u.name_ar AS unit,
+             COALESCE((SELECT SUM(m.qty) FROM stock_movements m WHERE m.product_id = p.id), 0) AS stock,
+             COALESCE((SELECT l.unit_cost FROM cost_layers l WHERE l.product_id = p.id
+                       ORDER BY l.received_at DESC, l.id DESC LIMIT 1), 0) AS last_cost
       FROM products p
       LEFT JOIN categories c ON c.id = p.category_id
       LEFT JOIN units u ON u.id = p.unit_id
@@ -562,7 +564,7 @@ class ReportService {
           unit: r.readNullable<String>('unit'),
           stock: r.read<int>('stock'),
           minStock: r.read<int>('min_stock'),
-          cost: r.read<int>('cost_price'),
+          cost: r.read<int>('last_cost'),
         ),
     ];
   }

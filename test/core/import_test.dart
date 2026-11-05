@@ -53,24 +53,22 @@ void main() {
 
       expect(await imports.import(preview, user: shop.admin), 3);
       final rows = await ProductService(shop.db).watchList(search: 'G-100').first;
-      expect(rows.single.product.priceRetail, 125050);
-      expect(rows.single.product.costPrice, 95000);
+      expect((await shop.db.select(shop.db.costLayers).get()).first.unitCost, 95000);
       expect(rows.single.stock, qtyOf(6));
       expect(rows.single.categoryName, 'خلاطات');
       final pipe = (await ProductService(shop.db).watchList(search: 'PPR-20').first).single;
       expect(pipe.stock, 120500);
-      expect(pipe.product.priceRetail, 3510);
       expect(pipe.unitName, 'متر');
       // Same category and brand (any letter case) were created once.
       expect(await shop.db.select(shop.db.categories).get(), hasLength(2));
-      expect(await shop.db.select(shop.db.brands).get(), hasLength(1));
+      expect(await shop.db.select(shop.db.brands).get(), hasLength(2)); // the fixture's and Grohe
       final opening = (await shop.db.select(shop.db.stockMovements).get()).where((m) => m.type == StockMovementType.opening);
       expect(opening, hasLength(2));
     });
 
     test('problems are listed per row and only good rows import', () async {
       final bytes = sheet([
-        ['الكود', 'الاسم', 'الوحدة', 'سعر القطاعي', 'رصيد أول المدة'],
+        ['الكود', 'الاسم', 'الوحدة', 'سعر التكلفة', 'رصيد أول المدة'],
         ['M1', 'موجود من قبل', null, 10, null], // M1 is the fixture's mixer
         ['A1', '', null, 10, null],
         ['A2', 'خلاط', 'كيلو', 10, null],
@@ -83,7 +81,7 @@ void main() {
       expect(errors[2], contains('موجود'));
       expect(errors[3], contains('الاسم فارغ'));
       expect(errors[4], contains('الوحدة'));
-      expect(errors[5], allOf(contains('سعر القطاعي'), contains('رصيد أول المدة')));
+      expect(errors[5], allOf(contains('تكلفة رصيد أول المدة'), contains('رصيد أول المدة غير صحيح')));
       expect(errors[6], isEmpty);
       expect(errors[7], contains('مكرر'));
       expect(preview.okCount, 1);

@@ -1,153 +1,175 @@
-import 'package:drift/drift.dart' show Value;
-import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sanitaryware_erp/core/db/database.dart';
-import 'package:sanitaryware_erp/core/services/discount_service.dart';
+import 'package:sanitaryware_erp/core/pricing_math.dart';
+import 'package:sanitaryware_erp/core/services/catalog_service.dart';
 import 'package:sanitaryware_erp/core/services/errors.dart';
 import 'package:sanitaryware_erp/core/services/price_list_service.dart';
+import 'package:sanitaryware_erp/core/services/product_service.dart';
 
+import '../support/fixture.dart';
+
+/// Blueprint 3.3: versions, periods and price history.
 void main() {
-  late AppDatabase db;
+  late Shop shop;
   late PriceListService lists;
-  late DiscountService discounts;
-  late int supplier;
-  late int brand;
-  late int category;
-  late int mixer;
-  late int basin;
+  late int duravit;
+  late Product basin;
 
   setUp(() async {
-    db = AppDatabase(NativeDatabase.memory());
-    lists = PriceListService(db);
-    discounts = DiscountService(db);
-    supplier = await db.into(db.suppliers).insert(SuppliersCompanion.insert(name: 'مورد'));
-    brand = await db.into(db.brands).insert(BrandsCompanion.insert(name: 'ديورافيت'));
-    category = await db.into(db.categories).insert(CategoriesCompanion.insert(nameAr: 'أحواض'));
-    mixer = await db.into(db.products).insert(
-        ProductsCompanion.insert(code: 'M1', nameAr: 'خلاط', brandId: Value(brand)));
-    basin = await db.into(db.products).insert(ProductsCompanion.insert(
-        code: 'B1', nameAr: 'حوض', brandId: Value(brand), categoryId: Value(category)));
-  });
-  tearDown(() => db.close());
-
-  final jan = DateTime(2026, 1, 1);
-  final jul = DateTime(2026, 7, 1);
-
-  test('a list is saved and its lines matched to products by code', () async {
-    final r = await lists.create(
-      supplierId: supplier,
-      name: 'يناير',
-      effectiveDate: jan,
-      rows: const [
-        PriceRowInput(name: 'خلاط', price: 100000, supplierCode: 'm1'),
-        PriceRowInput(name: 'غير معروف', price: 5000, supplierCode: 'ZZ'),
-        PriceRowInput(name: 'بدون كود', price: 5000),
-      ],
+    shop = await Shop.open();
+    lists = PriceListService(shop.db);
+    duravit = await CatalogService(shop.db).saveBrand(name: 'Duravit');
+    basin = await ProductService(shop.db).create(
+      ProductInput(nameAr: 'حوض', manufacturerCode: '0123-A', brandId: duravit),
     );
-    expect(r.rows, 3);
-    expect(r.matched, 1);
+  });
+  tearDown(() => shop.close());
+
+  PriceListHeader header(String type, DateTime from, {DateTime? to}) => PriceListHeader(
+        name: '$type ${from.year}',
+        brandId: duravit,
+        listType: type,
+        effectiveFrom: from,
+        effectiveTo: to,
+      );
+
+  Future<int> version(String type, DateTime from, int price, {bool close = true}) async => (await lists.createVersion(
+        header(type, from),
+        rows: [PriceRowInput(name: 'حوض', price: price, manufacturerCode: '0123-A', productId: basin.id)],
+        user: shop.admin,
+        closePrevious: close,
+      ))
+          .id;
+
+  test('V1 ends June 30 when V2 starts July 1; each date gets its own version', () async {
+    final v1 = await version('سيراميك', DateTime(2026, 1, 1), 100000);
+    final v2 = await version('سيراميك', DateTime(2026, 7, 1), 120000);
+    expect(v2, isNot(v1));
+
+    final first = await (shop.db.select(shop.db.priceLists)..where((l) => l.id.equals(v1))).getSingle();
+    expect(first.effectiveTo, DateTime(2026, 6, 30));
+    final second = await (shop.db.select(shop.db.priceLists)..where((l) => l.id.equals(v2))).getSingle();
+    expect(second.versionNo, 2);
+    expect(second.effectiveTo, isNull);
+
+    Future<PriceQuote> on(DateTime d) async => (await lists.quotesFor(basin.id, asOf: d)).single;
+    expect((await on(DateTime(2026, 6, 30))).priceListId, v1);
+    expect((await on(DateTime(2026, 6, 30))).price, 100000);
+    expect((await on(DateTime(2026, 7, 1))).priceListId, v2);
+    expect((await on(DateTime(2026, 7, 1))).price, 120000);
+    expect(await lists.quotesFor(basin.id, asOf: DateTime(2025, 12, 31)), isEmpty);
   });
 
-  test('the newest list in force on the date gives the price', () async {
-    Future<void> make(DateTime d, int price) => lists.create(
-        supplierId: supplier,
-        name: 'قائمة',
-        effectiveDate: d,
-        rows: [PriceRowInput(name: 'خلاط', price: price, supplierCode: 'M1')]);
-    await make(jan, 100000);
-    await make(jul, 120000);
-    expect((await lists.priceFor(mixer, asOf: DateTime(2026, 3, 1)))!.price, 100000);
-    expect((await lists.priceFor(mixer, asOf: DateTime(2026, 8, 1)))!.price, 120000);
-    expect(await lists.priceFor(mixer, asOf: DateTime(2025, 12, 1)), isNull);
+  test('old versions are never overwritten or erased: the history keeps every price', () async {
+    await version('سيراميك', DateTime(2026, 1, 1), 100000);
+    await version('سيراميك', DateTime(2026, 7, 1), 120000);
+    final history = await lists.history(basin.id);
+    expect(history.map((h) => h.item.price), [120000, 100000]);
   });
 
-  test('a switched-off list is ignored', () async {
-    final a = await lists.create(
-        supplierId: supplier,
-        name: 'قديمة',
-        effectiveDate: jan,
-        rows: const [PriceRowInput(name: 'خلاط', price: 100000, supplierCode: 'M1')]);
-    final b = await lists.create(
-        supplierId: supplier,
-        name: 'جديدة',
-        effectiveDate: jul,
-        rows: const [PriceRowInput(name: 'خلاط', price: 120000, supplierCode: 'M1')]);
-    await lists.setActive(b.id, false);
-    expect((await lists.priceFor(mixer, asOf: DateTime(2026, 8, 1)))!.priceListId, a.id);
-  });
-
-  test('empty list, negative price and unknown supplier are refused', () async {
+  test('a product priced in a version cannot be changed in it; that takes a new version', () async {
+    final v1 = await version('سيراميك', DateTime(2026, 1, 1), 100000);
     await expectLater(
-        lists.create(supplierId: supplier, name: 'x', effectiveDate: jan, rows: const []),
-        throwsA(isA<ValidationException>()));
+      lists.addEntries(v1, [PriceRowInput(name: 'حوض', price: 110000, productId: basin.id)], user: shop.admin),
+      throwsA(isA<ValidationException>()),
+    );
+    expect((await lists.items(v1)).single.price, 100000);
+  });
+
+  test('a new version cannot start on or before an existing one', () async {
+    await version('سيراميك', DateTime(2026, 7, 1), 120000);
+    await expectLater(version('سيراميك', DateTime(2026, 7, 1), 130000), throwsA(isA<ValidationException>()));
+    await expectLater(version('سيراميك', DateTime(2026, 1, 1), 90000), throwsA(isA<ValidationException>()));
+  });
+
+  test('more than one list for a brand: Ceramic and Bathtubs stand apart, and the person chooses', () async {
+    final ceramic = await version('سيراميك', DateTime(2026, 1, 1), 100000);
+    final tubs = await version('بانيوهات', DateTime(2026, 7, 1), 200000);
+    final first = await (shop.db.select(shop.db.priceLists)..where((l) => l.id.equals(ceramic))).getSingle();
+    expect(first.effectiveTo, isNull, reason: 'another list type must not close this one');
+    final quotes = await lists.quotesFor(basin.id, asOf: DateTime(2026, 8, 1));
+    expect(quotes.map((q) => q.priceListId).toSet(), {ceramic, tubs});
+  });
+
+  test('a version for a few products leaves the rest of the earlier list in force', () async {
+    final other = await ProductService(shop.db)
+        .create(ProductInput(nameAr: 'مرحاض', manufacturerCode: 'B-9', brandId: duravit));
+    final full = (await lists.createVersion(
+      header('سيراميك', DateTime(2026, 1, 1)),
+      rows: [
+        PriceRowInput(name: 'حوض', price: 100000, productId: basin.id),
+        PriceRowInput(name: 'مرحاض', price: 300000, productId: other.id),
+      ],
+      user: shop.admin,
+    ))
+        .id;
+    final partial = await version('سيراميك', DateTime(2026, 7, 1), 120000, close: false);
+
+    final day = DateTime(2026, 8, 1);
+    expect((await lists.quotesFor(basin.id, asOf: day)).single.priceListId, partial);
+    expect((await lists.quotesFor(other.id, asOf: day)).single.priceListId, full);
+  });
+
+  test('the record holds type, currency, dates, source, row count and VAT status', () async {
+    final id = (await lists.createVersion(
+      PriceListHeader(
+        name: 'ديورافيت',
+        brandId: duravit,
+        listType: 'سيراميك',
+        effectiveFrom: DateTime(2026, 1, 1),
+        vatStatus: VatStatus.inclusive,
+        vatRateBp: 1400,
+        sourceFile: 'file.xlsx',
+        sourcePages: '3-9',
+      ),
+      rows: [PriceRowInput(name: 'حوض', price: 100000, productId: basin.id)],
+      user: shop.admin,
+      rowCountOnSource: 7,
+    ))
+        .id;
+    final l = await (shop.db.select(shop.db.priceLists)..where((t) => t.id.equals(id))).getSingle();
+    expect(l.brandId, duravit);
+    expect(l.currency, 'EGP');
+    expect(l.sourceFile, 'file.xlsx');
+    expect(l.sourcePages, '3-9');
+    expect(l.rowCount, 7);
+    expect(l.vatStatus, VatStatus.inclusive);
+    expect(l.vatRateBp, 1400);
+    expect(l.importDate.isAfter(DateTime(2020)), isTrue);
+  });
+
+  test('VAT stays unverified until someone records it from the source', () async {
+    final id = await version('سيراميك', DateTime(2026, 1, 1), 100000);
+    var l = await (shop.db.select(shop.db.priceLists)..where((t) => t.id.equals(id))).getSingle();
+    expect(l.vatStatus, VatStatus.unverified);
+    await lists.setVat(id, vatStatus: VatStatus.exclusive, vatRateBp: 1400, user: shop.admin);
+    l = await (shop.db.select(shop.db.priceLists)..where((t) => t.id.equals(id))).getSingle();
+    expect(l.vatStatus, VatStatus.exclusive);
+    expect(l.vatRateBp, 1400);
+  });
+
+  test('a currency with no exchange rate is refused, not guessed at', () async {
     await expectLater(
-        lists.create(
-            supplierId: supplier,
-            name: 'x',
-            effectiveDate: jan,
-            rows: const [PriceRowInput(name: 'a', price: -1)]),
-        throwsA(isA<ValidationException>()));
+      lists.createVersion(
+        PriceListHeader(name: 'x', brandId: duravit, listType: 'x', effectiveFrom: DateTime(2026), currency: 'EUR'),
+        rows: [PriceRowInput(name: 'حوض', price: 1, productId: basin.id)],
+        user: shop.admin,
+      ),
+      throwsA(isA<ValidationException>()),
+    );
+  });
+
+  test('a withdrawn version prices nothing but stays on record', () async {
+    final id = await version('سيراميك', DateTime(2026, 1, 1), 100000);
+    await lists.withdraw(id, reason: 'خطأ', user: shop.admin);
+    expect(await lists.quotesFor(basin.id, asOf: DateTime(2026, 2, 1)), isEmpty);
+    expect((await lists.history(basin.id)).single.item.price, 100000);
+  });
+
+  test('only the admin manages lists', () async {
     await expectLater(
-        lists.create(
-            supplierId: 999,
-            name: 'x',
-            effectiveDate: jan,
-            rows: const [PriceRowInput(name: 'a', price: 1)]),
-        throwsA(isA<ValidationException>()));
-  });
-
-  test('no discount rule means no discount', () async {
-    expect(await discounts.percentFor(supplierId: supplier, productId: mixer), 0);
-    expect(applyDiscount(100000, 0), 100000);
-  });
-
-  test('the most specific discount wins', () async {
-    await discounts.addRule(supplierId: supplier, scope: DiscountScope.supplier, percentBp: 1000);
-    expect(await discounts.percentFor(supplierId: supplier, productId: mixer), 1000);
-    await discounts.addRule(
-        supplierId: supplier, scope: DiscountScope.brand, brandId: brand, percentBp: 2100);
-    expect(await discounts.percentFor(supplierId: supplier, productId: mixer), 2100);
-    await discounts.addRule(
-        supplierId: supplier, scope: DiscountScope.category, categoryId: category, percentBp: 2500);
-    expect(await discounts.percentFor(supplierId: supplier, productId: basin), 2500);
-    expect(await discounts.percentFor(supplierId: supplier, productId: mixer), 2100);
-    await discounts.addRule(
-        supplierId: supplier, scope: DiscountScope.product, productId: basin, percentBp: 3000);
-    expect(await discounts.percentFor(supplierId: supplier, productId: basin), 3000);
-  });
-
-  test('a discount only counts inside its dates and while on', () async {
-    final id = await discounts.addRule(
-        supplierId: supplier,
-        scope: DiscountScope.supplier,
-        percentBp: 1500,
-        validFrom: jan,
-        validTo: DateTime(2026, 3, 31));
-    expect(await discounts.percentFor(supplierId: supplier, productId: mixer, asOf: DateTime(2026, 2, 1)), 1500);
-    expect(await discounts.percentFor(supplierId: supplier, productId: mixer, asOf: DateTime(2026, 5, 1)), 0);
-    await discounts.setActive(id, false);
-    expect(await discounts.percentFor(supplierId: supplier, productId: mixer, asOf: DateTime(2026, 2, 1)), 0);
-  });
-
-  test('a bad discount is refused', () async {
-    await expectLater(
-        discounts.addRule(supplierId: supplier, scope: DiscountScope.supplier, percentBp: 10001),
-        throwsA(isA<ValidationException>()));
-    await expectLater(
-        discounts.addRule(supplierId: supplier, scope: DiscountScope.brand, percentBp: 100),
-        throwsA(isA<ValidationException>()));
-  });
-
-  test('net cost is the list price less the discount, rounded to the piastre', () async {
-    await lists.create(
-        supplierId: supplier,
-        name: 'قائمة',
-        effectiveDate: jan,
-        rows: const [PriceRowInput(name: 'خلاط', price: 100000, supplierCode: 'M1')]);
-    expect(await lists.netCostFor(mixer, asOf: jul), 100000);
-    await discounts.addRule(
-        supplierId: supplier, scope: DiscountScope.brand, brandId: brand, percentBp: 2100);
-    expect(await lists.netCostFor(mixer, asOf: jul), 79000);
-    expect(applyDiscount(333, 2100), 263); // 333 - 69.93 -> 333 - 70
+      lists.createVersion(header('x', DateTime(2026)), rows: const [], user: shop.cashier),
+      throwsA(isA<ValidationException>()),
+    );
   });
 }

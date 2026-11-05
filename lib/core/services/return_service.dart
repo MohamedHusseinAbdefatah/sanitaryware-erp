@@ -5,7 +5,6 @@ import '../db/database.dart';
 import '../money.dart';
 import '../quantity.dart';
 import 'audit_service.dart';
-import 'cost.dart';
 import 'doc_types.dart';
 import 'errors.dart';
 import 'fifo_service.dart';
@@ -175,7 +174,8 @@ class ReturnService {
       final p = r.readTable(db.products);
       final prev = byProduct[p.id];
       final qty = (prev?.invoicedQty ?? 0) + item.qty;
-      final value = (prev == null ? 0 : lineAmount(prev.invoicedQty, prev.unitPrice)) + item.lineTotal;
+      // The net of the line: its share of the invoice discount was never paid.
+      final value = (prev == null ? 0 : lineAmount(prev.invoicedQty, prev.unitPrice)) + item.netTotal;
       byProduct[p.id] = ReturnableLine(
         productId: p.id,
         code: p.code,
@@ -184,7 +184,7 @@ class ReturnService {
         allowDecimal: r.readTableOrNull(db.units)?.allowDecimal ?? false,
         invoicedQty: qty,
         returnedQty: returned[p.id] ?? 0,
-        // Value per whole unit after line discounts.
+        // Value per whole unit after line and invoice discounts.
         unitPrice: qty == 0 ? 0 : (value * qtyScale + qty ~/ 2) ~/ qty,
         unitCost: prev?.unitCost ?? item.unitCost,
       );
@@ -263,17 +263,8 @@ class ReturnService {
       final stock = StockService(db);
       for (final line in input.lines) {
         final p = await (db.select(db.products)..where((t) => t.id.equals(line.productId))).getSingle();
-        // Back into stock at the original sale cost (or today's cost).
-        final cost = returnable?[line.productId]?.unitCost ?? p.costPrice;
-        await _setCost(
-          p.id,
-          averageCostAfterAdding(
-            stock: await stock.currentStock(p.id),
-            cost: p.costPrice,
-            qty: line.qty,
-            unitCost: cost,
-          ),
-        );
+        // Back into stock at the original sale cost (or the last known cost).
+        final cost = returnable?[line.productId]?.unitCost ?? await FifoService(db).lastKnownCost(p.id) ?? 0;
         await stock.record(
           productId: p.id,
           type: StockMovementType.saleReturn,
@@ -346,15 +337,6 @@ class ReturnService {
       for (final line in input.lines) {
         final p = await (db.select(db.products)..where((t) => t.id.equals(line.productId))).getSingle();
         final cost = returnable?[line.productId]?.unitCost ?? line.unitPrice;
-        await _setCost(
-          p.id,
-          averageCostAfterRemoving(
-            stock: await stock.currentStock(p.id),
-            cost: p.costPrice,
-            qty: line.qty,
-            unitCost: cost,
-          ),
-        );
         await stock.record(
           productId: p.id,
           type: StockMovementType.purchaseReturn,
@@ -372,6 +354,7 @@ class ReturnService {
           refId: returnId,
           date: date,
           fallbackCost: cost,
+          fromPurchaseId: input.originalInvoiceId,
         );
       }
       if (input.refundAmount > 0) {
@@ -409,12 +392,6 @@ class ReturnService {
         if (m.qty > 0 && !allowNegative && onHand < m.qty) {
           throw ValidationException('لا يمكن الإلغاء: الكمية المتاحة من "${p.nameAr}" أقل من كمية المرتجع');
         }
-        await _setCost(
-          p.id,
-          m.qty > 0
-              ? averageCostAfterRemoving(stock: onHand, cost: p.costPrice, qty: m.qty, unitCost: m.unitCost)
-              : averageCostAfterAdding(stock: onHand, cost: p.costPrice, qty: -m.qty, unitCost: m.unitCost),
-        );
         await stock.record(
           productId: p.id,
           type: StockMovementType.returnCancel,
@@ -581,9 +558,4 @@ class ReturnService {
     );
     return doc;
   }
-
-  Future<void> _setCost(int productId, int cost) =>
-      (db.update(db.products)..where((t) => t.id.equals(productId))).write(
-        ProductsCompanion(costPrice: Value(cost), updatedAt: Value(DateTime.now())),
-      );
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/auth/auth_service.dart';
 import '../../core/auth/session.dart';
 import '../../core/dates.dart';
 import '../../core/db/database.dart';
@@ -9,11 +10,13 @@ import '../../core/money.dart';
 import '../../core/providers.dart';
 import '../../core/quantity.dart';
 import '../../core/services/approval_service.dart';
-import '../../core/services/doc_types.dart';
 import '../../core/services/product_service.dart';
+import '../../core/services/sales_service.dart';
+import '../../core/services/selling_policy_service.dart';
 import '../../core/services/sales_order_service.dart';
 import '../../core/widgets/feedback.dart';
 import '../../core/widgets/pickers.dart';
+import 'sale_preview_dialog.dart';
 
 String soStatusLabel(String s) => switch (s) {
       SoStatus.quotation => 'عرض سعر',
@@ -91,6 +94,7 @@ class _NewLine {
       : qty = TextEditingController(text: '1'),
         extra = TextEditingController();
   final ProductRow row;
+  int? priceListId;
   final TextEditingController qty;
   final TextEditingController extra;
 }
@@ -123,6 +127,19 @@ class _NewSoDialogState extends ConsumerState<_NewSoDialog> {
     super.dispose();
   }
 
+  /// When several versions can price the product, the person chooses now.
+  Future<void> _addLine(ProductRow r) async {
+    final quotes = await ref.read(sellingPolicyServiceProvider).quotes(r.product.id);
+    if (!mounted) return;
+    final line = _NewLine(r);
+    if (quotes.length > 1) {
+      final q = await pickSellQuote(context, quotes, r.product.nameAr);
+      if (q == null || !mounted) return;
+      line.priceListId = q.quote.priceListId;
+    }
+    setState(() => _lines.add(line));
+  }
+
   Future<void> _save() async {
     final user = ref.read(currentUserProvider);
     if (user == null) return;
@@ -138,7 +155,7 @@ class _NewSoDialogState extends ConsumerState<_NewSoDialog> {
         await showMessage(context, 'بيانات غير صحيحة: ${l.row.product.nameAr}');
         return;
       }
-      inputs.add(SoLineInput(productId: l.row.product.id, qty: q, extraDiscountBp: bp));
+      inputs.add(SoLineInput(productId: l.row.product.id, qty: q, extraDiscountBp: bp, priceListId: l.priceListId));
     }
     final id = await runGuarded(
         context,
@@ -200,8 +217,7 @@ class _NewSoDialogState extends ConsumerState<_NewSoDialog> {
               const SizedBox(height: 12),
               ProductSearchField(
                 autofocus: false,
-                onSelected: (r) => setState(() => _lines.add(_NewLine(r))),
-                trailing: (r) => formatMoney(r.product.priceRetail),
+                onSelected: _addLine,
               ),
               for (final l in _lines)
                 Row(
@@ -333,6 +349,70 @@ class _SoDetailDialogState extends ConsumerState<_SoDetailDialog> {
     _adv.clear();
   }
 
+  /// Shows the review before approval, then freezes the prices.
+  Future<void> _confirm() async {
+    final user = ref.read(currentUserProvider);
+    if (user == null) return;
+    final svc = ref.read(salesOrderServiceProvider);
+    final quotes = await runGuarded(context, () => svc.quotesForApproval(widget.orderId));
+    if (quotes == null || !mounted) return;
+    // A line with no approved price needs one typed, by the admin.
+    final manual = <int, int>{};
+    for (final (l, q) in quotes) {
+      if (q != null) continue;
+      final name = _detail!.lines.firstWhere((x) => x.line.id == l.id).productName;
+      if (!user.isAdmin) {
+        await showMessage(context, 'لا يوجد سعر معتمد للصنف "$name" — يلزم موافقة المدير');
+        return;
+      }
+      final c = TextEditingController();
+      final text = await showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('لا يوجد سعر معتمد: $name'),
+          content: TextField(controller: c, autofocus: true, decoration: const InputDecoration(labelText: 'السعر بموافقة المدير')),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text(Strings.cancel)),
+            FilledButton(onPressed: () => Navigator.pop(context, c.text), child: const Text(Strings.save)),
+          ],
+        ),
+      );
+      c.dispose();
+      final price = text == null ? null : parseMoney(text);
+      if (price == null || !mounted) return;
+      manual[l.id] = price;
+    }
+    final preview = await runGuarded(
+      context,
+      () => ref.read(salePreviewServiceProvider).preview(SaleInput(
+            customerId: _detail!.order.customerId,
+            lines: [
+              for (final (l, q) in quotes)
+                SaleLineInput(
+                  productId: l.productId,
+                  qty: l.qty,
+                  unitPrice: q?.unitPrice ?? manual[l.id]!,
+                  locked: PricingSnapshot(
+                    priceListId: q?.quote.priceListId,
+                    listPrice: q?.listPrice,
+                    pricingType: q?.pricingType,
+                    sellingPolicyId: q?.policy?.id,
+                    policyBp: q?.policyBp ?? 0,
+                    customerBp: q?.customerBp ?? 0,
+                    extraBp: l.extraDiscountBp,
+                    vatStatus: q?.quote.priceList.vatStatus,
+                    vatRateBp: q?.quote.priceList.vatRateBp,
+                  ),
+                ),
+            ],
+          )),
+    );
+    if (preview == null || !mounted) return;
+    final reason = await showSalePreview(context, preview, isAdmin: user.isAdmin, confirmLabel: 'تأكيد الأمر');
+    if (reason == null || !mounted) return;
+    await _act((u) => svc.confirm(widget.orderId, manualPrices: manual, approvalReason: reason, user: u));
+  }
+
   Future<void> _doDeliver() async {
     final d = _detail!;
     final qtys = <int, int>{};
@@ -404,7 +484,7 @@ class _SoDetailDialogState extends ConsumerState<_SoDetailDialog> {
                       Text(formatQty(l.line.qtyDelivered)),
                       Text(formatQty(l.remaining)),
                       Text(status == SoStatus.draft || status == SoStatus.quotation ? '—' : formatMoney(l.line.listPrice)),
-                      Text(status == SoStatus.draft || status == SoStatus.quotation ? '—' : (l.line.baseDiscountBp / 100).toString()),
+                      Text(status == SoStatus.draft || status == SoStatus.quotation ? '—' : ((l.line.policyDiscountBp + l.line.customerDiscountBp) / 100).toString()),
                       Text((l.line.extraDiscountBp / 100).toString()),
                       Text(status == SoStatus.draft || status == SoStatus.quotation ? 'عند التأكيد' : formatMoney(l.line.unitPrice)),
                     ]),
@@ -479,7 +559,7 @@ class _SoDetailDialogState extends ConsumerState<_SoDetailDialog> {
       actions: [
         if (status == SoStatus.draft || status == SoStatus.quotation)
           FilledButton(
-            onPressed: () => _act((u) => svc.confirm(widget.orderId, user: u)),
+            onPressed: _confirm,
             child: const Text('تأكيد وتثبيت السعر'),
           ),
         if (status == SoStatus.draft || status == SoStatus.quotation || status == SoStatus.confirmed)

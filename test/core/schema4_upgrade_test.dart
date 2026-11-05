@@ -1,4 +1,3 @@
-import 'package:drift/drift.dart' show Value;
 import 'dart:io';
 
 import 'package:drift/native.dart';
@@ -12,7 +11,9 @@ void main() {
     try {
       var db = AppDatabase(NativeDatabase(file));
       final pid = await db.into(db.products).insert(
-          ProductsCompanion.insert(code: 'A', nameAr: 'منتج', costPrice: const Value(2500)));
+          ProductsCompanion.insert(code: 'A', nameAr: 'منتج'));
+      // Products had an average cost in schema 3.
+      await db.customStatement('ALTER TABLE products ADD COLUMN cost_price INTEGER NOT NULL DEFAULT 2500');
       await db.into(db.stockMovements).insert(
           StockMovementsCompanion.insert(productId: pid, type: 'purchase', qty: 5000));
       await db.customStatement('DROP TABLE layer_consumptions');

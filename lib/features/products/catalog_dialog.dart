@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/l10n/strings.dart';
 import '../../core/providers.dart';
+import '../../core/services/errors.dart';
 import '../../core/widgets/feedback.dart';
 
 /// Categories, brands and units in three tabs, each a list with add and
@@ -14,10 +15,11 @@ class CatalogDialog extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final catalog = ref.watch(catalogServiceProvider);
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: AlertDialog(
         title: const TabBar(tabs: [
           Tab(text: Strings.categories),
+          Tab(text: 'تصنيفات فرعية'),
           Tab(text: Strings.brands),
           Tab(text: Strings.units),
         ]),
@@ -28,6 +30,16 @@ class CatalogDialog extends ConsumerWidget {
             _NameList(
               stream: catalog.watchCategories().map((l) => [for (final c in l) (c.id, c.nameAr, false)]),
               onSave: (id, name, _) => catalog.saveCategory(id: id, name: name),
+            ),
+            // A subcategory is added from the product form, under its category.
+            _NameList(
+              stream: catalog.watchSubcategories().map((l) => [for (final c in l) (c.id, c.nameAr, false)]),
+              onSave: (id, name, _) async {
+                if (id == null) throw ValidationException('أضف التصنيف الفرعي من شاشة الصنف');
+                final all = await catalog.watchAllCategories().first;
+                return catalog.saveCategory(
+                    id: id, name: name, parentId: all.firstWhere((c) => c.id == id).parentId);
+              },
             ),
             _NameList(
               stream: catalog.watchBrands().map((l) => [for (final b in l) (b.id, b.name, false)]),

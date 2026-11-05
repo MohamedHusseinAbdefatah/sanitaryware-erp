@@ -50,7 +50,7 @@ void main() {
 
     await ProductService(db).update(
       shop.mixer.id,
-      ProductInput(code: 'M1', nameAr: 'خلاط', unitId: shop.mixer.unitId, priceRetail: 50000, minStock: qtyOf(10)),
+      ProductInput(code: 'M1', nameAr: 'خلاط', unitId: shop.mixer.unitId, minStock: qtyOf(10)),
     );
     contractorId = await PartyService(db).saveCustomer(const CustomerInput(name: 'مقاول', openingBalance: 10000));
 
@@ -168,13 +168,13 @@ void main() {
     ]);
   });
 
-  test('sales by product (before the invoice discount)', () async {
+  test('sales by product, after the invoice discount is split over the lines', () async {
     final t = await reports.salesByProduct(from: from, to: to);
     expect(t.rows, [
-      ['M1', 'خلاط', qtyOf(3), 145000, qtyOf(1), 50000, 95000],
+      ['M1', 'خلاط', qtyOf(3), 140000, qtyOf(1), 50000, 90000],
       ['P1', 'ماسورة', qtyOf(15), 52500, 0, 0, 52500],
     ]);
-    expect(t.total('الصافي'), 147500);
+    expect(t.total('الصافي'), 142500);
   });
 
   test('profit', () async {

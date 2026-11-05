@@ -3,6 +3,7 @@ import 'package:drift/drift.dart';
 import '../auth/auth_service.dart';
 import '../db/database.dart';
 import '../money.dart';
+import '../pricing_math.dart';
 import '../quantity.dart';
 import 'approval_service.dart';
 import 'audit_service.dart';
@@ -13,6 +14,7 @@ import 'fifo_service.dart';
 import 'numbering_service.dart';
 import 'query_helpers.dart';
 import 'reservation_service.dart';
+import 'selling_policy_service.dart';
 import 'settings_service.dart';
 import 'stock_service.dart';
 
@@ -24,6 +26,8 @@ class SaleLineInput {
     required this.qty,
     required this.unitPrice,
     this.discount = 0,
+    this.priceListId,
+    this.locked,
   });
 
   final int productId;
@@ -36,6 +40,13 @@ class SaleLineInput {
 
   /// Piastres off this line.
   final int discount;
+
+  /// The price list version this line is priced from. Null is a manual price,
+  /// which needs a manager.
+  final int? priceListId;
+
+  /// From an approved order: the frozen price, whatever versions came later.
+  final PricingSnapshot? locked;
 
   /// qty x price, rounded once, minus the line discount.
   int get total => lineAmount(qty, unitPrice) - discount;
@@ -117,6 +128,16 @@ class BelowCostException extends ValidationException {
   final List<String> productNames;
 }
 
+/// A line needs a manager: a price that is not the approved list price, a
+/// discount past the limit, or a margin under the minimum. An admin posting
+/// the sale is the approval, and it is logged.
+class ApprovalRequiredException extends ValidationException {
+  ApprovalRequiredException(this.problems)
+      : super('يلزم موافقة المدير:\n${problems.map((p) => '• $p').join('\n')}');
+
+  final List<String> problems;
+}
+
 class SalesInvoiceRow {
   const SalesInvoiceRow(this.invoice, this.customerName, this.paid);
   final SalesInvoice invoice;
@@ -171,6 +192,7 @@ class SalesService {
     int? userId,
     bool allowOverCreditLimit = false,
     String? belowCostReason,
+    String? approvalReason,
   }) {
     return db.transaction(() async {
       // 1. Validate the lines.
@@ -265,7 +287,7 @@ class SalesService {
       }
       if (held.isNotEmpty) throw ReservedStockException(held);
 
-      // 4. Number, invoice and items, copying price and current average cost.
+      // 4. Number, invoice and items, keeping the version each line used.
       final numbering = NumberingService(db);
       final date = input.date ?? DateTime.now();
       final invoiceId = await db.into(db.salesInvoices).insert(SalesInvoicesCompanion.insert(
@@ -280,21 +302,48 @@ class SalesService {
             createdBy: Value(userId),
           ));
       final fifo = FifoService(db);
+      final policies = SellingPolicyService(db);
       final belowCostNames = <String>[];
-      for (final line in input.lines) {
+      final manualNames = <String>[], overLimitNames = <String>[], lowMarginNames = <String>[];
+      // The invoice discount is split over the lines, exactly, for profit and tax.
+      final shares = allocateProportionally(input.discount, [for (final l in input.lines) l.total]);
+      for (var n = 0; n < input.lines.length; n++) {
+        final line = input.lines[n];
+        final net = line.total - shares[n];
+        final name = products[line.productId]!.nameAr;
+        final check = await policies.check(
+          product: products[line.productId]!,
+          qty: line.qty,
+          unitPrice: line.unitPrice,
+          lineTotal: line.total,
+          netTotal: net,
+          priceListId: line.priceListId,
+          locked: line.locked,
+          customer: customer,
+          date: date,
+        );
+        if (check.manualPrice) manualNames.add(name);
+        if (check.overDiscountLimit) overLimitNames.add(name);
         // Real cost: the oldest layers first. Anything without a layer
-        // (negative stock) is priced at the product's average cost.
+        // (negative stock) is priced at the last known cost.
         final take = await fifo.consume(
           productId: line.productId,
           qty: line.qty,
           refType: RefType.salesInvoice,
           refId: invoiceId,
           date: date,
-          fallbackCost: products[line.productId]!.costPrice,
+          fallbackCost: await fifo.lastKnownCost(line.productId) ?? 0,
         );
         final cost = take.averageUnitCost;
-        if (line.total < lineAmount(line.qty, cost)) {
-          belowCostNames.add(products[line.productId]!.nameAr);
+        final costValue = lineAmount(line.qty, cost);
+        final snap = check.snapshot;
+        final vat = vatOf(net, snap.vatStatus, snap.vatRateBp);
+        // Profit is measured without VAT once the VAT is verified.
+        final netForProfit = vat?.netOfVat ?? net;
+        if (netForProfit < costValue) belowCostNames.add(name);
+        final margin = marginBp(netForProfit, costValue);
+        if (check.minMarginBp != null && margin != null && margin < check.minMarginBp!) {
+          lowMarginNames.add(name);
         }
         await db.into(db.salesInvoiceItems).insert(SalesInvoiceItemsCompanion.insert(
               invoiceId: invoiceId,
@@ -304,6 +353,18 @@ class SalesService {
               unitCost: Value(cost),
               discount: Value(line.discount),
               lineTotal: line.total,
+              priceListId: Value(snap.priceListId),
+              listPrice: Value(snap.listPrice),
+              pricingType: Value(snap.pricingType),
+              sellingPolicyId: Value(snap.sellingPolicyId),
+              policyDiscountBp: Value(snap.policyBp),
+              customerDiscountBp: Value(snap.customerBp),
+              extraDiscountBp: Value(snap.extraBp),
+              invoiceDiscountShare: Value(shares[n]),
+              netTotal: Value(net),
+              vatStatus: Value(snap.vatStatus),
+              vatRateBp: Value(snap.vatRateBp),
+              vatAmount: Value(vat?.vat),
             ));
         // 5. One stock movement per line.
         await stock.record(
@@ -328,6 +389,29 @@ class SalesService {
           throw BelowCostException(needsReason: isAdmin, productNames: belowCostNames);
         }
         belowCostApproved = true;
+      }
+
+      // 5a. Manual price, discount past the limit, margin under the minimum:
+      // a cashier cannot post these; an admin posting them is the approval.
+      final problems = <String>[
+        for (final n in manualNames) 'سعر غير معتمد من قائمة أسعار: $n',
+        for (final n in overLimitNames) 'خصم أكبر من الحد المسموح: $n',
+        for (final n in lowMarginNames) 'هامش أقل من الحد الأدنى: $n',
+      ];
+      final loggedApprovals = <(String, String)>[];
+      if (problems.isNotEmpty && userId != null) {
+        final user = await (db.select(db.users)..where((t) => t.id.equals(userId))).getSingleOrNull();
+        if (!(user?.isAdmin ?? false)) throw ApprovalRequiredException(problems);
+        final why = (approvalReason ?? '').trim().isEmpty ? 'موافقة المدير عند الحفظ' : approvalReason!.trim();
+        if (manualNames.isNotEmpty) {
+          loggedApprovals.add((ApprovalKind.priceOverride, '$why: ${manualNames.join('، ')}'));
+        }
+        if (overLimitNames.isNotEmpty) {
+          loggedApprovals.add((ApprovalKind.extraDiscount, '$why: ${overLimitNames.join('، ')}'));
+        }
+        if (lowMarginNames.isNotEmpty) {
+          loggedApprovals.add((ApprovalKind.lowMargin, '$why: ${lowMarginNames.join('، ')}'));
+        }
       }
 
       // 5c. The customer's own reservations are used up by what they buy.
@@ -362,6 +446,16 @@ class SalesService {
           docType: 'sales_invoice',
           docId: invoiceId,
           reason: belowCostReason!,
+          requestedBy: userId,
+          approvedBy: userId,
+        );
+      }
+      for (final (kind, reason) in loggedApprovals) {
+        await ApprovalService(db).record(
+          kind: kind,
+          docType: 'sales_invoice',
+          docId: invoiceId,
+          reason: reason,
           requestedBy: userId,
           approvedBy: userId,
         );

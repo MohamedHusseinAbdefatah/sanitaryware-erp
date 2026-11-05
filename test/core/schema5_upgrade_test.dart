@@ -11,7 +11,6 @@ void main() {
     try {
       var db = AppDatabase(NativeDatabase(file));
       await db.into(db.suppliers).insert(SuppliersCompanion.insert(name: 'مورد'));
-      await db.customStatement('DROP TABLE discount_rules');
       await db.customStatement('DROP TABLE price_list_items');
       await db.customStatement('DROP TABLE price_lists');
       await db.customStatement('PRAGMA user_version = 4');
@@ -20,7 +19,7 @@ void main() {
       db = AppDatabase(NativeDatabase(file));
       expect((await db.select(db.suppliers).get()).single.name, 'مورد');
       expect(await db.select(db.priceLists).get(), isEmpty);
-      expect(await db.select(db.discountRules).get(), isEmpty);
+      expect(await db.select(db.buyingPolicies).get(), isEmpty);
       await db.close();
     } finally {
       await dir.delete(recursive: true);

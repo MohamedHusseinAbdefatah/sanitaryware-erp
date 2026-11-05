@@ -2,7 +2,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sanitaryware_erp/core/db/database.dart';
 import 'package:sanitaryware_erp/core/quantity.dart';
 import 'package:sanitaryware_erp/core/services/balance_service.dart';
-import 'package:sanitaryware_erp/core/services/cost.dart';
 import 'package:sanitaryware_erp/core/services/errors.dart';
 import 'package:sanitaryware_erp/core/services/party_service.dart';
 import 'package:sanitaryware_erp/core/services/payment_service.dart';
@@ -43,35 +42,27 @@ void main() {
       sales.post(
         SaleInput(
           customerId: customerId ?? shop.customerId,
-          lines: [SaleLineInput(productId: shop.mixer.id, qty: qtyOf(count), unitPrice: price)],
+          lines: [
+            SaleLineInput(
+              productId: shop.mixer.id,
+              qty: qtyOf(count),
+              unitPrice: price,
+              priceListId: price == 50000 ? shop.priceListId : null,
+            ),
+          ],
           paidAmount: paid,
         ),
         userId: shop.cashier.id,
       );
 
-  group('weighted average cost', () {
-    test('the formula', () {
-      // 10 at 400 + 10 at 500 = 450
-      expect(averageCostAfterAdding(stock: 10000, cost: 40000, qty: 10000, unitCost: 50000), 45000);
-      // No stock: the new cost replaces the old.
-      expect(averageCostAfterAdding(stock: 0, cost: 40000, qty: 5000, unitCost: 50000), 50000);
-      expect(averageCostAfterAdding(stock: -2000, cost: 40000, qty: 5000, unitCost: 50000), 50000);
-      // Rounds to the nearest piastre: (3 x 100 + 1 x 101) / 4 = 100.25 -> 100
-      expect(averageCostAfterAdding(stock: 3000, cost: 100, qty: 1000, unitCost: 101), 100);
-      // Removing undoes adding.
-      expect(averageCostAfterRemoving(stock: 20000, cost: 45000, qty: 10000, unitCost: 50000), 40000);
-      expect(averageCostAfterRemoving(stock: 5000, cost: 45000, qty: 5000, unitCost: 50000), 45000);
-    });
-  });
-
   group('purchases', () {
-    test('stock goes up and average cost follows two purchases', () async {
+    test('stock goes up and each purchase is its own FIFO layer', () async {
       await buyMixers(10, 40000);
       expect(await shop.stockOf(shop.mixer), qtyOf(10));
       expect(await shop.costOf(shop.mixer), 40000);
       await buyMixers(10, 50000);
       expect(await shop.stockOf(shop.mixer), qtyOf(20));
-      expect(await shop.costOf(shop.mixer), 45000);
+      expect(await shop.costOf(shop.mixer), 40000); // the oldest layer goes first
     });
 
     test('a sale copies the FIFO cost: the oldest purchase is used first', () async {
@@ -354,8 +345,8 @@ void main() {
     });
 
     test('a purchase return takes stock out, lowers what we owe, keeps the cost right', () async {
-      final bought = await buyMixers(10, 50000); // average now (6x400 + 10x500)/16 = 462.50
-      expect(await shop.costOf(shop.mixer), 46250);
+      final bought = await buyMixers(10, 50000);
+      expect(await shop.costOf(shop.mixer), 40000); // the older 6 go first
       await returns.postPurchaseReturn(
         ReturnInput(
           originalInvoiceId: bought.id,
@@ -457,8 +448,8 @@ void main() {
       SaleInput(
         customerId: shop.customerId,
         lines: [
-          SaleLineInput(productId: shop.mixer.id, qty: qtyOf(3), unitPrice: 50000),
-          SaleLineInput(productId: shop.pipe.id, qty: 12500, unitPrice: 3500),
+          SaleLineInput(productId: shop.mixer.id, qty: qtyOf(3), unitPrice: 50000, priceListId: shop.priceListId),
+          SaleLineInput(productId: shop.pipe.id, qty: 12500, unitPrice: 3500, priceListId: shop.priceListId),
         ],
         paidAmount: 20000,
       ),
