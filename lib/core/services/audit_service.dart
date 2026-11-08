@@ -14,6 +14,16 @@ abstract final class AuditAction {
   static const restore = 'restore';
 }
 
+/// "field: before ← after" for every field that changed, for the audit log.
+/// Null when nothing changed.
+String? auditChanges(Map<String, dynamic> before, Map<String, dynamic> after) {
+  final changes = <String>[
+    for (final key in after.keys)
+      if (key != 'updatedAt' && before[key] != after[key]) '$key: ${before[key] ?? '—'} ← ${after[key] ?? '—'}',
+  ];
+  return changes.isEmpty ? null : changes.join('، ');
+}
+
 /// Writes one row to `audit_logs`. Call it inside the same transaction as
 /// the change it describes.
 class AuditService {

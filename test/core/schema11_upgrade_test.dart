@@ -44,12 +44,18 @@ Future<void> makeSchema10(File file) async {
   ''');
   for (final c in [
     'price_list_id', 'list_price', 'pricing_type', 'selling_policy_id', 'policy_discount_bp', 'customer_discount_bp',
-    'extra_discount_bp', 'invoice_discount_share', 'net_total', 'vat_status', 'vat_rate_bp', 'vat_amount',
+    'extra_discount_bp', 'invoice_discount_share', 'net_total', 'vat_status', 'vat_rate_bp', 'vat_amount', 'cost_total',
   ]) {
     await db.customStatement('ALTER TABLE sales_invoice_items DROP COLUMN $c');
   }
-  for (final c in ['price_list_id', 'list_price', 'buying_policy_id', 'base_discount_bp', 'extra_discount_bp']) {
+  for (final c in [
+    'price_list_id', 'list_price', 'buying_policy_id', 'base_discount_bp', 'extra_discount_bp',
+    'invoice_discount_share', 'net_total',
+  ]) {
     await db.customStatement('ALTER TABLE purchase_invoice_items DROP COLUMN $c');
+  }
+  for (final c in ['price_list_id', 'list_price']) {
+    await db.customStatement('ALTER TABLE cost_layers DROP COLUMN $c');
   }
   for (final c in ['buying_policy_id', 'extra_discount_bp']) {
     await db.customStatement('ALTER TABLE purchase_order_lines DROP COLUMN $c');
@@ -84,8 +90,8 @@ Future<void> makeSchema10(File file) async {
     INSERT INTO sales_invoices (id, number, date, subtotal, discount, total) VALUES (1, 'S-1', 1700000000, 30000, 100, 29900)
   ''');
   await db.customStatement('''
-    INSERT INTO sales_invoice_items (id, invoice_id, product_id, qty, unit_price, line_total)
-    VALUES (1, 1, 1, 1000, 10000, 10000), (2, 1, 1, 2000, 10000, 20000)
+    INSERT INTO sales_invoice_items (id, invoice_id, product_id, qty, unit_price, unit_cost, line_total)
+    VALUES (1, 1, 1, 1000, 10000, 7171, 10000), (2, 1, 1, 2000, 10000, 7171, 20000)
   ''');
   await db.customStatement('''
     INSERT INTO customers (id, name) VALUES (1, 'ع')
@@ -204,11 +210,57 @@ void main() {
     expect(items.first.priceListId, isNull);
   });
 
+  test('schema 12: past sale lines get their cost total', () async {
+    final items = await (db.select(db.salesInvoiceItems)..orderBy([(t) => OrderingTerm.asc(t.id)])).get();
+    expect(items.map((i) => i.costTotal), [7171, 14342]);
+  });
+
   test('order lines keep what they froze: base discount becomes the customer discount', () async {
     final l = await db.select(db.salesOrderLines).getSingle();
     expect(l.customerDiscountBp, 1000);
     expect(l.listPrice, 50000);
     expect(l.unitPrice, 45000);
+  });
+
+  test('schema 12: purchase lines get their discount share; layers from a known list keep it', () async {
+    // From 11 to 12 only, on a database with a purchase already in it.
+    final d2 = await Directory.systemTemp.createTemp('erp_v12');
+    final f2 = File('${d2.path}/shop.db');
+    var old = AppDatabase(NativeDatabase(f2));
+    await old.customStatement("INSERT INTO suppliers (id, name) VALUES (1, 'م')");
+    await old.customStatement("INSERT INTO products (id, code, name_ar) VALUES (1, 'A', 'أ')");
+    await old.customStatement('''
+      INSERT INTO purchase_invoices (id, number, date, supplier_id, subtotal, discount, total)
+      VALUES (1, 'P-1', 1700000000, 1, 30000, 100, 29900)
+    ''');
+    await old.customStatement('''
+      INSERT INTO purchase_invoice_items (id, invoice_id, product_id, qty, unit_cost, line_total, price_list_id, list_price)
+      VALUES (1, 1, 1, 1000, 10000, 10000, 9, 11000), (2, 1, 1, 2000, 10000, 20000, 9, 11000)
+    ''');
+    await old.customStatement('''
+      INSERT INTO cost_layers (id, product_id, location_id, qty_received, qty_remaining, unit_cost, received_at, source_type, source_id)
+      VALUES (1, 1, 1, 3000, 3000, 10000, 1700000000, 'purchase', 1)
+    ''');
+    for (final c in ['invoice_discount_share', 'net_total']) {
+      await old.customStatement('ALTER TABLE purchase_invoice_items DROP COLUMN $c');
+    }
+    for (final c in ['price_list_id', 'list_price']) {
+      await old.customStatement('ALTER TABLE cost_layers DROP COLUMN $c');
+    }
+    await old.customStatement('ALTER TABLE sales_invoice_items DROP COLUMN cost_total');
+    await old.customStatement('PRAGMA user_version = 11');
+    await old.close();
+
+    old = AppDatabase(NativeDatabase(f2));
+    final items = await (old.select(old.purchaseInvoiceItems)..orderBy([(t) => OrderingTerm.asc(t.id)])).get();
+    expect(items.map((i) => i.invoiceDiscountShare), [33, 67]);
+    expect(items.map((i) => i.netTotal), [9967, 19933]);
+    final layer = await old.select(old.costLayers).getSingle();
+    expect(layer.priceListId, 9);
+    expect(layer.listPrice, 11000);
+    expect(layer.unitCost, 10000, reason: 'costs already in stock are not rewritten');
+    await old.close();
+    await d2.delete(recursive: true);
   });
 
   test('the file is sound after the upgrade', () async {

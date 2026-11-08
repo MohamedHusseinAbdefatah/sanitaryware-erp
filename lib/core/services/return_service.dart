@@ -36,6 +36,7 @@ class ReturnInput {
     this.refundMethod = PaymentMethod.cash,
     this.date,
     this.notes,
+    this.locationId = mainLocationId,
   });
 
   final List<ReturnLineInput> lines;
@@ -51,6 +52,9 @@ class ReturnInput {
   final String refundMethod;
   final DateTime? date;
   final String? notes;
+
+  /// Where goods coming back from a customer go.
+  final int locationId;
 
   int get total => lines.fold(0, (s, l) => s + l.total);
 }
@@ -214,8 +218,9 @@ class ReturnService {
         allowDecimal: r.readTableOrNull(db.units)?.allowDecimal ?? false,
         invoicedQty: (prev?.invoicedQty ?? 0) + item.qty,
         returnedQty: returned[p.id] ?? 0,
-        unitPrice: prev?.unitPrice ?? item.unitCost,
-        unitCost: prev?.unitCost ?? item.unitCost,
+        // Per whole unit after the invoice discount: that is what it really cost.
+        unitPrice: prev?.unitPrice ?? (item.netTotal * qtyScale / item.qty).round(),
+        unitCost: prev?.unitCost ?? (item.netTotal * qtyScale / item.qty).round(),
       );
     }
     return byProduct.values.toList();
@@ -235,6 +240,19 @@ class ReturnService {
       result[item.productId] = (result[item.productId] ?? 0) + item.qty;
     }
     return result;
+  }
+
+  /// The first layer an invoice sold of a product.
+  Future<CostLayer?> _layerSoldOn(int invoiceId, int productId) async {
+    final rows = await (db.select(db.layerConsumptions).join([
+      innerJoin(db.costLayers, db.costLayers.id.equalsExp(db.layerConsumptions.layerId)),
+    ])
+          ..where(db.layerConsumptions.refType.equals(RefType.salesInvoice) &
+              db.layerConsumptions.refId.equals(invoiceId) &
+              db.costLayers.productId.equals(productId))
+          ..limit(1))
+        .get();
+    return rows.isEmpty ? null : rows.first.readTable(db.costLayers);
   }
 
   /// Goods come back from a customer. Anyone may post a sale return.
@@ -274,14 +292,22 @@ class ReturnService {
           refId: returnId,
           createdBy: user.id,
           date: date,
+          locationId: input.locationId,
         );
+        // It keeps the list version it left under, when the invoice is known.
+        final old = input.originalInvoiceId == null
+            ? null
+            : await _layerSoldOn(input.originalInvoiceId!, p.id);
         await FifoService(db).addLayer(
           productId: p.id,
           qty: line.qty,
           unitCost: cost,
+          locationId: input.locationId,
           receivedAt: date,
           sourceType: 'return',
           sourceId: returnId,
+          priceListId: old?.priceListId,
+          listPrice: old?.listPrice,
         );
       }
       if (input.refundAmount > 0) {
@@ -337,25 +363,29 @@ class ReturnService {
       for (final line in input.lines) {
         final p = await (db.select(db.products)..where((t) => t.id.equals(line.productId))).getSingle();
         final cost = returnable?[line.productId]?.unitCost ?? line.unitPrice;
-        await stock.record(
-          productId: p.id,
-          type: StockMovementType.purchaseReturn,
-          qty: -line.qty,
-          unitCost: cost,
-          refType: RefType.returnDoc,
-          refId: returnId,
-          createdBy: user.id,
-          date: date,
-        );
-        await FifoService(db).consume(
+        final parts = await FifoService(db).consumeAcross(
           productId: p.id,
           qty: line.qty,
+          locationIds: await stock.allLocationIds(),
           refType: 'purchase_return',
           refId: returnId,
           date: date,
           fallbackCost: cost,
           fromPurchaseId: input.originalInvoiceId,
         );
+        for (final part in parts) {
+          await stock.record(
+            productId: p.id,
+            type: StockMovementType.purchaseReturn,
+            qty: -part.take.qty,
+            unitCost: cost,
+            refType: RefType.returnDoc,
+            refId: returnId,
+            createdBy: user.id,
+            date: date,
+            locationId: part.locationId,
+          );
+        }
       }
       if (input.refundAmount > 0) {
         await _refund(
@@ -387,7 +417,7 @@ class ReturnService {
           .get();
       for (final m in movements) {
         final p = await (db.select(db.products)..where((t) => t.id.equals(m.productId))).getSingle();
-        final onHand = await stock.currentStock(p.id);
+        final onHand = await stock.currentStock(p.id, locationId: m.locationId);
         // A sale return put stock in; cancelling takes it out again.
         if (m.qty > 0 && !allowNegative && onHand < m.qty) {
           throw ValidationException('لا يمكن الإلغاء: الكمية المتاحة من "${p.nameAr}" أقل من كمية المرتجع');
@@ -401,6 +431,7 @@ class ReturnService {
           refId: returnId,
           note: note,
           createdBy: user.id,
+          locationId: m.locationId,
         );
         final fifo = FifoService(db);
         if (m.qty > 0) {
@@ -410,12 +441,14 @@ class ReturnService {
               qty: m.qty,
               refType: 'return_cancel',
               refId: returnId,
+              locationId: m.locationId,
               fallbackCost: m.unitCost);
         } else {
           await fifo.addLayer(
               productId: p.id,
               qty: -m.qty,
               unitCost: m.unitCost,
+              locationId: m.locationId,
               sourceType: 'return_cancel',
               sourceId: returnId);
         }

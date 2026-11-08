@@ -98,14 +98,19 @@ class PartyService {
         notes: Value(_blankToNull(input.notes)),
         isActive: Value(input.isActive),
       );
+      final before = id == null
+          ? null
+          : await (db.select(db.customers)..where((t) => t.id.equals(id))).getSingle();
       final savedId = id == null
           ? await db.into(db.customers).insert(companion)
           : await _update(db.customers, id, companion.copyWith(updatedAt: Value(DateTime.now())));
+      final after = await (db.select(db.customers)..where((t) => t.id.equals(savedId))).getSingle();
       await AuditService(db).log(
         action: id == null ? AuditAction.create : AuditAction.update,
         entity: 'customer',
         entityId: savedId,
         userId: userId,
+        details: before == null ? null : auditChanges(before.toJson(), after.toJson()),
       );
       return savedId;
     });
@@ -121,14 +126,19 @@ class PartyService {
         notes: Value(_blankToNull(input.notes)),
         isActive: Value(input.isActive),
       );
+      final before = id == null
+          ? null
+          : await (db.select(db.suppliers)..where((t) => t.id.equals(id))).getSingle();
       final savedId = id == null
           ? await db.into(db.suppliers).insert(companion)
           : await _update(db.suppliers, id, companion.copyWith(updatedAt: Value(DateTime.now())));
+      final after = await (db.select(db.suppliers)..where((t) => t.id.equals(savedId))).getSingle();
       await AuditService(db).log(
         action: id == null ? AuditAction.create : AuditAction.update,
         entity: 'supplier',
         entityId: savedId,
         userId: userId,
+        details: before == null ? null : auditChanges(before.toJson(), after.toJson()),
       );
       return savedId;
     });

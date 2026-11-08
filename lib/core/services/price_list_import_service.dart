@@ -2,6 +2,7 @@ import 'package:excel/excel.dart';
 
 import '../auth/auth_service.dart';
 import '../db/database.dart';
+import '../excel_open.dart';
 import '../money.dart';
 import '../pricing_math.dart';
 import '../search_text.dart';
@@ -103,7 +104,9 @@ class PriceListImportService {
 
   final AppDatabase db;
 
-  static const _codeHeaders = ['كود الشركة', 'الكود', 'كود', 'كود الصنف', 'code', 'model', 'manufacturer code'];
+  static const _codeHeaders = [
+    'كود الشركة', 'كود المورد', 'كود المصنع', 'الكود', 'كود', 'كود الصنف', 'code', 'model', 'manufacturer code',
+  ];
   static const _nameHeaders = ['الاسم', 'اسم الصنف', 'الصنف', 'name', 'product name'];
   static const _variantHeaders = ['اللون', 'colour', 'color', 'variant'];
   static const _priceHeaders = ['السعر', 'سعر القائمة', 'price', 'list price'];
@@ -141,9 +144,9 @@ class PriceListImportService {
   Future<PriceImportPreview> preview(List<int> bytes, {required int brandId}) async {
     final Excel excel;
     try {
-      excel = Excel.decodeBytes(bytes);
+      excel = openExcel(bytes);
     } on Object {
-      throw ValidationException('الملف ليس ملف Excel صالحاً (xlsx)');
+      throw ValidationException('الملف ليس ملف Excel صالحاً (xlsx). افتحه في Excel واحفظه من جديد ثم حاول مرة أخرى.');
     }
     final sheet = excel.tables.values.where((t) => t.maxRows > 0).firstOrNull;
     if (sheet == null) return PriceImportPreview(brandId, [], ['الاسم', 'السعر']);
@@ -180,7 +183,6 @@ class PriceListImportService {
       }
     }
     final missing = <String>[
-      if (codeCol == null) 'كود الشركة',
       if (nameCol == null) 'الاسم',
       if (priceCol == null && variantPriceCols.isEmpty) 'السعر',
     ];
@@ -196,7 +198,8 @@ class PriceListImportService {
       final name = at(cells, nameCol);
       final sheetVariant = at(cells, variantCol);
       final pack = at(cells, packCol);
-      final numeric = codeCol! < cells.length &&
+      final numeric = codeCol != null &&
+          codeCol < cells.length &&
           (cells[codeCol]?.value is IntCellValue || cells[codeCol]?.value is DoubleCellValue);
       final details = {for (final e in detailCols.entries) e.key: at(cells, e.value)};
       final prices = <String?, String>{
@@ -218,14 +221,24 @@ class PriceListImportService {
     final products = await (db.select(db.products)..where((t) => t.brandId.equals(brandId))).get();
     final byKey = <String, List<Product>>{};
     final byId = <String, Product>{};
+    // Some makers' lists have no codes at all: then the exact name identifies
+    // the product within its brand and colour.
+    final byName = <String, List<Product>>{};
     for (final p in products) {
       if (p.matchKey.isNotEmpty) (byKey[p.matchKey] ??= []).add(p);
       byId[matchKeyOf(p.code)] = p;
+      (byName['${foldForSearch(p.nameAr)}|${variantKeyOf(p.variant)}'] ??= []).add(p);
     }
+    String rowKey(PriceImportRow r) {
+      final code = matchKeyOf(r.code);
+      return code.isNotEmpty
+          ? '$code|${variantKeyOf(r.variant)}'
+          : 'name:${foldForSearch(r.name)}|${variantKeyOf(r.variant)}';
+    }
+
     final counts = <String, int>{};
     for (final r in rows) {
-      final k = '${matchKeyOf(r.code)}|${variantKeyOf(r.variant)}';
-      counts[k] = (counts[k] ?? 0) + 1;
+      counts[rowKey(r)] = (counts[rowKey(r)] ?? 0) + 1;
     }
     for (final r in rows) {
       final key = matchKeyOf(r.code);
@@ -243,12 +256,22 @@ class PriceListImportService {
           r.stop('عدد الكرتونة "${r.packText}" غير صحيح');
         }
       }
-      if (key.isEmpty) {
-        r.stop('بدون كود');
+      if (key.isEmpty && r.name.isEmpty) {
+        r.stop('بدون كود وبدون اسم');
         continue;
       }
-      if ((counts['$key|${variantKeyOf(r.variant)}'] ?? 0) > 1) {
-        r.stop('الكود مكرر في الملف');
+      if ((counts[rowKey(r)] ?? 0) > 1) {
+        r.stop(key.isEmpty ? 'الاسم مكرر في الملف بدون كود' : 'الكود مكرر في الملف');
+        continue;
+      }
+      if (key.isEmpty) {
+        final named = byName['${foldForSearch(r.name)}|${variantKeyOf(r.variant)}'] ?? const <Product>[];
+        if (named.length > 1) {
+          r.stop('الاسم يطابق أكثر من صنف');
+        } else if (named.length == 1) {
+          r.productId = named.single.id;
+          if (r.action != PriceRowAction.review) r.action = PriceRowAction.known;
+        }
         continue;
       }
       final same = byKey[key] ?? const <Product>[];

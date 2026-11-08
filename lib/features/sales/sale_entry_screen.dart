@@ -18,6 +18,8 @@ import '../../core/services/fifo_service.dart';
 import '../../core/services/product_service.dart';
 import '../../core/services/sales_service.dart';
 import '../../core/services/selling_policy_service.dart';
+import '../../core/services/stock_price_service.dart';
+import '../../core/services/stock_service.dart';
 import '../../core/widgets/amounts.dart';
 import '../../core/widgets/feedback.dart';
 import '../../core/widgets/number_fields.dart';
@@ -29,7 +31,7 @@ import 'sale_preview_dialog.dart';
 /// One editable line. Text fields are parsed on every change; an invalid
 /// field shows its error and blocks saving.
 class _Line {
-  _Line(this.row, this.quote, this.costHint)
+  _Line(this.row, this.quote, this.costHint, this.priceSplit)
       : qty = TextEditingController(text: '1'),
         price = TextEditingController(text: quote == null ? '' : _plain(quote.listPrice)),
         discount = TextEditingController();
@@ -42,6 +44,12 @@ class _Line {
 
   /// The next FIFO cost per unit, for the admin's warning. Null = none on record.
   final int? costHint;
+
+  /// How much of it is at the old and the new price.
+  final StockPriceSummary priceSplit;
+
+  /// The place chosen on this line. Null = the sellable places in order.
+  int? locationId;
   final TextEditingController qty;
   final TextEditingController price;
   final TextEditingController discount;
@@ -138,14 +146,17 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
 
   Future<void> _addProduct(ProductRow row) async {
     final quotes = await ref.read(sellingPolicyServiceProvider).quotes(row.product.id, customer: _customer);
-    final cost = await FifoService(ref.read(databaseProvider)).peek(row.product.id, qtyScale);
+    final stock = StockService(ref.read(databaseProvider));
+    final cost = await FifoService(ref.read(databaseProvider))
+        .peek(row.product.id, qtyScale, locationIds: await stock.sellableLocationIds());
+    final split = await ref.read(stockPriceServiceProvider).summaryOf(row.product.id);
     if (!mounted) return;
     var quote = quotes.length == 1 ? quotes.single : null;
     if (quotes.length > 1) {
       quote = await pickSellQuote(context, quotes, row.product.nameAr);
       if (quote == null || !mounted) return;
     }
-    final line = _Line(row, quote, cost?.averageUnitCost);
+    final line = _Line(row, quote, cost?.averageUnitCost, split);
     setState(() {
       _lines.add(line);
       _searchKey++;
@@ -227,6 +238,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
             unitPrice: l.priceValue!,
             discount: l.discountValue,
             priceListId: l.quote?.quote.priceListId,
+            locationId: l.locationId,
           ),
       ],
       discount: _discount,
@@ -554,7 +566,7 @@ class _LineHeader extends StatelessWidget {
                 style: const TextStyle(fontWeight: FontWeight.bold),
               ),
             ),
-          const SizedBox(width: 48),
+          const SizedBox(width: 96),
         ],
       ),
     );
@@ -585,7 +597,7 @@ class _LineRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final short = qtyOnInvoice > line.row.stock;
+    final short = qtyOnInvoice > line.row.sellableStock;
     final price = line.priceValue;
     final belowCost = showCost && price != null && line.costHint != null && price < line.costHint!;
     final total = line.total;
@@ -612,6 +624,15 @@ class _LineRow extends StatelessWidget {
                       : '${line.product.code} · ${line.quote!.quote.label}',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
+                if (line.priceSplit.old != 0 || line.priceSplit.unknown != 0)
+                  Text(
+                    [
+                      if (line.priceSplit.current != 0) 'بالسعر الجديد ${formatQty(line.priceSplit.current)}',
+                      if (line.priceSplit.old != 0) 'بالسعر القديم ${formatQty(line.priceSplit.old)}',
+                      if (line.priceSplit.unknown != 0) 'غير محدد ${formatQty(line.priceSplit.unknown)}',
+                    ].join(' · '),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.tertiary),
+                  ),
               ],
             ),
           ),
@@ -620,7 +641,7 @@ class _LineRow extends StatelessWidget {
             Tooltip(
               message: short ? Strings.notEnoughStock : '',
               child: Text(
-                formatQty(line.row.stock),
+                formatQty(line.row.sellableStock),
                 textAlign: TextAlign.center,
                 style: short ? TextStyle(color: scheme.error, fontWeight: FontWeight.bold) : null,
               ),
@@ -689,6 +710,10 @@ class _LineRow extends StatelessWidget {
           ),
           SizedBox(
             width: 48,
+            child: _PlaceButton(line: line),
+          ),
+          SizedBox(
+            width: 48,
             child: IconButton(
               tooltip: Strings.removeLine,
               icon: const Icon(Icons.delete_outline),
@@ -697,6 +722,34 @@ class _LineRow extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Which place a line is sold from. Display-only places are not offered.
+class _PlaceButton extends ConsumerWidget {
+  const _PlaceButton({required this.line});
+
+  final _Line line;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return FutureBuilder<List<Location>>(
+      future: ref.read(locationServiceProvider).all(activeOnly: true),
+      builder: (context, snap) {
+        final places = (snap.data ?? const <Location>[]).where((l) => l.isSellable).toList();
+        if (places.length < 2) return const SizedBox.shrink();
+        return PopupMenuButton<int>(
+          tooltip: 'مكان البيع: ${line.locationId == null ? 'تلقائي' : places.where((p) => p.id == line.locationId).firstOrNull?.name ?? ''}',
+          icon: Icon(line.locationId == null ? Icons.warehouse_outlined : Icons.warehouse),
+          initialValue: line.locationId ?? 0,
+          onSelected: (v) => line.locationId = v == 0 ? null : v,
+          itemBuilder: (_) => [
+            const PopupMenuItem(value: 0, child: Text('تلقائي: المخزن الرئيسي أولاً')),
+            for (final p in places) PopupMenuItem(value: p.id, child: Text(p.name)),
+          ],
+        );
+      },
     );
   }
 }

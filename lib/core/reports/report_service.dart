@@ -6,6 +6,7 @@ import '../services/balance_service.dart';
 import '../services/doc_types.dart';
 import '../services/query_helpers.dart';
 import '../services/settings_service.dart';
+import '../services/stock_price_service.dart';
 import '../services/stock_service.dart';
 import 'report_table.dart';
 
@@ -19,6 +20,8 @@ enum ReportKind {
   stockLevels('أرصدة المخزن', byCategory: true),
   lowStock('الأصناف تحت حد الطلب'),
   stockValuation('تقييم المخزون', byCategory: true),
+  stockByPrice('المخزون بالسعر القديم والجديد', byCategory: true),
+  stockByPlace('المخزون حسب المكان', byCategory: true),
   purchasePlan('تخطيط الشراء'),
   customersOwing('مديونيات العملاء'),
   supplierBalances('أرصدة الموردين');
@@ -83,6 +86,8 @@ class ReportService {
       ReportKind.stockLevels => stockLevels(categoryId: categoryId),
       ReportKind.lowStock => lowStock(),
       ReportKind.stockValuation => stockValuation(categoryId: categoryId),
+      ReportKind.stockByPrice => stockByPrice(categoryId: categoryId),
+      ReportKind.stockByPlace => stockByPlace(categoryId: categoryId),
       ReportKind.purchasePlan => purchasePlan(),
       ReportKind.customersOwing => customersOwing(),
       ReportKind.supplierBalances => supplierBalances(),
@@ -225,7 +230,7 @@ class ReportService {
     final ids = {for (final s in sales) s.id};
     var cost = 0;
     for (final i in await db.select(db.salesInvoiceItems).get()) {
-      if (ids.contains(i.invoiceId)) cost += lineAmount(i.qty, i.unitCost);
+      if (ids.contains(i.invoiceId)) cost += i.costTotal;
     }
     final returns = await _returns(ReturnKind.sale, from, to);
     final returnsTotal = returns.fold(0, (s, r) => s + r.total);
@@ -392,6 +397,79 @@ class ReportService {
         ReportColumn('الرصيد', ColumnType.qty),
         ReportColumn('متوسط التكلفة', ColumnType.money),
         ReportColumn('القيمة', ColumnType.money, sum: true),
+      ],
+      rows: out,
+    );
+  }
+
+  /// How much of each item is at the old price and at the new price.
+  Future<ReportTable> stockByPrice({int? categoryId}) async {
+    final rows = (await _stockRows(categoryId: categoryId)).where((r) => r.stock > 0).toList();
+    final service = StockPriceService(db);
+    final out = <List<Object?>>[];
+    for (final r in rows) {
+      for (final l in await service.breakdown(r.productId)) {
+        out.add([
+          r.code,
+          r.name,
+          l.kind.label,
+          l.versionLabel ?? '—',
+          l.listPrice,
+          l.currentPrice,
+          l.qty,
+          l.value,
+        ]);
+      }
+    }
+    return ReportTable(
+      title: ReportKind.stockByPrice.title,
+      columns: const [
+        ReportColumn('الكود', ColumnType.text),
+        ReportColumn('الصنف', ColumnType.text),
+        ReportColumn('الحالة', ColumnType.text),
+        ReportColumn('القائمة', ColumnType.text),
+        ReportColumn('سعر القائمة', ColumnType.money),
+        ReportColumn('السعر الحالي', ColumnType.money),
+        ReportColumn('الكمية', ColumnType.qty),
+        ReportColumn('التكلفة الفعلية', ColumnType.money, sum: true),
+      ],
+      rows: out,
+    );
+  }
+
+  /// Each item's quantity in each place, with what can be sold.
+  Future<ReportTable> stockByPlace({int? categoryId}) async {
+    final rows = (await _stockRows(categoryId: categoryId)).where((r) => r.stock != 0).toList();
+    final places = await db.select(db.locations).get();
+    final stock = StockService(db);
+    final out = <List<Object?>>[];
+    for (final r in rows) {
+      for (final l in places) {
+        final q = await stock.currentStock(r.productId, locationId: l.id);
+        if (q == 0) continue;
+        final held = await (db.select(db.costLayers)
+              ..where((c) =>
+                  c.productId.equals(r.productId) & c.locationId.equals(l.id) & c.qtyRemaining.isBiggerThanValue(0)))
+            .get();
+        out.add([
+          r.code,
+          r.name,
+          l.name,
+          l.isSellable ? 'للبيع' : 'للعرض فقط',
+          q,
+          held.fold<int>(0, (s, c) => s + lineAmount(c.qtyRemaining, c.unitCost)),
+        ]);
+      }
+    }
+    return ReportTable(
+      title: ReportKind.stockByPlace.title,
+      columns: const [
+        ReportColumn('الكود', ColumnType.text),
+        ReportColumn('الصنف', ColumnType.text),
+        ReportColumn('المكان', ColumnType.text),
+        ReportColumn('النوع', ColumnType.text),
+        ReportColumn('الكمية', ColumnType.qty),
+        ReportColumn('القيمة بالتكلفة', ColumnType.money, sum: true),
       ],
       rows: out,
     );

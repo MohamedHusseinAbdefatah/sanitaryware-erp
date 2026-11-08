@@ -14,6 +14,7 @@ import '../../core/services/buying_policy_service.dart';
 import '../../core/services/doc_types.dart';
 import '../../core/services/product_service.dart';
 import '../../core/services/purchase_service.dart';
+import '../../core/services/stock_service.dart';
 import '../../core/widgets/amounts.dart';
 import '../../core/widgets/feedback.dart';
 import '../../core/widgets/number_fields.dart';
@@ -70,6 +71,7 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
   final _searchFocus = FocusNode();
   Supplier? _supplier;
   String _method = PaymentMethod.cash;
+  int _locationId = mainLocationId;
   bool _saving = false;
   int _searchKey = 0;
 
@@ -167,6 +169,7 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
       paidAmount: moneyOrZero(_paid),
       paymentMethod: _method,
       notes: _notes.text,
+      locationId: _locationId,
     );
     final invoice = await runGuarded(
       context,
@@ -227,6 +230,11 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                         icon: const Icon(Icons.add_business_outlined),
                       ),
                     ],
+                  ),
+                  LocationDropdown(
+                    label: 'مكان الاستلام',
+                    value: _locationId,
+                    onChanged: (v) => setState(() => _locationId = v),
                   ),
                   SizedBox(
                     width: 200,

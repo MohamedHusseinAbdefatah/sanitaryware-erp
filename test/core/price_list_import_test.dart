@@ -1,6 +1,10 @@
+import 'dart:convert';
+
+import 'package:archive/archive.dart';
 import 'package:excel/excel.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sanitaryware_erp/core/db/database.dart';
+import 'package:sanitaryware_erp/core/excel_open.dart';
 import 'package:sanitaryware_erp/core/services/catalog_service.dart';
 import 'package:sanitaryware_erp/core/services/errors.dart';
 import 'package:sanitaryware_erp/core/services/price_list_import_service.dart';
@@ -184,15 +188,35 @@ void main() {
       expect(await products.withMatchKey('G-7', brand), hasLength(1));
     });
 
+    test('a list with no codes: the exact name identifies the product, and a repeat name stops', () async {
+      final sheet = _sheet([
+        ['كود المورد', 'اسم الصنف', 'السعر', 'التعبئة'],
+        ['', 'محابس الزاوية سيلفر', 152, 100],
+        ['', 'محابس الزاوية لوتس', 183, 80],
+        ['', 'مكرر', 10, null],
+        ['', 'مكرر', 20, null],
+      ]);
+      final first = await imports.preview(sheet, brandId: brand);
+      expect(first.createCount, 2);
+      expect(first.reviewCount, 2);
+      await imports.import(first, header: header(), user: shop.admin);
+
+      final again = await imports.preview(sheet, brandId: brand);
+      expect(again.knownCount, 2, reason: 'next month the same names are known, not new');
+      expect(again.createCount, 0);
+      await imports.import(again, header: header(from: DateTime(2026, 8, 1)), user: shop.admin);
+      expect((await shop.db.select(shop.db.products).get()).where((p) => p.nameAr.startsWith('محابس')), hasLength(2));
+    });
+
     test('missing columns are reported; a bad file is refused; cashier cannot import', () async {
       final preview = await imports.preview(
         _sheet([
-          ['الاسم', 'السعر'],
-          ['حوض', '100'],
+          ['كود الشركة', 'السعر'],
+          ['A', '100'],
         ]),
         brandId: brand,
       );
-      expect(preview.missingColumns, ['كود الشركة']);
+      expect(preview.missingColumns, ['الاسم']);
       expect(preview.canImport, isFalse);
       await expectLater(imports.preview([1, 2, 3], brandId: brand), throwsA(isA<ValidationException>()));
       final ok = await imports.preview(
@@ -204,6 +228,23 @@ void main() {
       );
       await expectLater(imports.import(ok, header: header(), user: shop.cashier), throwsA(isA<ValidationException>()));
     });
+  });
+
+  test('a file from another tool opens: full sheet paths and empty text cells', () {
+    final good = ZipDecoder().decodeBytes(_sheet([
+      ['كود الشركة', 'الاسم', 'السعر'],
+      ['A', 'حوض', '100'],
+    ]));
+    final bad = Archive();
+    for (final f in good.files) {
+      var bytes = f.content as List<int>;
+      if (f.name == 'xl/_rels/workbook.xml.rels') {
+        bytes = utf8.encode(utf8.decode(bytes).replaceAll('Target="worksheets/', 'Target="/xl/worksheets/'));
+      }
+      bad.addFile(ArchiveFile(f.name, bytes.length, bytes));
+    }
+    expect(() => Excel.decodeBytes(ZipEncoder().encode(bad)!), throwsA(anything));
+    expect(openExcel(ZipEncoder().encode(bad)!).tables, isNotEmpty);
   });
 
   group('review queue', () {

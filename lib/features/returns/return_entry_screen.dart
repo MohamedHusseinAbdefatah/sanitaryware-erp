@@ -12,6 +12,7 @@ import '../../core/quantity.dart';
 import '../../core/services/doc_types.dart';
 import '../../core/services/fifo_service.dart';
 import '../../core/services/product_service.dart';
+import '../../core/services/stock_service.dart';
 import '../../core/services/return_service.dart';
 import '../../core/widgets/amounts.dart';
 import '../../core/widgets/feedback.dart';
@@ -75,6 +76,7 @@ class _ReturnEntryScreenState extends ConsumerState<ReturnEntryScreen> {
   Customer? _customer;
   Supplier? _supplier;
   String _method = PaymentMethod.cash;
+  int _locationId = mainLocationId;
   bool _refundEdited = false;
   bool _saving = false;
   int _searchKey = 0;
@@ -201,6 +203,7 @@ class _ReturnEntryScreenState extends ConsumerState<ReturnEntryScreen> {
       refundAmount: moneyOrZero(_refund),
       refundMethod: _method,
       notes: _notes.text,
+      locationId: _locationId,
     );
     final user = ref.read(currentUserProvider)!;
     final service = ref.read(returnServiceProvider);
@@ -391,6 +394,12 @@ class _ReturnEntryScreenState extends ConsumerState<ReturnEntryScreen> {
                       decoration: const InputDecoration(labelText: Strings.notes, isDense: true),
                     ),
                   ),
+                  if (_isSale)
+                    LocationDropdown(
+                      label: 'مكان عودة البضاعة',
+                      value: _locationId,
+                      onChanged: (v) => setState(() => _locationId = v),
+                    ),
                   AmountLabel(Strings.returnTotal, _total, big: true),
                   SizedBox(
                     width: 140,

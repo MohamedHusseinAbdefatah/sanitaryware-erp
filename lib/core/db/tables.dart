@@ -112,6 +112,10 @@ class CostLayers extends Table {
   // 'opening', 'purchase', 'transfer', 'adjustment', 'return'
   TextColumn get sourceType => text().nullable()();
   IntColumn get sourceId => integer().nullable()();
+  // The list version this stock came in under, and its list price then: how
+  // old-price and new-price stock are told apart. Null = not known; never guessed.
+  IntColumn get priceListId => integer().nullable()();
+  IntColumn get listPrice => integer().nullable()();
 }
 
 // Which layers each use of stock took, so cost of goods sold is exact.
@@ -437,6 +441,8 @@ class SalesInvoiceItems extends Table {
   TextColumn get vatStatus => text().nullable()();
   IntColumn get vatRateBp => integer().nullable()();
   IntColumn get vatAmount => integer().nullable()();
+  // The exact FIFO cost of this line. unitCost is a rounded average of it.
+  IntColumn get costTotal => integer().withDefault(const Constant(0))();
 }
 
 @TableIndex(name: 'idx_purchase_invoices_supplier_date', columns: {#supplierId, #date})
@@ -468,6 +474,10 @@ class PurchaseInvoiceItems extends Table {
   IntColumn get buyingPolicyId => integer().nullable()();
   IntColumn get baseDiscountBp => integer().withDefault(const Constant(0))();
   IntColumn get extraDiscountBp => integer().withDefault(const Constant(0))();
+  // This line's part of the invoice discount and what is left after it. The
+  // cost of the goods is the net, so the shares add up to the discount exactly.
+  IntColumn get invoiceDiscountShare => integer().withDefault(const Constant(0))();
+  IntColumn get netTotal => integer().withDefault(const Constant(0))();
 }
 
 @DataClassName('ReturnDoc')

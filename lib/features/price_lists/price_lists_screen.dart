@@ -139,6 +139,29 @@ class _VersionCard extends ConsumerWidget {
   Future<void> _setVat(BuildContext context) =>
       showDialog<void>(context: context, builder: (_) => _VatDialog(list: summary.list));
 
+  /// At go-live: stock entered before this list was loaded came in at this list.
+  Future<void> _assignStock(BuildContext context, WidgetRef ref) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('المخزون غير المحدد'),
+        content: const Text('هل دخل كل المخزون غير المحدد لأصناف هذه القائمة بأسعارها؟ سيُسجل ذلك في سجل العمليات.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('نعم')),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+    final n = await runGuarded(
+      context,
+      () => ref
+          .read(stockPriceServiceProvider)
+          .assignAllUnknownFrom(summary.list.id, user: ref.read(currentUserProvider)!),
+    );
+    if (n != null && context.mounted) showToast(context, 'تم تحديد القائمة لعدد $n صنف');
+  }
+
   Future<void> _withdraw(BuildContext context, WidgetRef ref) async {
     final reason = await _askText(context, 'سحب القائمة', 'سبب السحب');
     if (reason == null || !context.mounted) return;
@@ -176,6 +199,7 @@ class _VersionCard extends ConsumerWidget {
                 child: const Text('مراجعة واعتماد'),
               ),
             PopupMenuItem(value: () => _setVat(context), child: const Text('تسجيل الضريبة بعد التحقق')),
+            PopupMenuItem(value: () => _assignStock(context, ref), child: const Text('المخزون غير المحدد من هذه القائمة')),
             if (l.status != PriceListStatus.withdrawn)
               PopupMenuItem(value: () => _withdraw(context, ref), child: const Text('سحب القائمة')),
           ],

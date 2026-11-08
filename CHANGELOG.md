@@ -2,6 +2,33 @@
 
 Versions follow `version:` in `pubspec.yaml` and `lib/core/version.dart`.
 
+## 1.3.0
+
+The database upgrades in place (schema 12) and keeps all existing data.
+
+- New: stock at the old and the new price. Each receipt remembers the price
+  list version it came in under. The Products list, the sale screen, a dialog
+  per product and a new report show how much is at the new price, at the old
+  price, or not yet known. A person can say which list unknown stock belongs
+  to, for one product or a whole list. Nothing is guessed.
+- New report: stock by place, with what is display only.
+- Fixed: sales always took stock from the main warehouse, so a place's stock
+  went wrong after any transfer. A sale now takes from sellable places, main
+  warehouse first, or from the place chosen on the line, and cancelling gives
+  each place back its own.
+- Fixed: display-only pieces could be sold. They no longer count as available.
+- Fixed: purchase receipts, purchase returns, purchase cancels, sale returns,
+  return cancels and stock adjustments now use the right place.
+- Fixed: an invoice discount on a purchase now lowers the cost of the goods,
+  split over the lines exactly. Costs already in stock are not rewritten.
+- Fixed: the profit report uses each sale line's exact FIFO cost instead of a
+  rounded average.
+- Fixed: a credit limit override is written to the approval log.
+- Fixed: edits to products, customers and suppliers record before and after.
+- Price list import: a list with no codes matches by exact name within the
+  brand, and more Excel files can be opened, such as those made by other tools.
+- The stock card shows the place and names transfers and cancels properly.
+
 ## 1.2.0
 
 Blueprint section 3, Product Master & Price Lists. Each requirement is traced

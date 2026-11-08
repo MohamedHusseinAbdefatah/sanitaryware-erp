@@ -2,6 +2,7 @@ import 'package:excel/excel.dart';
 
 import '../auth/auth_service.dart';
 import '../db/database.dart';
+import '../excel_open.dart';
 import '../money.dart';
 import '../quantity.dart';
 import '../search_text.dart';
@@ -125,9 +126,9 @@ class ImportService {
   Future<ImportPreview> preview(ImportKind kind, List<int> bytes) async {
     final Excel excel;
     try {
-      excel = Excel.decodeBytes(bytes);
+      excel = openExcel(bytes);
     } on Object {
-      throw ValidationException('الملف ليس ملف Excel صالحاً (xlsx)');
+      throw ValidationException('الملف ليس ملف Excel صالحاً (xlsx). افتحه في Excel واحفظه من جديد ثم حاول مرة أخرى.');
     }
     final sheet = excel.tables.values.where((t) => t.maxRows > 0).firstOrNull;
     final fields = _fields[kind]!;

@@ -8,6 +8,7 @@ import '../../core/l10n/strings.dart';
 import '../../core/providers.dart';
 import '../../core/quantity.dart';
 import '../../core/services/product_service.dart';
+import '../../core/services/stock_price_service.dart';
 import '../../core/widgets/data_list.dart';
 import 'catalog_dialog.dart';
 import 'locations_dialog.dart';
@@ -15,6 +16,7 @@ import 'reservations_dialog.dart';
 import 'price_history_dialog.dart';
 import 'product_form_dialog.dart';
 import 'stock_dialogs.dart';
+import 'stock_price_dialog.dart';
 
 class ProductsScreen extends ConsumerStatefulWidget {
   const ProductsScreen({super.key});
@@ -34,6 +36,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     final categories = ref.watch(_categoriesProvider).valueOrNull ?? const <Category>[];
     final rows = ref.watch(_productListProvider((_search, _categoryId, _lowOnly)));
     final scheme = Theme.of(context).colorScheme;
+    final byPrice = ref.watch(_stockByPriceProvider).valueOrNull ?? const <int, StockPriceSummary>{};
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -130,6 +133,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                 DataListColumn(Strings.category, (r) => Text(r.categoryName ?? '')),
                 DataListColumn(Strings.brand, (r) => Text(r.brandName ?? '')),
                 DataListColumn(Strings.unit, numeric: true, (r) => Text(r.unitName ?? '')),
+                DataListColumn('جديد / قديم', flex: 2, (r) => Text(_priceSplit(byPrice[r.product.id]))),
                 DataListColumn(
                   Strings.stock,
                   numeric: true,
@@ -148,6 +152,20 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     );
   }
 }
+
+/// "new 40 · old 60", leaving out whatever is zero.
+String _priceSplit(StockPriceSummary? s) {
+  if (s == null) return '';
+  return [
+    if (s.current != 0) 'جديد ${formatQty(s.current)}',
+    if (s.old != 0) 'قديم ${formatQty(s.old)}',
+    if (s.unknown != 0) 'غير محدد ${formatQty(s.unknown)}',
+  ].join(' · ');
+}
+
+final _stockByPriceProvider = StreamProvider.autoDispose<Map<int, StockPriceSummary>>(
+  (ref) => ref.watch(stockPriceServiceProvider).watchSummaries(),
+);
 
 class _ProductMenu extends StatelessWidget {
   const _ProductMenu({required this.row, required this.isAdmin});
@@ -173,6 +191,10 @@ class _ProductMenu extends StatelessWidget {
         PopupMenuItem(
           value: () => showStockCard(context, row),
           child: const Text(Strings.stockCard),
+        ),
+        PopupMenuItem(
+          value: () => showStockByPrice(context, row),
+          child: const Text('المخزون حسب السعر'),
         ),
         PopupMenuItem(
           value: () => showPriceHistory(context, row),

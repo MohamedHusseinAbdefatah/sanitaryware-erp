@@ -5865,6 +5865,18 @@ class $SalesInvoiceItemsTable extends SalesInvoiceItems
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _costTotalMeta = const VerificationMeta(
+    'costTotal',
+  );
+  @override
+  late final GeneratedColumn<int> costTotal = GeneratedColumn<int>(
+    'cost_total',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -5887,6 +5899,7 @@ class $SalesInvoiceItemsTable extends SalesInvoiceItems
     vatStatus,
     vatRateBp,
     vatAmount,
+    costTotal,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -6048,6 +6061,12 @@ class $SalesInvoiceItemsTable extends SalesInvoiceItems
         vatAmount.isAcceptableOrUnknown(data['vat_amount']!, _vatAmountMeta),
       );
     }
+    if (data.containsKey('cost_total')) {
+      context.handle(
+        _costTotalMeta,
+        costTotal.isAcceptableOrUnknown(data['cost_total']!, _costTotalMeta),
+      );
+    }
     return context;
   }
 
@@ -6137,6 +6156,10 @@ class $SalesInvoiceItemsTable extends SalesInvoiceItems
         DriftSqlType.int,
         data['${effectivePrefix}vat_amount'],
       ),
+      costTotal: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}cost_total'],
+      )!,
     );
   }
 
@@ -6168,6 +6191,7 @@ class SalesInvoiceItem extends DataClass
   final String? vatStatus;
   final int? vatRateBp;
   final int? vatAmount;
+  final int costTotal;
   const SalesInvoiceItem({
     required this.id,
     required this.invoiceId,
@@ -6189,6 +6213,7 @@ class SalesInvoiceItem extends DataClass
     this.vatStatus,
     this.vatRateBp,
     this.vatAmount,
+    required this.costTotal,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -6227,6 +6252,7 @@ class SalesInvoiceItem extends DataClass
     if (!nullToAbsent || vatAmount != null) {
       map['vat_amount'] = Variable<int>(vatAmount);
     }
+    map['cost_total'] = Variable<int>(costTotal);
     return map;
   }
 
@@ -6266,6 +6292,7 @@ class SalesInvoiceItem extends DataClass
       vatAmount: vatAmount == null && nullToAbsent
           ? const Value.absent()
           : Value(vatAmount),
+      costTotal: Value(costTotal),
     );
   }
 
@@ -6297,6 +6324,7 @@ class SalesInvoiceItem extends DataClass
       vatStatus: serializer.fromJson<String?>(json['vatStatus']),
       vatRateBp: serializer.fromJson<int?>(json['vatRateBp']),
       vatAmount: serializer.fromJson<int?>(json['vatAmount']),
+      costTotal: serializer.fromJson<int>(json['costTotal']),
     );
   }
   @override
@@ -6323,6 +6351,7 @@ class SalesInvoiceItem extends DataClass
       'vatStatus': serializer.toJson<String?>(vatStatus),
       'vatRateBp': serializer.toJson<int?>(vatRateBp),
       'vatAmount': serializer.toJson<int?>(vatAmount),
+      'costTotal': serializer.toJson<int>(costTotal),
     };
   }
 
@@ -6347,6 +6376,7 @@ class SalesInvoiceItem extends DataClass
     Value<String?> vatStatus = const Value.absent(),
     Value<int?> vatRateBp = const Value.absent(),
     Value<int?> vatAmount = const Value.absent(),
+    int? costTotal,
   }) => SalesInvoiceItem(
     id: id ?? this.id,
     invoiceId: invoiceId ?? this.invoiceId,
@@ -6370,6 +6400,7 @@ class SalesInvoiceItem extends DataClass
     vatStatus: vatStatus.present ? vatStatus.value : this.vatStatus,
     vatRateBp: vatRateBp.present ? vatRateBp.value : this.vatRateBp,
     vatAmount: vatAmount.present ? vatAmount.value : this.vatAmount,
+    costTotal: costTotal ?? this.costTotal,
   );
   SalesInvoiceItem copyWithCompanion(SalesInvoiceItemsCompanion data) {
     return SalesInvoiceItem(
@@ -6407,6 +6438,7 @@ class SalesInvoiceItem extends DataClass
       vatStatus: data.vatStatus.present ? data.vatStatus.value : this.vatStatus,
       vatRateBp: data.vatRateBp.present ? data.vatRateBp.value : this.vatRateBp,
       vatAmount: data.vatAmount.present ? data.vatAmount.value : this.vatAmount,
+      costTotal: data.costTotal.present ? data.costTotal.value : this.costTotal,
     );
   }
 
@@ -6432,13 +6464,14 @@ class SalesInvoiceItem extends DataClass
           ..write('netTotal: $netTotal, ')
           ..write('vatStatus: $vatStatus, ')
           ..write('vatRateBp: $vatRateBp, ')
-          ..write('vatAmount: $vatAmount')
+          ..write('vatAmount: $vatAmount, ')
+          ..write('costTotal: $costTotal')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     id,
     invoiceId,
     productId,
@@ -6459,7 +6492,8 @@ class SalesInvoiceItem extends DataClass
     vatStatus,
     vatRateBp,
     vatAmount,
-  );
+    costTotal,
+  ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -6483,7 +6517,8 @@ class SalesInvoiceItem extends DataClass
           other.netTotal == this.netTotal &&
           other.vatStatus == this.vatStatus &&
           other.vatRateBp == this.vatRateBp &&
-          other.vatAmount == this.vatAmount);
+          other.vatAmount == this.vatAmount &&
+          other.costTotal == this.costTotal);
 }
 
 class SalesInvoiceItemsCompanion extends UpdateCompanion<SalesInvoiceItem> {
@@ -6507,6 +6542,7 @@ class SalesInvoiceItemsCompanion extends UpdateCompanion<SalesInvoiceItem> {
   final Value<String?> vatStatus;
   final Value<int?> vatRateBp;
   final Value<int?> vatAmount;
+  final Value<int> costTotal;
   const SalesInvoiceItemsCompanion({
     this.id = const Value.absent(),
     this.invoiceId = const Value.absent(),
@@ -6528,6 +6564,7 @@ class SalesInvoiceItemsCompanion extends UpdateCompanion<SalesInvoiceItem> {
     this.vatStatus = const Value.absent(),
     this.vatRateBp = const Value.absent(),
     this.vatAmount = const Value.absent(),
+    this.costTotal = const Value.absent(),
   });
   SalesInvoiceItemsCompanion.insert({
     this.id = const Value.absent(),
@@ -6550,6 +6587,7 @@ class SalesInvoiceItemsCompanion extends UpdateCompanion<SalesInvoiceItem> {
     this.vatStatus = const Value.absent(),
     this.vatRateBp = const Value.absent(),
     this.vatAmount = const Value.absent(),
+    this.costTotal = const Value.absent(),
   }) : invoiceId = Value(invoiceId),
        productId = Value(productId),
        qty = Value(qty),
@@ -6576,6 +6614,7 @@ class SalesInvoiceItemsCompanion extends UpdateCompanion<SalesInvoiceItem> {
     Expression<String>? vatStatus,
     Expression<int>? vatRateBp,
     Expression<int>? vatAmount,
+    Expression<int>? costTotal,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -6600,6 +6639,7 @@ class SalesInvoiceItemsCompanion extends UpdateCompanion<SalesInvoiceItem> {
       if (vatStatus != null) 'vat_status': vatStatus,
       if (vatRateBp != null) 'vat_rate_bp': vatRateBp,
       if (vatAmount != null) 'vat_amount': vatAmount,
+      if (costTotal != null) 'cost_total': costTotal,
     });
   }
 
@@ -6624,6 +6664,7 @@ class SalesInvoiceItemsCompanion extends UpdateCompanion<SalesInvoiceItem> {
     Value<String?>? vatStatus,
     Value<int?>? vatRateBp,
     Value<int?>? vatAmount,
+    Value<int>? costTotal,
   }) {
     return SalesInvoiceItemsCompanion(
       id: id ?? this.id,
@@ -6646,6 +6687,7 @@ class SalesInvoiceItemsCompanion extends UpdateCompanion<SalesInvoiceItem> {
       vatStatus: vatStatus ?? this.vatStatus,
       vatRateBp: vatRateBp ?? this.vatRateBp,
       vatAmount: vatAmount ?? this.vatAmount,
+      costTotal: costTotal ?? this.costTotal,
     );
   }
 
@@ -6712,6 +6754,9 @@ class SalesInvoiceItemsCompanion extends UpdateCompanion<SalesInvoiceItem> {
     if (vatAmount.present) {
       map['vat_amount'] = Variable<int>(vatAmount.value);
     }
+    if (costTotal.present) {
+      map['cost_total'] = Variable<int>(costTotal.value);
+    }
     return map;
   }
 
@@ -6737,7 +6782,8 @@ class SalesInvoiceItemsCompanion extends UpdateCompanion<SalesInvoiceItem> {
           ..write('netTotal: $netTotal, ')
           ..write('vatStatus: $vatStatus, ')
           ..write('vatRateBp: $vatRateBp, ')
-          ..write('vatAmount: $vatAmount')
+          ..write('vatAmount: $vatAmount, ')
+          ..write('costTotal: $costTotal')
           ..write(')'))
         .toString();
   }
@@ -7672,6 +7718,29 @@ class $PurchaseInvoiceItemsTable extends PurchaseInvoiceItems
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _invoiceDiscountShareMeta =
+      const VerificationMeta('invoiceDiscountShare');
+  @override
+  late final GeneratedColumn<int> invoiceDiscountShare = GeneratedColumn<int>(
+    'invoice_discount_share',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _netTotalMeta = const VerificationMeta(
+    'netTotal',
+  );
+  @override
+  late final GeneratedColumn<int> netTotal = GeneratedColumn<int>(
+    'net_total',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -7685,6 +7754,8 @@ class $PurchaseInvoiceItemsTable extends PurchaseInvoiceItems
     buyingPolicyId,
     baseDiscountBp,
     extraDiscountBp,
+    invoiceDiscountShare,
+    netTotal,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -7783,6 +7854,21 @@ class $PurchaseInvoiceItemsTable extends PurchaseInvoiceItems
         ),
       );
     }
+    if (data.containsKey('invoice_discount_share')) {
+      context.handle(
+        _invoiceDiscountShareMeta,
+        invoiceDiscountShare.isAcceptableOrUnknown(
+          data['invoice_discount_share']!,
+          _invoiceDiscountShareMeta,
+        ),
+      );
+    }
+    if (data.containsKey('net_total')) {
+      context.handle(
+        _netTotalMeta,
+        netTotal.isAcceptableOrUnknown(data['net_total']!, _netTotalMeta),
+      );
+    }
     return context;
   }
 
@@ -7836,6 +7922,14 @@ class $PurchaseInvoiceItemsTable extends PurchaseInvoiceItems
         DriftSqlType.int,
         data['${effectivePrefix}extra_discount_bp'],
       )!,
+      invoiceDiscountShare: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}invoice_discount_share'],
+      )!,
+      netTotal: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}net_total'],
+      )!,
     );
   }
 
@@ -7858,6 +7952,8 @@ class PurchaseInvoiceItem extends DataClass
   final int? buyingPolicyId;
   final int baseDiscountBp;
   final int extraDiscountBp;
+  final int invoiceDiscountShare;
+  final int netTotal;
   const PurchaseInvoiceItem({
     required this.id,
     required this.invoiceId,
@@ -7870,6 +7966,8 @@ class PurchaseInvoiceItem extends DataClass
     this.buyingPolicyId,
     required this.baseDiscountBp,
     required this.extraDiscountBp,
+    required this.invoiceDiscountShare,
+    required this.netTotal,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -7891,6 +7989,8 @@ class PurchaseInvoiceItem extends DataClass
     }
     map['base_discount_bp'] = Variable<int>(baseDiscountBp);
     map['extra_discount_bp'] = Variable<int>(extraDiscountBp);
+    map['invoice_discount_share'] = Variable<int>(invoiceDiscountShare);
+    map['net_total'] = Variable<int>(netTotal);
     return map;
   }
 
@@ -7913,6 +8013,8 @@ class PurchaseInvoiceItem extends DataClass
           : Value(buyingPolicyId),
       baseDiscountBp: Value(baseDiscountBp),
       extraDiscountBp: Value(extraDiscountBp),
+      invoiceDiscountShare: Value(invoiceDiscountShare),
+      netTotal: Value(netTotal),
     );
   }
 
@@ -7933,6 +8035,10 @@ class PurchaseInvoiceItem extends DataClass
       buyingPolicyId: serializer.fromJson<int?>(json['buyingPolicyId']),
       baseDiscountBp: serializer.fromJson<int>(json['baseDiscountBp']),
       extraDiscountBp: serializer.fromJson<int>(json['extraDiscountBp']),
+      invoiceDiscountShare: serializer.fromJson<int>(
+        json['invoiceDiscountShare'],
+      ),
+      netTotal: serializer.fromJson<int>(json['netTotal']),
     );
   }
   @override
@@ -7950,6 +8056,8 @@ class PurchaseInvoiceItem extends DataClass
       'buyingPolicyId': serializer.toJson<int?>(buyingPolicyId),
       'baseDiscountBp': serializer.toJson<int>(baseDiscountBp),
       'extraDiscountBp': serializer.toJson<int>(extraDiscountBp),
+      'invoiceDiscountShare': serializer.toJson<int>(invoiceDiscountShare),
+      'netTotal': serializer.toJson<int>(netTotal),
     };
   }
 
@@ -7965,6 +8073,8 @@ class PurchaseInvoiceItem extends DataClass
     Value<int?> buyingPolicyId = const Value.absent(),
     int? baseDiscountBp,
     int? extraDiscountBp,
+    int? invoiceDiscountShare,
+    int? netTotal,
   }) => PurchaseInvoiceItem(
     id: id ?? this.id,
     invoiceId: invoiceId ?? this.invoiceId,
@@ -7979,6 +8089,8 @@ class PurchaseInvoiceItem extends DataClass
         : this.buyingPolicyId,
     baseDiscountBp: baseDiscountBp ?? this.baseDiscountBp,
     extraDiscountBp: extraDiscountBp ?? this.extraDiscountBp,
+    invoiceDiscountShare: invoiceDiscountShare ?? this.invoiceDiscountShare,
+    netTotal: netTotal ?? this.netTotal,
   );
   PurchaseInvoiceItem copyWithCompanion(PurchaseInvoiceItemsCompanion data) {
     return PurchaseInvoiceItem(
@@ -8001,6 +8113,10 @@ class PurchaseInvoiceItem extends DataClass
       extraDiscountBp: data.extraDiscountBp.present
           ? data.extraDiscountBp.value
           : this.extraDiscountBp,
+      invoiceDiscountShare: data.invoiceDiscountShare.present
+          ? data.invoiceDiscountShare.value
+          : this.invoiceDiscountShare,
+      netTotal: data.netTotal.present ? data.netTotal.value : this.netTotal,
     );
   }
 
@@ -8017,7 +8133,9 @@ class PurchaseInvoiceItem extends DataClass
           ..write('listPrice: $listPrice, ')
           ..write('buyingPolicyId: $buyingPolicyId, ')
           ..write('baseDiscountBp: $baseDiscountBp, ')
-          ..write('extraDiscountBp: $extraDiscountBp')
+          ..write('extraDiscountBp: $extraDiscountBp, ')
+          ..write('invoiceDiscountShare: $invoiceDiscountShare, ')
+          ..write('netTotal: $netTotal')
           ..write(')'))
         .toString();
   }
@@ -8035,6 +8153,8 @@ class PurchaseInvoiceItem extends DataClass
     buyingPolicyId,
     baseDiscountBp,
     extraDiscountBp,
+    invoiceDiscountShare,
+    netTotal,
   );
   @override
   bool operator ==(Object other) =>
@@ -8050,7 +8170,9 @@ class PurchaseInvoiceItem extends DataClass
           other.listPrice == this.listPrice &&
           other.buyingPolicyId == this.buyingPolicyId &&
           other.baseDiscountBp == this.baseDiscountBp &&
-          other.extraDiscountBp == this.extraDiscountBp);
+          other.extraDiscountBp == this.extraDiscountBp &&
+          other.invoiceDiscountShare == this.invoiceDiscountShare &&
+          other.netTotal == this.netTotal);
 }
 
 class PurchaseInvoiceItemsCompanion
@@ -8066,6 +8188,8 @@ class PurchaseInvoiceItemsCompanion
   final Value<int?> buyingPolicyId;
   final Value<int> baseDiscountBp;
   final Value<int> extraDiscountBp;
+  final Value<int> invoiceDiscountShare;
+  final Value<int> netTotal;
   const PurchaseInvoiceItemsCompanion({
     this.id = const Value.absent(),
     this.invoiceId = const Value.absent(),
@@ -8078,6 +8202,8 @@ class PurchaseInvoiceItemsCompanion
     this.buyingPolicyId = const Value.absent(),
     this.baseDiscountBp = const Value.absent(),
     this.extraDiscountBp = const Value.absent(),
+    this.invoiceDiscountShare = const Value.absent(),
+    this.netTotal = const Value.absent(),
   });
   PurchaseInvoiceItemsCompanion.insert({
     this.id = const Value.absent(),
@@ -8091,6 +8217,8 @@ class PurchaseInvoiceItemsCompanion
     this.buyingPolicyId = const Value.absent(),
     this.baseDiscountBp = const Value.absent(),
     this.extraDiscountBp = const Value.absent(),
+    this.invoiceDiscountShare = const Value.absent(),
+    this.netTotal = const Value.absent(),
   }) : invoiceId = Value(invoiceId),
        productId = Value(productId),
        qty = Value(qty),
@@ -8108,6 +8236,8 @@ class PurchaseInvoiceItemsCompanion
     Expression<int>? buyingPolicyId,
     Expression<int>? baseDiscountBp,
     Expression<int>? extraDiscountBp,
+    Expression<int>? invoiceDiscountShare,
+    Expression<int>? netTotal,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -8121,6 +8251,9 @@ class PurchaseInvoiceItemsCompanion
       if (buyingPolicyId != null) 'buying_policy_id': buyingPolicyId,
       if (baseDiscountBp != null) 'base_discount_bp': baseDiscountBp,
       if (extraDiscountBp != null) 'extra_discount_bp': extraDiscountBp,
+      if (invoiceDiscountShare != null)
+        'invoice_discount_share': invoiceDiscountShare,
+      if (netTotal != null) 'net_total': netTotal,
     });
   }
 
@@ -8136,6 +8269,8 @@ class PurchaseInvoiceItemsCompanion
     Value<int?>? buyingPolicyId,
     Value<int>? baseDiscountBp,
     Value<int>? extraDiscountBp,
+    Value<int>? invoiceDiscountShare,
+    Value<int>? netTotal,
   }) {
     return PurchaseInvoiceItemsCompanion(
       id: id ?? this.id,
@@ -8149,6 +8284,8 @@ class PurchaseInvoiceItemsCompanion
       buyingPolicyId: buyingPolicyId ?? this.buyingPolicyId,
       baseDiscountBp: baseDiscountBp ?? this.baseDiscountBp,
       extraDiscountBp: extraDiscountBp ?? this.extraDiscountBp,
+      invoiceDiscountShare: invoiceDiscountShare ?? this.invoiceDiscountShare,
+      netTotal: netTotal ?? this.netTotal,
     );
   }
 
@@ -8188,6 +8325,12 @@ class PurchaseInvoiceItemsCompanion
     if (extraDiscountBp.present) {
       map['extra_discount_bp'] = Variable<int>(extraDiscountBp.value);
     }
+    if (invoiceDiscountShare.present) {
+      map['invoice_discount_share'] = Variable<int>(invoiceDiscountShare.value);
+    }
+    if (netTotal.present) {
+      map['net_total'] = Variable<int>(netTotal.value);
+    }
     return map;
   }
 
@@ -8204,7 +8347,9 @@ class PurchaseInvoiceItemsCompanion
           ..write('listPrice: $listPrice, ')
           ..write('buyingPolicyId: $buyingPolicyId, ')
           ..write('baseDiscountBp: $baseDiscountBp, ')
-          ..write('extraDiscountBp: $extraDiscountBp')
+          ..write('extraDiscountBp: $extraDiscountBp, ')
+          ..write('invoiceDiscountShare: $invoiceDiscountShare, ')
+          ..write('netTotal: $netTotal')
           ..write(')'))
         .toString();
   }
@@ -12533,6 +12678,28 @@ class $CostLayersTable extends CostLayers
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _priceListIdMeta = const VerificationMeta(
+    'priceListId',
+  );
+  @override
+  late final GeneratedColumn<int> priceListId = GeneratedColumn<int>(
+    'price_list_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _listPriceMeta = const VerificationMeta(
+    'listPrice',
+  );
+  @override
+  late final GeneratedColumn<int> listPrice = GeneratedColumn<int>(
+    'list_price',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -12545,6 +12712,8 @@ class $CostLayersTable extends CostLayers
     supplierId,
     sourceType,
     sourceId,
+    priceListId,
+    listPrice,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -12633,6 +12802,21 @@ class $CostLayersTable extends CostLayers
         sourceId.isAcceptableOrUnknown(data['source_id']!, _sourceIdMeta),
       );
     }
+    if (data.containsKey('price_list_id')) {
+      context.handle(
+        _priceListIdMeta,
+        priceListId.isAcceptableOrUnknown(
+          data['price_list_id']!,
+          _priceListIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('list_price')) {
+      context.handle(
+        _listPriceMeta,
+        listPrice.isAcceptableOrUnknown(data['list_price']!, _listPriceMeta),
+      );
+    }
     return context;
   }
 
@@ -12682,6 +12866,14 @@ class $CostLayersTable extends CostLayers
         DriftSqlType.int,
         data['${effectivePrefix}source_id'],
       ),
+      priceListId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}price_list_id'],
+      ),
+      listPrice: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}list_price'],
+      ),
     );
   }
 
@@ -12702,6 +12894,8 @@ class CostLayer extends DataClass implements Insertable<CostLayer> {
   final int? supplierId;
   final String? sourceType;
   final int? sourceId;
+  final int? priceListId;
+  final int? listPrice;
   const CostLayer({
     required this.id,
     required this.productId,
@@ -12713,6 +12907,8 @@ class CostLayer extends DataClass implements Insertable<CostLayer> {
     this.supplierId,
     this.sourceType,
     this.sourceId,
+    this.priceListId,
+    this.listPrice,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -12732,6 +12928,12 @@ class CostLayer extends DataClass implements Insertable<CostLayer> {
     }
     if (!nullToAbsent || sourceId != null) {
       map['source_id'] = Variable<int>(sourceId);
+    }
+    if (!nullToAbsent || priceListId != null) {
+      map['price_list_id'] = Variable<int>(priceListId);
+    }
+    if (!nullToAbsent || listPrice != null) {
+      map['list_price'] = Variable<int>(listPrice);
     }
     return map;
   }
@@ -12754,6 +12956,12 @@ class CostLayer extends DataClass implements Insertable<CostLayer> {
       sourceId: sourceId == null && nullToAbsent
           ? const Value.absent()
           : Value(sourceId),
+      priceListId: priceListId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(priceListId),
+      listPrice: listPrice == null && nullToAbsent
+          ? const Value.absent()
+          : Value(listPrice),
     );
   }
 
@@ -12773,6 +12981,8 @@ class CostLayer extends DataClass implements Insertable<CostLayer> {
       supplierId: serializer.fromJson<int?>(json['supplierId']),
       sourceType: serializer.fromJson<String?>(json['sourceType']),
       sourceId: serializer.fromJson<int?>(json['sourceId']),
+      priceListId: serializer.fromJson<int?>(json['priceListId']),
+      listPrice: serializer.fromJson<int?>(json['listPrice']),
     );
   }
   @override
@@ -12789,6 +12999,8 @@ class CostLayer extends DataClass implements Insertable<CostLayer> {
       'supplierId': serializer.toJson<int?>(supplierId),
       'sourceType': serializer.toJson<String?>(sourceType),
       'sourceId': serializer.toJson<int?>(sourceId),
+      'priceListId': serializer.toJson<int?>(priceListId),
+      'listPrice': serializer.toJson<int?>(listPrice),
     };
   }
 
@@ -12803,6 +13015,8 @@ class CostLayer extends DataClass implements Insertable<CostLayer> {
     Value<int?> supplierId = const Value.absent(),
     Value<String?> sourceType = const Value.absent(),
     Value<int?> sourceId = const Value.absent(),
+    Value<int?> priceListId = const Value.absent(),
+    Value<int?> listPrice = const Value.absent(),
   }) => CostLayer(
     id: id ?? this.id,
     productId: productId ?? this.productId,
@@ -12814,6 +13028,8 @@ class CostLayer extends DataClass implements Insertable<CostLayer> {
     supplierId: supplierId.present ? supplierId.value : this.supplierId,
     sourceType: sourceType.present ? sourceType.value : this.sourceType,
     sourceId: sourceId.present ? sourceId.value : this.sourceId,
+    priceListId: priceListId.present ? priceListId.value : this.priceListId,
+    listPrice: listPrice.present ? listPrice.value : this.listPrice,
   );
   CostLayer copyWithCompanion(CostLayersCompanion data) {
     return CostLayer(
@@ -12839,6 +13055,10 @@ class CostLayer extends DataClass implements Insertable<CostLayer> {
           ? data.sourceType.value
           : this.sourceType,
       sourceId: data.sourceId.present ? data.sourceId.value : this.sourceId,
+      priceListId: data.priceListId.present
+          ? data.priceListId.value
+          : this.priceListId,
+      listPrice: data.listPrice.present ? data.listPrice.value : this.listPrice,
     );
   }
 
@@ -12854,7 +13074,9 @@ class CostLayer extends DataClass implements Insertable<CostLayer> {
           ..write('receivedAt: $receivedAt, ')
           ..write('supplierId: $supplierId, ')
           ..write('sourceType: $sourceType, ')
-          ..write('sourceId: $sourceId')
+          ..write('sourceId: $sourceId, ')
+          ..write('priceListId: $priceListId, ')
+          ..write('listPrice: $listPrice')
           ..write(')'))
         .toString();
   }
@@ -12871,6 +13093,8 @@ class CostLayer extends DataClass implements Insertable<CostLayer> {
     supplierId,
     sourceType,
     sourceId,
+    priceListId,
+    listPrice,
   );
   @override
   bool operator ==(Object other) =>
@@ -12885,7 +13109,9 @@ class CostLayer extends DataClass implements Insertable<CostLayer> {
           other.receivedAt == this.receivedAt &&
           other.supplierId == this.supplierId &&
           other.sourceType == this.sourceType &&
-          other.sourceId == this.sourceId);
+          other.sourceId == this.sourceId &&
+          other.priceListId == this.priceListId &&
+          other.listPrice == this.listPrice);
 }
 
 class CostLayersCompanion extends UpdateCompanion<CostLayer> {
@@ -12899,6 +13125,8 @@ class CostLayersCompanion extends UpdateCompanion<CostLayer> {
   final Value<int?> supplierId;
   final Value<String?> sourceType;
   final Value<int?> sourceId;
+  final Value<int?> priceListId;
+  final Value<int?> listPrice;
   const CostLayersCompanion({
     this.id = const Value.absent(),
     this.productId = const Value.absent(),
@@ -12910,6 +13138,8 @@ class CostLayersCompanion extends UpdateCompanion<CostLayer> {
     this.supplierId = const Value.absent(),
     this.sourceType = const Value.absent(),
     this.sourceId = const Value.absent(),
+    this.priceListId = const Value.absent(),
+    this.listPrice = const Value.absent(),
   });
   CostLayersCompanion.insert({
     this.id = const Value.absent(),
@@ -12922,6 +13152,8 @@ class CostLayersCompanion extends UpdateCompanion<CostLayer> {
     this.supplierId = const Value.absent(),
     this.sourceType = const Value.absent(),
     this.sourceId = const Value.absent(),
+    this.priceListId = const Value.absent(),
+    this.listPrice = const Value.absent(),
   }) : productId = Value(productId),
        locationId = Value(locationId),
        qtyReceived = Value(qtyReceived),
@@ -12939,6 +13171,8 @@ class CostLayersCompanion extends UpdateCompanion<CostLayer> {
     Expression<int>? supplierId,
     Expression<String>? sourceType,
     Expression<int>? sourceId,
+    Expression<int>? priceListId,
+    Expression<int>? listPrice,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -12951,6 +13185,8 @@ class CostLayersCompanion extends UpdateCompanion<CostLayer> {
       if (supplierId != null) 'supplier_id': supplierId,
       if (sourceType != null) 'source_type': sourceType,
       if (sourceId != null) 'source_id': sourceId,
+      if (priceListId != null) 'price_list_id': priceListId,
+      if (listPrice != null) 'list_price': listPrice,
     });
   }
 
@@ -12965,6 +13201,8 @@ class CostLayersCompanion extends UpdateCompanion<CostLayer> {
     Value<int?>? supplierId,
     Value<String?>? sourceType,
     Value<int?>? sourceId,
+    Value<int?>? priceListId,
+    Value<int?>? listPrice,
   }) {
     return CostLayersCompanion(
       id: id ?? this.id,
@@ -12977,6 +13215,8 @@ class CostLayersCompanion extends UpdateCompanion<CostLayer> {
       supplierId: supplierId ?? this.supplierId,
       sourceType: sourceType ?? this.sourceType,
       sourceId: sourceId ?? this.sourceId,
+      priceListId: priceListId ?? this.priceListId,
+      listPrice: listPrice ?? this.listPrice,
     );
   }
 
@@ -13013,6 +13253,12 @@ class CostLayersCompanion extends UpdateCompanion<CostLayer> {
     if (sourceId.present) {
       map['source_id'] = Variable<int>(sourceId.value);
     }
+    if (priceListId.present) {
+      map['price_list_id'] = Variable<int>(priceListId.value);
+    }
+    if (listPrice.present) {
+      map['list_price'] = Variable<int>(listPrice.value);
+    }
     return map;
   }
 
@@ -13028,7 +13274,9 @@ class CostLayersCompanion extends UpdateCompanion<CostLayer> {
           ..write('receivedAt: $receivedAt, ')
           ..write('supplierId: $supplierId, ')
           ..write('sourceType: $sourceType, ')
-          ..write('sourceId: $sourceId')
+          ..write('sourceId: $sourceId, ')
+          ..write('priceListId: $priceListId, ')
+          ..write('listPrice: $listPrice')
           ..write(')'))
         .toString();
   }
@@ -28926,6 +29174,7 @@ typedef $$SalesInvoiceItemsTableCreateCompanionBuilder =
       Value<String?> vatStatus,
       Value<int?> vatRateBp,
       Value<int?> vatAmount,
+      Value<int> costTotal,
     });
 typedef $$SalesInvoiceItemsTableUpdateCompanionBuilder =
     SalesInvoiceItemsCompanion Function({
@@ -28949,6 +29198,7 @@ typedef $$SalesInvoiceItemsTableUpdateCompanionBuilder =
       Value<String?> vatStatus,
       Value<int?> vatRateBp,
       Value<int?> vatAmount,
+      Value<int> costTotal,
     });
 
 final class $$SalesInvoiceItemsTableReferences
@@ -29105,6 +29355,11 @@ class $$SalesInvoiceItemsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<int> get costTotal => $composableBuilder(
+    column: $table.costTotal,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$SalesInvoicesTableFilterComposer get invoiceId {
     final $$SalesInvoicesTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -29251,6 +29506,11 @@ class $$SalesInvoiceItemsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get costTotal => $composableBuilder(
+    column: $table.costTotal,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$SalesInvoicesTableOrderingComposer get invoiceId {
     final $$SalesInvoicesTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -29375,6 +29635,9 @@ class $$SalesInvoiceItemsTableAnnotationComposer
   GeneratedColumn<int> get vatAmount =>
       $composableBuilder(column: $table.vatAmount, builder: (column) => column);
 
+  GeneratedColumn<int> get costTotal =>
+      $composableBuilder(column: $table.costTotal, builder: (column) => column);
+
   $$SalesInvoicesTableAnnotationComposer get invoiceId {
     final $$SalesInvoicesTableAnnotationComposer composer = $composerBuilder(
       composer: this,
@@ -29475,6 +29738,7 @@ class $$SalesInvoiceItemsTableTableManager
                 Value<String?> vatStatus = const Value.absent(),
                 Value<int?> vatRateBp = const Value.absent(),
                 Value<int?> vatAmount = const Value.absent(),
+                Value<int> costTotal = const Value.absent(),
               }) => SalesInvoiceItemsCompanion(
                 id: id,
                 invoiceId: invoiceId,
@@ -29496,6 +29760,7 @@ class $$SalesInvoiceItemsTableTableManager
                 vatStatus: vatStatus,
                 vatRateBp: vatRateBp,
                 vatAmount: vatAmount,
+                costTotal: costTotal,
               ),
           createCompanionCallback:
               ({
@@ -29519,6 +29784,7 @@ class $$SalesInvoiceItemsTableTableManager
                 Value<String?> vatStatus = const Value.absent(),
                 Value<int?> vatRateBp = const Value.absent(),
                 Value<int?> vatAmount = const Value.absent(),
+                Value<int> costTotal = const Value.absent(),
               }) => SalesInvoiceItemsCompanion.insert(
                 id: id,
                 invoiceId: invoiceId,
@@ -29540,6 +29806,7 @@ class $$SalesInvoiceItemsTableTableManager
                 vatStatus: vatStatus,
                 vatRateBp: vatRateBp,
                 vatAmount: vatAmount,
+                costTotal: costTotal,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -30445,6 +30712,8 @@ typedef $$PurchaseInvoiceItemsTableCreateCompanionBuilder =
       Value<int?> buyingPolicyId,
       Value<int> baseDiscountBp,
       Value<int> extraDiscountBp,
+      Value<int> invoiceDiscountShare,
+      Value<int> netTotal,
     });
 typedef $$PurchaseInvoiceItemsTableUpdateCompanionBuilder =
     PurchaseInvoiceItemsCompanion Function({
@@ -30459,6 +30728,8 @@ typedef $$PurchaseInvoiceItemsTableUpdateCompanionBuilder =
       Value<int?> buyingPolicyId,
       Value<int> baseDiscountBp,
       Value<int> extraDiscountBp,
+      Value<int> invoiceDiscountShare,
+      Value<int> netTotal,
     });
 
 final class $$PurchaseInvoiceItemsTableReferences
@@ -30570,6 +30841,16 @@ class $$PurchaseInvoiceItemsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<int> get invoiceDiscountShare => $composableBuilder(
+    column: $table.invoiceDiscountShare,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get netTotal => $composableBuilder(
+    column: $table.netTotal,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$PurchaseInvoicesTableFilterComposer get invoiceId {
     final $$PurchaseInvoicesTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -30671,6 +30952,16 @@ class $$PurchaseInvoiceItemsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get invoiceDiscountShare => $composableBuilder(
+    column: $table.invoiceDiscountShare,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get netTotal => $composableBuilder(
+    column: $table.netTotal,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$PurchaseInvoicesTableOrderingComposer get invoiceId {
     final $$PurchaseInvoicesTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -30761,6 +31052,14 @@ class $$PurchaseInvoiceItemsTableAnnotationComposer
     column: $table.extraDiscountBp,
     builder: (column) => column,
   );
+
+  GeneratedColumn<int> get invoiceDiscountShare => $composableBuilder(
+    column: $table.invoiceDiscountShare,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get netTotal =>
+      $composableBuilder(column: $table.netTotal, builder: (column) => column);
 
   $$PurchaseInvoicesTableAnnotationComposer get invoiceId {
     final $$PurchaseInvoicesTableAnnotationComposer composer = $composerBuilder(
@@ -30856,6 +31155,8 @@ class $$PurchaseInvoiceItemsTableTableManager
                 Value<int?> buyingPolicyId = const Value.absent(),
                 Value<int> baseDiscountBp = const Value.absent(),
                 Value<int> extraDiscountBp = const Value.absent(),
+                Value<int> invoiceDiscountShare = const Value.absent(),
+                Value<int> netTotal = const Value.absent(),
               }) => PurchaseInvoiceItemsCompanion(
                 id: id,
                 invoiceId: invoiceId,
@@ -30868,6 +31169,8 @@ class $$PurchaseInvoiceItemsTableTableManager
                 buyingPolicyId: buyingPolicyId,
                 baseDiscountBp: baseDiscountBp,
                 extraDiscountBp: extraDiscountBp,
+                invoiceDiscountShare: invoiceDiscountShare,
+                netTotal: netTotal,
               ),
           createCompanionCallback:
               ({
@@ -30882,6 +31185,8 @@ class $$PurchaseInvoiceItemsTableTableManager
                 Value<int?> buyingPolicyId = const Value.absent(),
                 Value<int> baseDiscountBp = const Value.absent(),
                 Value<int> extraDiscountBp = const Value.absent(),
+                Value<int> invoiceDiscountShare = const Value.absent(),
+                Value<int> netTotal = const Value.absent(),
               }) => PurchaseInvoiceItemsCompanion.insert(
                 id: id,
                 invoiceId: invoiceId,
@@ -30894,6 +31199,8 @@ class $$PurchaseInvoiceItemsTableTableManager
                 buyingPolicyId: buyingPolicyId,
                 baseDiscountBp: baseDiscountBp,
                 extraDiscountBp: extraDiscountBp,
+                invoiceDiscountShare: invoiceDiscountShare,
+                netTotal: netTotal,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -34274,6 +34581,8 @@ typedef $$CostLayersTableCreateCompanionBuilder =
       Value<int?> supplierId,
       Value<String?> sourceType,
       Value<int?> sourceId,
+      Value<int?> priceListId,
+      Value<int?> listPrice,
     });
 typedef $$CostLayersTableUpdateCompanionBuilder =
     CostLayersCompanion Function({
@@ -34287,6 +34596,8 @@ typedef $$CostLayersTableUpdateCompanionBuilder =
       Value<int?> supplierId,
       Value<String?> sourceType,
       Value<int?> sourceId,
+      Value<int?> priceListId,
+      Value<int?> listPrice,
     });
 
 final class $$CostLayersTableReferences
@@ -34416,6 +34727,16 @@ class $$CostLayersTableFilterComposer
 
   ColumnFilters<int> get sourceId => $composableBuilder(
     column: $table.sourceId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get priceListId => $composableBuilder(
+    column: $table.priceListId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get listPrice => $composableBuilder(
+    column: $table.listPrice,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -34558,6 +34879,16 @@ class $$CostLayersTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get priceListId => $composableBuilder(
+    column: $table.priceListId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get listPrice => $composableBuilder(
+    column: $table.listPrice,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$ProductsTableOrderingComposer get productId {
     final $$ProductsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -34665,6 +34996,14 @@ class $$CostLayersTableAnnotationComposer
 
   GeneratedColumn<int> get sourceId =>
       $composableBuilder(column: $table.sourceId, builder: (column) => column);
+
+  GeneratedColumn<int> get priceListId => $composableBuilder(
+    column: $table.priceListId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get listPrice =>
+      $composableBuilder(column: $table.listPrice, builder: (column) => column);
 
   $$ProductsTableAnnotationComposer get productId {
     final $$ProductsTableAnnotationComposer composer = $composerBuilder(
@@ -34805,6 +35144,8 @@ class $$CostLayersTableTableManager
                 Value<int?> supplierId = const Value.absent(),
                 Value<String?> sourceType = const Value.absent(),
                 Value<int?> sourceId = const Value.absent(),
+                Value<int?> priceListId = const Value.absent(),
+                Value<int?> listPrice = const Value.absent(),
               }) => CostLayersCompanion(
                 id: id,
                 productId: productId,
@@ -34816,6 +35157,8 @@ class $$CostLayersTableTableManager
                 supplierId: supplierId,
                 sourceType: sourceType,
                 sourceId: sourceId,
+                priceListId: priceListId,
+                listPrice: listPrice,
               ),
           createCompanionCallback:
               ({
@@ -34829,6 +35172,8 @@ class $$CostLayersTableTableManager
                 Value<int?> supplierId = const Value.absent(),
                 Value<String?> sourceType = const Value.absent(),
                 Value<int?> sourceId = const Value.absent(),
+                Value<int?> priceListId = const Value.absent(),
+                Value<int?> listPrice = const Value.absent(),
               }) => CostLayersCompanion.insert(
                 id: id,
                 productId: productId,
@@ -34840,6 +35185,8 @@ class $$CostLayersTableTableManager
                 supplierId: supplierId,
                 sourceType: sourceType,
                 sourceId: sourceId,
+                priceListId: priceListId,
+                listPrice: listPrice,
               ),
           withReferenceMapper: (p0) => p0
               .map(

@@ -13,6 +13,7 @@ import 'services/catalog_service.dart';
 import 'services/buying_policy_service.dart';
 import 'services/sale_preview_service.dart';
 import 'services/selling_policy_service.dart';
+import 'services/stock_price_service.dart';
 import 'services/expense_service.dart';
 import 'services/location_service.dart';
 import 'services/party_service.dart';
@@ -115,6 +116,9 @@ final priceListServiceProvider =
 
 final priceListImportServiceProvider =
     Provider<PriceListImportService>((ref) => PriceListImportService(ref.watch(databaseProvider)));
+
+final stockPriceServiceProvider =
+    Provider<StockPriceService>((ref) => StockPriceService(ref.watch(databaseProvider)));
 
 final buyingPolicyServiceProvider =
     Provider<BuyingPolicyService>((ref) => BuyingPolicyService(ref.watch(databaseProvider)));

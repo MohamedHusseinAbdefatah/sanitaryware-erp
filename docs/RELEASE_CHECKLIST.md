@@ -6,7 +6,7 @@ wrong there that the code alone does not show.
 ## 1. Before building
 
 - [ ] Version raised in `lib/core/version.dart` and `pubspec.yaml`
-      (`1.0.2` and `1.0.2+3`), and a `CHANGELOG.md` entry written.
+      (for example `1.3.0` and `1.3.0+6`), and a `CHANGELOG.md` entry written.
 - [ ] If a table or column changed: `latestSchemaVersion` raised in
       `lib/core/db/database.dart`, an `onUpgrade` step added, and a case added
       to `test/acceptance/upgrade_test.dart` that starts from the previous

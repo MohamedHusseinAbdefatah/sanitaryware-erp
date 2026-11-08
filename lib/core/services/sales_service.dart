@@ -28,6 +28,7 @@ class SaleLineInput {
     this.discount = 0,
     this.priceListId,
     this.locked,
+    this.locationId,
   });
 
   final int productId;
@@ -47,6 +48,10 @@ class SaleLineInput {
 
   /// From an approved order: the frozen price, whatever versions came later.
   final PricingSnapshot? locked;
+
+  /// The place it is sold from. Null takes it from the sellable places in
+  /// order, the main warehouse first. A display-only place cannot be chosen.
+  final int? locationId;
 
   /// qty x price, rounded once, minus the line discount.
   int get total => lineAmount(qty, unitPrice) - discount;
@@ -225,6 +230,7 @@ class SalesService {
         throw ValidationException('المبلغ المدفوع أكبر من إجمالي الفاتورة');
       }
       Customer? customer;
+      String? creditOverride;
       if (input.customerId == null) {
         if (input.paidAmount != total) {
           throw ValidationException('البيع النقدي بدون عميل يجب أن يُدفع بالكامل؛ اختر عميلاً للبيع الآجل');
@@ -243,6 +249,8 @@ class SalesService {
             if (!allowOverCreditLimit || !(user?.isAdmin ?? false)) {
               throw CreditLimitException(limit: customer.creditLimit, balanceAfter: balanceAfter);
             }
+            creditOverride = 'تجاوز حد الائتمان: الحد ${formatMoney(customer.creditLimit)} '
+                'والرصيد بعد الفاتورة ${formatMoney(balanceAfter)}';
           }
         }
       }
@@ -262,10 +270,31 @@ class SalesService {
         }
         final shortages = <StockShortage>[];
         for (final entry in needed.entries) {
-          final available = await stock.currentStock(entry.key);
+          final available = await stock.sellableStock(entry.key);
           if (available < entry.value) {
             shortages.add(StockShortage(products[entry.key]!.nameAr, available, entry.value));
           }
+        }
+        if (shortages.isNotEmpty) throw InsufficientStockException(shortages);
+      }
+
+      // 3a. A place chosen on the line must be able to sell, and hold enough.
+      final sellable = await stock.sellableLocationIds();
+      final allowNegative = await SettingsService(db).getBool(SettingKey.allowNegativeStock);
+      final fromPlace = <(int, int), int>{};
+      for (final line in input.lines) {
+        if (line.locationId == null) continue;
+        if (!sellable.contains(line.locationId)) {
+          throw ValidationException('المكان المختار للصنف "${products[line.productId]!.nameAr}" للعرض فقط أو موقوف');
+        }
+        final key = (line.productId, line.locationId!);
+        fromPlace[key] = (fromPlace[key] ?? 0) + line.qty;
+      }
+      if (!allowNegative) {
+        final shortages = <StockShortage>[];
+        for (final e in fromPlace.entries) {
+          final here = await stock.currentStock(e.key.$1, locationId: e.key.$2);
+          if (here < e.value) shortages.add(StockShortage(products[e.key.$1]!.nameAr, here, e.value));
         }
         if (shortages.isNotEmpty) throw InsufficientStockException(shortages);
       }
@@ -280,7 +309,7 @@ class SalesService {
       for (final entry in soldQty.entries) {
         final others = await reservations.reservedByOthers(entry.key, input.customerId);
         if (others <= 0) continue;
-        final onHand = await stock.currentStock(entry.key);
+        final onHand = await stock.sellableStock(entry.key);
         if (onHand - others < entry.value) {
           held.add(StockShortage(products[entry.key]!.nameAr, onHand - others < 0 ? 0 : onHand - others, entry.value));
         }
@@ -326,16 +355,17 @@ class SalesService {
         if (check.overDiscountLimit) overLimitNames.add(name);
         // Real cost: the oldest layers first. Anything without a layer
         // (negative stock) is priced at the last known cost.
-        final take = await fifo.consume(
+        final parts = await fifo.consumeAcross(
           productId: line.productId,
           qty: line.qty,
+          locationIds: line.locationId == null ? sellable : [line.locationId!],
           refType: RefType.salesInvoice,
           refId: invoiceId,
           date: date,
           fallbackCost: await fifo.lastKnownCost(line.productId) ?? 0,
         );
-        final cost = take.averageUnitCost;
-        final costValue = lineAmount(line.qty, cost);
+        final costValue = parts.fold<int>(0, (s, p) => s + p.take.totalCost);
+        final cost = (costValue * qtyScale / line.qty).round();
         final snap = check.snapshot;
         final vat = vatOf(net, snap.vatStatus, snap.vatRateBp);
         // Profit is measured without VAT once the VAT is verified.
@@ -351,6 +381,7 @@ class SalesService {
               qty: line.qty,
               unitPrice: line.unitPrice,
               unitCost: Value(cost),
+              costTotal: Value(costValue),
               discount: Value(line.discount),
               lineTotal: line.total,
               priceListId: Value(snap.priceListId),
@@ -366,17 +397,20 @@ class SalesService {
               vatRateBp: Value(snap.vatRateBp),
               vatAmount: Value(vat?.vat),
             ));
-        // 5. One stock movement per line.
-        await stock.record(
-          productId: line.productId,
-          type: StockMovementType.sale,
-          qty: -line.qty,
-          unitCost: cost,
-          refType: RefType.salesInvoice,
-          refId: invoiceId,
-          createdBy: userId,
-          date: date,
-        );
+        // 5. One stock movement for each place the line took from.
+        for (final part in parts) {
+          await stock.record(
+            productId: line.productId,
+            type: StockMovementType.sale,
+            qty: -part.take.qty,
+            unitCost: part.take.averageUnitCost,
+            refType: RefType.salesInvoice,
+            refId: invoiceId,
+            createdBy: userId,
+            date: date,
+            locationId: part.locationId,
+          );
+        }
       }
 
       // 5b. Under cost: admin only, with a reason that is logged.
@@ -450,6 +484,10 @@ class SalesService {
           approvedBy: userId,
         );
       }
+      if (creditOverride != null) {
+        final why = (approvalReason ?? '').trim();
+        loggedApprovals.add((ApprovalKind.creditLimit, why.isEmpty ? creditOverride : '$why — $creditOverride'));
+      }
       for (final (kind, reason) in loggedApprovals) {
         await ApprovalService(db).record(
           kind: kind,
@@ -517,7 +555,15 @@ class SalesService {
         if (missing > 0) {
           // Sold before layers existed, or with no layer: restore at the sale's cost.
           final item = items.firstWhere((i) => i.productId == e.key);
+          final where = await (db.select(db.stockMovements)
+                ..where((m) =>
+                    m.productId.equals(e.key) &
+                    m.refType.equals(RefType.salesInvoice) &
+                    m.refId.equals(invoiceId))
+                ..limit(1))
+              .getSingleOrNull();
           await fifo.addLayer(
+            locationId: where?.locationId ?? mainLocationId,
             productId: e.key,
             qty: missing,
             unitCost: item.unitCost,
@@ -526,16 +572,24 @@ class SalesService {
           );
         }
       }
-      for (final item in items) {
+      // Each place gets back exactly what it gave.
+      final sold = await (db.select(db.stockMovements)
+            ..where((m) =>
+                m.refType.equals(RefType.salesInvoice) &
+                m.refId.equals(invoiceId) &
+                m.type.equals(StockMovementType.sale)))
+          .get();
+      for (final m in sold) {
         await stock.record(
-          productId: item.productId,
+          productId: m.productId,
           type: StockMovementType.saleCancel,
-          qty: item.qty,
-          unitCost: item.unitCost,
+          qty: -m.qty,
+          unitCost: m.unitCost,
           refType: RefType.salesInvoice,
           refId: invoiceId,
           note: note,
           createdBy: user.id,
+          locationId: m.locationId,
         );
       }
 

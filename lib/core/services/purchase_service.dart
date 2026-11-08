@@ -3,6 +3,7 @@ import 'package:drift/drift.dart';
 import '../auth/auth_service.dart';
 import '../db/database.dart';
 import '../money.dart';
+import '../pricing_math.dart';
 import '../quantity.dart';
 import 'audit_service.dart';
 import 'balance_service.dart';
@@ -54,8 +55,11 @@ class PurchaseInput {
     this.paidAmount = 0,
     this.paymentMethod = PaymentMethod.cash,
     this.notes,
+    this.locationId = mainLocationId,
   });
 
+  /// Where the goods are received.
+  final int locationId;
   final int supplierId;
   final List<PurchaseLineInput> lines;
   final String? supplierInvoiceNo;
@@ -145,9 +149,16 @@ class PurchaseService {
             createdBy: Value(user.id),
           ));
 
+      final place = await (db.select(db.locations)..where((l) => l.id.equals(input.locationId))).getSingleOrNull();
+      if (place == null || !place.isActive) throw ValidationException('مكان الاستلام غير موجود أو موقوف');
       final stock = StockService(db);
       final fifo = FifoService(db);
-      for (final line in input.lines) {
+      // The invoice discount lowers the real cost of the goods, line by line.
+      final shares = allocateProportionally(input.discount, [for (final l in input.lines) l.total]);
+      for (var n = 0; n < input.lines.length; n++) {
+        final line = input.lines[n];
+        final net = line.total - shares[n];
+        final netUnitCost = (net * qtyScale / line.qty).round();
         await db.into(db.purchaseInvoiceItems).insert(PurchaseInvoiceItemsCompanion.insert(
               invoiceId: invoiceId,
               productId: line.productId,
@@ -159,26 +170,32 @@ class PurchaseService {
               buyingPolicyId: Value(line.buyingPolicyId),
               baseDiscountBp: Value(line.baseDiscountBp),
               extraDiscountBp: Value(line.extraDiscountBp),
+              invoiceDiscountShare: Value(shares[n]),
+              netTotal: Value(net),
             ));
         final p = products[line.productId]!;
         await fifo.addLayer(
           productId: p.id,
           qty: line.qty,
-          unitCost: line.unitCost,
+          unitCost: netUnitCost,
+          locationId: input.locationId,
           receivedAt: date,
           supplierId: input.supplierId,
           sourceType: 'purchase',
           sourceId: invoiceId,
+          priceListId: line.priceListId,
+          listPrice: line.listPrice,
         );
         await stock.record(
           productId: p.id,
           type: StockMovementType.purchase,
           qty: line.qty,
-          unitCost: line.unitCost,
+          unitCost: netUnitCost,
           refType: RefType.purchaseInvoice,
           refId: invoiceId,
           createdBy: user.id,
           date: date,
+          locationId: input.locationId,
         );
       }
 
@@ -252,30 +269,50 @@ class PurchaseService {
             'وكمية الفاتورة ${formatQty(item.qty)} (تم بيع جزء منها)',
           );
         }
-        // Empty the layers this purchase made; anything it made before
-        // layers existed comes off the oldest layers instead.
-        final emptied = voided[p.id] ?? 0;
-        final rest = item.qty - (emptied < item.qty ? emptied : item.qty);
-        voided[p.id] = emptied - (item.qty - rest);
+        // Empty the layers this purchase made, place by place; what has moved
+        // on or was made before layers existed comes off the other places.
+        var rest = item.qty;
+        for (var k = 0; k < voided.length && rest > 0; k++) {
+          final (productId, place, qty) = voided[k];
+          if (productId != p.id || qty == 0) continue;
+          final take = qty < rest ? qty : rest;
+          voided[k] = (productId, place, qty - take);
+          rest -= take;
+          await stock.record(
+            productId: p.id,
+            type: StockMovementType.purchaseCancel,
+            qty: -take,
+            unitCost: item.unitCost,
+            refType: RefType.purchaseInvoice,
+            refId: invoiceId,
+            note: note,
+            createdBy: user.id,
+            locationId: place,
+          );
+        }
         if (rest > 0) {
-          await fifo.consume(
+          final parts = await fifo.consumeAcross(
             productId: p.id,
             qty: rest,
+            locationIds: await stock.allLocationIds(),
             refType: 'purchase_cancel',
             refId: invoiceId,
             fallbackCost: item.unitCost,
           );
+          for (final part in parts) {
+            await stock.record(
+              productId: p.id,
+              type: StockMovementType.purchaseCancel,
+              qty: -part.take.qty,
+              unitCost: item.unitCost,
+              refType: RefType.purchaseInvoice,
+              refId: invoiceId,
+              note: note,
+              createdBy: user.id,
+              locationId: part.locationId,
+            );
+          }
         }
-        await stock.record(
-          productId: p.id,
-          type: StockMovementType.purchaseCancel,
-          qty: -item.qty,
-          unitCost: item.unitCost,
-          refType: RefType.purchaseInvoice,
-          refId: invoiceId,
-          note: note,
-          createdBy: user.id,
-        );
       }
 
       await (db.update(db.purchaseInvoices)..where((t) => t.id.equals(invoiceId))).write(

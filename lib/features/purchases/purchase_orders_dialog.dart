@@ -11,6 +11,7 @@ import '../../core/quantity.dart';
 import '../../core/services/doc_types.dart';
 import '../../core/services/product_service.dart';
 import '../../core/services/purchase_order_service.dart';
+import '../../core/services/stock_service.dart';
 import '../../core/widgets/feedback.dart';
 import '../../core/widgets/pickers.dart';
 
@@ -201,6 +202,7 @@ class _OrderDetailDialogState extends ConsumerState<_OrderDetailDialog> {
   PoDetail? _detail;
   final _receive = <int, TextEditingController>{};
   final _invoiceNo = TextEditingController();
+  int _locationId = mainLocationId;
   final _paid = TextEditingController();
   final _adv = TextEditingController();
   int _advance = 0;
@@ -279,6 +281,7 @@ class _OrderDetailDialogState extends ConsumerState<_OrderDetailDialog> {
           widget.orderId,
           qtyByLine: qtys,
           supplierInvoiceNo: _invoiceNo.text,
+          locationId: _locationId,
           paidAmount: paid,
           user: user,
         ));
@@ -374,6 +377,12 @@ class _OrderDetailDialogState extends ConsumerState<_OrderDetailDialog> {
                         controller: _invoiceNo,
                         decoration: const InputDecoration(labelText: Strings.supplierInvoiceNo),
                       ),
+                    ),
+                    const SizedBox(width: 12),
+                    LocationDropdown(
+                      label: 'مكان الاستلام',
+                      value: _locationId,
+                      onChanged: (v) => setState(() => _locationId = v),
                     ),
                     const SizedBox(width: 12),
                     SizedBox(

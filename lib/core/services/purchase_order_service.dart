@@ -10,6 +10,7 @@ import 'errors.dart';
 import 'numbering_service.dart';
 import 'payment_service.dart';
 import 'purchase_service.dart';
+import 'stock_service.dart';
 
 abstract final class PoStatus {
   static const draft = 'draft';
@@ -171,6 +172,7 @@ class PurchaseOrderService {
     String? supplierInvoiceNo,
     int paidAmount = 0,
     String paymentMethod = PaymentMethod.cash,
+    int locationId = mainLocationId,
     required User user,
   }) {
     return db.transaction(() async {
@@ -212,6 +214,7 @@ class PurchaseOrderService {
           paidAmount: paidAmount,
           paymentMethod: paymentMethod,
           notes: 'أمر شراء ${order.number}',
+          locationId: locationId,
         ),
         user: user,
       );

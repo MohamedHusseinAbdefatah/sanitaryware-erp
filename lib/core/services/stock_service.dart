@@ -45,6 +45,30 @@ class StockService {
     return row.read(total) ?? 0;
   }
 
+  /// Active places goods can be sold from, the main warehouse first.
+  Future<List<int>> sellableLocationIds() async {
+    final rows = await (db.select(db.locations)
+          ..where((l) => l.isActive.equals(true) & l.isSellable.equals(true))
+          ..orderBy([(l) => OrderingTerm.asc(l.id)]))
+        .get();
+    return [for (final l in rows) l.id];
+  }
+
+  /// Every place, the main warehouse first.
+  Future<List<int>> allLocationIds() async {
+    final rows = await (db.select(db.locations)..orderBy([(l) => OrderingTerm.asc(l.id)])).get();
+    return [for (final l in rows) l.id];
+  }
+
+  /// Stock that can be sold: display-only places do not count.
+  Future<int> sellableStock(int productId) async {
+    var total = 0;
+    for (final id in await sellableLocationIds()) {
+      total += await currentStock(productId, locationId: id);
+    }
+    return total;
+  }
+
   /// Adds one movement. [qty] is in thousandths; positive adds stock,
   /// negative removes it. [unitCost] is piastres per whole unit.
   /// Call this inside the same transaction as the document that causes it.
@@ -85,6 +109,7 @@ class StockService {
     required int productId,
     required int delta,
     required String reason,
+    int locationId = mainLocationId,
     int? userId,
   }) {
     return db.transaction(() async {
@@ -98,7 +123,7 @@ class StockService {
       if (!(unit?.allowDecimal ?? false) && !isWholeQty(delta)) {
         throw ValidationException('الكمية يجب أن تكون رقماً صحيحاً لهذه الوحدة');
       }
-      final after = await currentStock(productId) + delta;
+      final after = await currentStock(productId, locationId: locationId) + delta;
       if (delta < 0 && after < 0) {
         throw ValidationException('الرصيد بعد التسوية سيكون أقل من صفر');
       }
@@ -111,14 +136,17 @@ class StockService {
         unitCost: cost,
         note: reason.trim(),
         createdBy: userId,
+        locationId: locationId,
       );
       if (delta > 0) {
-        await fifo.addLayer(productId: productId, qty: delta, unitCost: cost, sourceType: 'adjustment');
+        await fifo.addLayer(
+            productId: productId, qty: delta, unitCost: cost, locationId: locationId, sourceType: 'adjustment');
       } else {
         await fifo.consume(
           productId: productId,
           qty: -delta,
           refType: 'adjustment',
+          locationId: locationId,
           fallbackCost: cost,
         );
       }

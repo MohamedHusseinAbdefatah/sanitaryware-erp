@@ -84,7 +84,8 @@ class _ProductSearchFieldState extends ConsumerState<ProductSearchField> {
                       title: Text('${r.product.code} — ${r.product.nameAr}'
                           '${r.product.variant == null ? '' : ' (${r.product.variant})'}'),
                       subtitle: Text('${r.product.manufacturerCode.isEmpty ? '' : '${r.product.manufacturerCode} · '}'
-                          '${Strings.available}: ${formatQty(r.stock)} ${r.unitName ?? ''}'),
+                          '${Strings.available}: ${formatQty(r.sellableStock)} ${r.unitName ?? ''}'
+                          '${r.stock == r.sellableStock ? '' : ' (الإجمالي ${formatQty(r.stock)})'}'),
                       trailing: widget.trailing == null ? null : Text(widget.trailing!(r)),
                       onTap: () => onPick(r),
                     );
@@ -93,6 +94,46 @@ class _ProductSearchFieldState extends ConsumerState<ProductSearchField> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Pick a place. [sellableOnly] leaves out display-only places.
+class LocationDropdown extends ConsumerWidget {
+  const LocationDropdown({
+    super.key,
+    required this.value,
+    required this.onChanged,
+    this.label = 'المكان',
+    this.width = 200,
+  });
+
+  final int value;
+  final ValueChanged<int> onChanged;
+  final String label;
+  final double width;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return SizedBox(
+      width: width,
+      child: StreamBuilder<List<Location>>(
+        stream: ref.watch(locationServiceProvider).watchAll(),
+        builder: (context, snap) {
+          final places = (snap.data ?? const <Location>[]).where((l) => l.isActive || l.id == value).toList();
+          return DropdownButtonFormField<int>(
+            key: ValueKey('$label-$value-${places.length}'),
+            isExpanded: true,
+            isDense: true,
+            initialValue: places.any((l) => l.id == value) ? value : null,
+            decoration: InputDecoration(labelText: label, isDense: true, border: const OutlineInputBorder()),
+            items: [for (final l in places) DropdownMenuItem(value: l.id, child: Text(l.name))],
+            onChanged: (v) {
+              if (v != null) onChanged(v);
+            },
+          );
+        },
       ),
     );
   }

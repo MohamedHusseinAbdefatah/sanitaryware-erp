@@ -27,6 +27,8 @@ import 'package:sanitaryware_erp/core/router.dart';
 import 'package:sanitaryware_erp/core/services/catalog_service.dart';
 import 'package:sanitaryware_erp/core/services/party_service.dart';
 import 'package:sanitaryware_erp/core/services/payment_service.dart';
+import 'package:sanitaryware_erp/core/pricing_math.dart';
+import 'package:sanitaryware_erp/core/services/price_list_service.dart';
 import 'package:sanitaryware_erp/core/services/product_service.dart';
 import 'package:sanitaryware_erp/core/services/purchase_service.dart';
 import 'package:sanitaryware_erp/core/services/sales_service.dart';
@@ -114,6 +116,30 @@ Future<(Shop, SalesInvoice)> _shopWithData() async {
         PurchaseLineInput(productId: shop.pipe.id, qty: qtyOf(300), unitCost: 2200),
       ],
       paidAmount: 1000000,
+    ),
+    user: shop.admin,
+  );
+  // A new list arrives, then more stock at the new price.
+  await PriceListService(db).createVersion(
+    PriceListHeader(
+      name: 'قائمة جروهي يوليو',
+      brandId: shop.brandId,
+      listType: 'عام',
+      effectiveFrom: DateTime.now(),
+      sourceFile: 'grohe_july.xlsx',
+      vatStatus: VatStatus.inclusive,
+      vatRateBp: 1400,
+    ),
+    rows: [
+      PriceRowInput(name: 'خلاط حوض جروهي كروم', price: 125000, manufacturerCode: 'M1', productId: shop.mixer.id),
+      PriceRowInput(name: 'ماسورة بولي بروبلين 25 مم', price: 3500, manufacturerCode: 'P1', productId: shop.pipe.id),
+    ],
+    user: shop.admin,
+  );
+  await PurchaseService(db).post(
+    PurchaseInput(
+      supplierId: supplier,
+      lines: [PurchaseLineInput(productId: shop.mixer.id, qty: qtyOf(8), unitCost: 100000)],
     ),
     user: shop.admin,
   );
@@ -231,6 +257,17 @@ void main() {
     await go(tester, '/products');
     await shot(tester, '03_products');
 
+    await tester.tap(find.byType(PopupMenuButton<void Function()>).at(1));
+    await settle(tester);
+    await tester.tap(find.text('المخزون حسب السعر').last);
+    await settle(tester);
+    await shot(tester, '14_stock_by_price');
+    await tester.tap(find.text(Strings.close).last);
+    await settle(tester);
+
+    await go(tester, '/price-lists');
+    await shot(tester, '13_price_lists');
+
     await go(tester, '/sales/new');
     await tester.enterText(find.byType(TextField).at(1), 'M1');
     await settle(tester);
@@ -243,6 +280,12 @@ void main() {
     await tester.enterText(find.widgetWithText(TextFormField, '1').last, '12.5');
     await settle(tester);
     await shot(tester, '04_sale_entry');
+
+    await tester.tap(find.text('${Strings.save} (Ctrl+S)'));
+    await settle(tester);
+    await shot(tester, '15_sale_review');
+    await tester.tap(find.text(Strings.cancel).last);
+    await settle(tester);
 
     await go(tester, '/sales/${creditInvoice.id}');
     await shot(tester, '05_sale_view');

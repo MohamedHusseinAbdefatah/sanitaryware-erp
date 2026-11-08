@@ -108,6 +108,12 @@ holds a safe default until then; none is invented as fact.
    the admin only, keeping the existing rule that cashiers do not see cost.
 10. **Currency.** The Currency field exists but only EGP is accepted: there is no
     exchange rate in the system to convert with.
+11. **Lists with no codes.** Some makers' lists, such as Plaza, have no codes. The
+    exact name then identifies the product within its brand and colour, and a new
+    name makes a new product. A renamed item would become a new product. Confirm.
+12. **Old and new stock.** Stock counts as new when its list price equals today's
+    price, even under a later version. Selling takes the oldest first and uses
+    today's list price, not the price the stock came in under. Confirm.
 
 ## Reviewing migrated data (after upgrading from 1.1.0)
 

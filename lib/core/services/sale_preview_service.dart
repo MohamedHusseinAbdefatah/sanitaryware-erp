@@ -4,6 +4,7 @@ import '../quantity.dart';
 import 'fifo_service.dart';
 import 'sales_service.dart';
 import 'selling_policy_service.dart';
+import 'stock_service.dart';
 
 /// One discount on a line and where it came from.
 class DiscountStep {
@@ -112,6 +113,7 @@ class SalePreviewService {
     final date = input.date ?? DateTime.now();
     final policies = SellingPolicyService(db);
     final fifo = FifoService(db);
+    final sellable = await StockService(db).sellableLocationIds();
     final shares = allocateProportionally(input.discount, [for (final l in input.lines) l.total]);
     final lines = <SaleLinePreview>[];
     final wanted = <int, int>{};
@@ -138,12 +140,13 @@ class SalePreviewService {
       final before = wanted[line.productId] ?? 0;
       wanted[line.productId] = before + line.qty;
       int? cost;
-      final upTo = await fifo.peek(line.productId, before + line.qty);
+      final places = line.locationId == null ? sellable : [line.locationId!];
+      final upTo = await fifo.peek(line.productId, before + line.qty, locationIds: places);
       if (upTo != null) {
         if (before == 0) {
           cost = upTo.totalCost;
         } else {
-          final earlier = await fifo.peek(line.productId, before);
+          final earlier = await fifo.peek(line.productId, before, locationIds: places);
           cost = upTo.totalCost - (earlier?.totalCost ?? 0);
         }
       }

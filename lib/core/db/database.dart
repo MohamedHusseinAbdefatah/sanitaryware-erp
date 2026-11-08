@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart';
 
 import '../pricing_math.dart';
+import '../services/stock_price_service.dart';
 import 'tables.dart';
 
 part 'database.g.dart';
@@ -48,7 +49,7 @@ class AppDatabase extends _$AppDatabase {
   @override
   int get schemaVersion => latestSchemaVersion;
 
-  static const latestSchemaVersion = 11;
+  static const latestSchemaVersion = 12;
 
   /// SQLite's own check of the file; false means the file is damaged.
   Future<bool> integrityOk() async {
@@ -296,6 +297,54 @@ class AppDatabase extends _$AppDatabase {
     }
   }
 
+  /// Schema 12: stock remembers the list version it came in under, a sale line
+  /// keeps its exact cost, and a purchase line its share of the invoice discount.
+  /// Costs already in stock are history and are not rewritten.
+  Future<void> _upgradeToV12(Migrator m) async {
+    await _addColumns(m, costLayers, [costLayers.priceListId, costLayers.listPrice]);
+    await _addColumns(m, salesInvoiceItems, [salesInvoiceItems.costTotal]);
+    await _addColumns(m, purchaseInvoiceItems, [
+      purchaseInvoiceItems.invoiceDiscountShare,
+      purchaseInvoiceItems.netTotal,
+    ]);
+    if (await _tableExists('sales_invoice_items') && await _columnExists('sales_invoice_items', 'unit_cost')) {
+      await customStatement('UPDATE sales_invoice_items SET cost_total = (qty * unit_cost + 500) / 1000');
+    }
+    if (await _tableExists('purchase_invoice_items') && await _columnExists('purchase_invoice_items', 'line_total')) {
+      await customStatement('UPDATE purchase_invoice_items SET net_total = line_total');
+      final discounted = await customSelect('SELECT id, discount FROM purchase_invoices WHERE discount > 0').get();
+      for (final inv in discounted) {
+        final items = await customSelect(
+          'SELECT id, line_total FROM purchase_invoice_items WHERE invoice_id = ? ORDER BY id',
+          variables: [Variable.withInt(inv.read<int>('id'))],
+        ).get();
+        final shares = allocateProportionally(
+            inv.read<int>('discount'), [for (final i in items) i.read<int>('line_total')]);
+        for (var k = 0; k < items.length; k++) {
+          await customStatement(
+            'UPDATE purchase_invoice_items SET invoice_discount_share = ?, net_total = line_total - ? WHERE id = ?',
+            [shares[k], shares[k], items[k].read<int>('id')],
+          );
+        }
+      }
+      if (await _tableExists('cost_layers')) {
+        await customStatement('''
+          UPDATE cost_layers SET
+            price_list_id = (SELECT i.price_list_id FROM purchase_invoice_items i
+              WHERE i.invoice_id = cost_layers.source_id AND i.product_id = cost_layers.product_id
+                AND i.price_list_id IS NOT NULL LIMIT 1),
+            list_price = (SELECT i.list_price FROM purchase_invoice_items i
+              WHERE i.invoice_id = cost_layers.source_id AND i.product_id = cost_layers.product_id
+                AND i.price_list_id IS NOT NULL LIMIT 1)
+          WHERE source_type = 'purchase'
+        ''');
+        if (await _tableExists('price_lists') && await _columnExists('price_lists', 'list_type')) {
+          await StockPriceService(this).stampUnknown();
+        }
+      }
+    }
+  }
+
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) async {
@@ -375,6 +424,7 @@ class AppDatabase extends _$AppDatabase {
                 'CREATE INDEX IF NOT EXISTS idx_approvals_doc ON approvals (doc_type, doc_id)'));
           }
           if (from < 11) await _upgradeToV11(m);
+          if (from < 12) await _upgradeToV12(m);
         },
         beforeOpen: (details) async {
           // Make SQLite enforce references between tables.

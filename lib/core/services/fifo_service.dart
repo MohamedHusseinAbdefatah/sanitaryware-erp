@@ -3,6 +3,7 @@ import 'package:drift/drift.dart';
 import '../db/database.dart';
 import '../quantity.dart';
 import 'errors.dart';
+import 'price_list_service.dart';
 import 'stock_service.dart';
 
 /// One slice of a layer that a use of stock took.
@@ -13,6 +14,8 @@ class LayerPiece {
     required this.unitCost,
     required this.receivedAt,
     this.supplierId,
+    this.priceListId,
+    this.listPrice,
   });
 
   final int layerId;
@@ -20,6 +23,8 @@ class LayerPiece {
   final int unitCost; // piastres per whole unit
   final DateTime receivedAt;
   final int? supplierId;
+  final int? priceListId;
+  final int? listPrice;
 
   int get cost => lineAmount(qty, unitCost);
 }
@@ -35,6 +40,14 @@ class FifoTake {
 
   /// Average piastres per whole unit.
   int get averageUnitCost => qty == 0 ? 0 : (totalCost * qtyScale / qty).round();
+}
+
+/// What one place gave up towards a use of stock.
+class LocationTake {
+  const LocationTake(this.locationId, this.take);
+
+  final int locationId;
+  final FifoTake take;
 }
 
 /// FIFO cost layers per (product, location). Call inside the same
@@ -54,18 +67,32 @@ class FifoService {
     int? supplierId,
     String? sourceType,
     int? sourceId,
-  }) {
+    int? priceListId,
+    int? listPrice,
+    bool stampFromDate = true,
+  }) async {
     if (qty <= 0) throw ArgumentError.value(qty, 'qty', 'A layer needs a positive quantity');
+    final received = receivedAt ?? DateTime.now();
+    if (priceListId == null && stampFromDate) {
+      // The version in force on the day it came in, if exactly one was.
+      final quotes = await PriceListService(db).quotesFor(productId, asOf: received);
+      if (quotes.length == 1) {
+        priceListId = quotes.single.priceListId;
+        listPrice = quotes.single.price;
+      }
+    }
     return db.into(db.costLayers).insert(CostLayersCompanion.insert(
           productId: productId,
           locationId: locationId,
           qtyReceived: qty,
           qtyRemaining: qty,
           unitCost: unitCost,
-          receivedAt: receivedAt ?? DateTime.now(),
+          receivedAt: received,
           supplierId: Value(supplierId),
           sourceType: Value(sourceType),
           sourceId: Value(sourceId),
+          priceListId: Value(priceListId),
+          listPrice: Value(listPrice),
         ));
   }
 
@@ -80,16 +107,19 @@ class FifoService {
   }
 
   /// What taking [qty] would cost now, without taking it: the FIFO cost for
-  /// the sale preview. The part with no layer is priced at [lastKnownCost].
-  /// Null when the product has never had a cost.
-  Future<FifoTake?> peek(int productId, int qty, {int locationId = mainLocationId}) async {
-    final layers = await (db.select(db.costLayers)
-          ..where((l) =>
-              l.productId.equals(productId) &
-              l.locationId.equals(locationId) &
-              l.qtyRemaining.isBiggerThanValue(0))
-          ..orderBy([(l) => OrderingTerm.asc(l.receivedAt), (l) => OrderingTerm.asc(l.id)]))
-        .get();
+  /// the sale preview, taking [locationIds] in order. The part with no layer is
+  /// priced at [lastKnownCost]. Null when the product has never had a cost.
+  Future<FifoTake?> peek(int productId, int qty, {List<int> locationIds = const [mainLocationId]}) async {
+    final layers = <CostLayer>[];
+    for (final id in locationIds) {
+      layers.addAll(await (db.select(db.costLayers)
+            ..where((l) =>
+                l.productId.equals(productId) &
+                l.locationId.equals(id) &
+                l.qtyRemaining.isBiggerThanValue(0))
+            ..orderBy([(l) => OrderingTerm.asc(l.receivedAt), (l) => OrderingTerm.asc(l.id)]))
+          .get());
+    }
     var need = qty;
     final pieces = <LayerPiece>[];
     for (final l in layers) {
@@ -176,6 +206,8 @@ class FifoService {
           unitCost: l.unitCost,
           receivedAt: l.receivedAt,
           supplierId: l.supplierId,
+          priceListId: l.priceListId,
+          listPrice: l.listPrice,
         ));
         need -= take;
       }
@@ -191,6 +223,62 @@ class FifoService {
         ));
       }
       return FifoTake(pieces);
+    });
+  }
+
+  /// Takes [qty] from [locationIds] in order, each only up to what it holds.
+  /// Anything past that (negative stock, when allowed) comes off the first
+  /// place at [fallbackCost]. The caller records a movement for each part, so
+  /// stock and layers stay together place by place.
+  Future<List<LocationTake>> consumeAcross({
+    required int productId,
+    required int qty,
+    required List<int> locationIds,
+    required String refType,
+    int? refId,
+    DateTime? date,
+    required int fallbackCost,
+    int? fromPurchaseId,
+  }) {
+    return db.transaction(() async {
+      final ids = locationIds.isEmpty ? const [mainLocationId] : locationIds;
+      var left = qty;
+      final parts = <LocationTake>[];
+      for (final id in ids) {
+        if (left == 0) break;
+        final onHand = await _stock.currentStock(productId, locationId: id);
+        if (onHand <= 0) continue;
+        final take = left < onHand ? left : onHand;
+        parts.add(LocationTake(
+          id,
+          await consume(
+            productId: productId,
+            qty: take,
+            refType: refType,
+            refId: refId,
+            locationId: id,
+            date: date,
+            fallbackCost: fallbackCost,
+            fromPurchaseId: fromPurchaseId,
+          ),
+        ));
+        left -= take;
+      }
+      if (left > 0) {
+        parts.add(LocationTake(
+          ids.first,
+          await consume(
+            productId: productId,
+            qty: left,
+            refType: refType,
+            refId: refId,
+            locationId: ids.first,
+            date: date,
+            fallbackCost: fallbackCost,
+          ),
+        ));
+      }
+      return parts;
     });
   }
 
@@ -226,6 +314,9 @@ class FifoService {
           supplierId: p.supplierId,
           sourceType: 'transfer',
           sourceId: refId,
+          priceListId: p.priceListId,
+          listPrice: p.listPrice,
+          stampFromDate: false,
         );
       }
       await _stock.record(
@@ -316,19 +407,19 @@ class FifoService {
   }
 
   /// Takes back the layers a purchase created (nothing is deleted: they are
-  /// emptied). Returns the quantity emptied per product.
-  Future<Map<int, int>> voidSourceLayers(String sourceType, int sourceId) async {
+  /// emptied). Returns what was emptied as (product, place, quantity).
+  Future<List<(int, int, int)>> voidSourceLayers(String sourceType, int sourceId) async {
     final layers = await (db.select(db.costLayers)
           ..where((l) => l.sourceType.equals(sourceType) & l.sourceId.equals(sourceId)))
         .get();
-    final perProduct = <int, int>{};
+    final emptied = <(int, int, int)>[];
     for (final l in layers) {
       if (l.qtyRemaining == 0) continue;
       await (db.update(db.costLayers)..where((t) => t.id.equals(l.id)))
           .write(const CostLayersCompanion(qtyRemaining: Value(0)));
-      perProduct[l.productId] = (perProduct[l.productId] ?? 0) + l.qtyRemaining;
+      emptied.add((l.productId, l.locationId, l.qtyRemaining));
     }
-    return perProduct;
+    return emptied;
   }
 
   /// Cost of goods used by ([refType], [refId]), net of reversals.

@@ -6,6 +6,7 @@ import '../pricing_math.dart';
 import 'audit_service.dart';
 import 'errors.dart';
 import 'product_service.dart';
+import 'stock_price_service.dart';
 
 abstract final class PriceListStatus {
   static const active = 'active';
@@ -241,6 +242,7 @@ class PriceListService {
         userId: user.id,
         details: '${header.name.trim()} V${(earlier.isEmpty ? 0 : earlier.first.versionNo) + 1}: ${rows.length} صف',
       );
+      await StockPriceService(db).stampUnknown(productIds: rows.map((r) => r.productId).whereType<int>());
       return PriceListResult(id, rows: rows.length, matched: matched, review: review);
     });
   }
@@ -293,6 +295,7 @@ class PriceListService {
         userId: user.id,
         details: 'إضافة ${rows.length} صف',
       );
+      await StockPriceService(db).stampUnknown(productIds: rows.map((r) => r.productId).whereType<int>());
     });
   }
 
@@ -357,6 +360,7 @@ class PriceListService {
           status: const Value(PriceRowStatus.ok),
           reviewReason: const Value(null)));
       await _logReview(item, 'ربط بصنف', user);
+      await StockPriceService(db).stampUnknown(productIds: [productId]);
     });
   }
 
@@ -451,6 +455,7 @@ class PriceListService {
           updatedAt: Value(DateTime.now())));
       await AuditService(db).log(
           action: AuditAction.update, entity: 'price_list', entityId: listId, userId: user.id, details: 'اعتماد');
+      await StockPriceService(db).stampUnknown();
     });
   }
 

@@ -11,6 +11,7 @@ import '../../core/services/product_service.dart';
 import '../../core/services/stock_service.dart';
 import '../../core/widgets/feedback.dart';
 import '../../core/widgets/number_fields.dart';
+import '../../core/widgets/pickers.dart';
 
 Future<void> showStockAdjust(BuildContext context, ProductRow row) =>
     showDialog<void>(context: context, builder: (_) => _StockAdjustDialog(row: row));
@@ -26,6 +27,10 @@ String movementTypeLabel(String type) => switch (type) {
       StockMovementType.saleReturn => Strings.mvSaleReturn,
       StockMovementType.purchaseReturn => Strings.mvPurchaseReturn,
       StockMovementType.adjustment => Strings.mvAdjustment,
+      StockMovementType.purchaseCancel => 'إلغاء شراء',
+      StockMovementType.returnCancel => 'إلغاء مرتجع',
+      StockMovementType.transferOut => 'تحويل خارج',
+      StockMovementType.transferIn => 'تحويل داخل',
       _ => type,
     };
 
@@ -43,6 +48,7 @@ class _StockAdjustDialogState extends ConsumerState<_StockAdjustDialog> {
   final _qty = TextEditingController();
   final _reason = TextEditingController();
   bool _increase = false;
+  int _locationId = mainLocationId;
 
   @override
   void dispose() {
@@ -59,6 +65,7 @@ class _StockAdjustDialogState extends ConsumerState<_StockAdjustDialog> {
             productId: widget.row.product.id,
             delta: _increase ? qty : -qty,
             reason: _reason.text,
+            locationId: _locationId,
             userId: ref.read(currentUserProvider)?.id,
           );
       return true;
@@ -80,6 +87,8 @@ class _StockAdjustDialogState extends ConsumerState<_StockAdjustDialog> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text('${Strings.currentStock}: ${formatQty(r.stock)} ${r.unitName ?? ''}'),
+              const SizedBox(height: 12),
+              LocationDropdown(value: _locationId, width: 420, onChanged: (v) => setState(() => _locationId = v)),
               const SizedBox(height: 12),
               SegmentedButton<bool>(
                 segments: const [
@@ -129,6 +138,7 @@ class _StockCardDialog extends ConsumerWidget {
           stream: ref.watch(stockServiceProvider).watchMovements(row.product.id),
           builder: (context, snap) {
             final list = snap.data;
+            final places = ref.watch(_placeNamesProvider).valueOrNull ?? const <int, String>{};
             if (list == null) return const Center(child: CircularProgressIndicator());
             if (list.isEmpty) return const Center(child: Text(Strings.noMovements));
             // Running balance after each movement, computed oldest first.
@@ -147,6 +157,7 @@ class _StockCardDialog extends ConsumerWidget {
                   DataColumn(label: Text(Strings.movementType)),
                   DataColumn(label: Text(Strings.qty), numeric: true),
                   DataColumn(label: Text(Strings.balanceAfter), numeric: true),
+                  DataColumn(label: Text('المكان')),
                   DataColumn(label: Text(Strings.notes)),
                 ],
                 rows: [
@@ -159,6 +170,7 @@ class _StockCardDialog extends ConsumerWidget {
                         textDirection: TextDirection.ltr,
                       )),
                       DataCell(Text(formatQty(after[i]))),
+                      DataCell(Text(places[list[i].locationId] ?? '')),
                       DataCell(Text(list[i].note ?? '')),
                     ]),
                 ],
@@ -173,3 +185,8 @@ class _StockCardDialog extends ConsumerWidget {
     );
   }
 }
+
+final _placeNamesProvider = StreamProvider.autoDispose<Map<int, String>>((ref) => ref
+    .watch(locationServiceProvider)
+    .watchAll()
+    .map((all) => {for (final l in all) l.id: l.name}));

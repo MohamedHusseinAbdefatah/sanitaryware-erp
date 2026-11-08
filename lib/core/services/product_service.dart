@@ -23,14 +23,18 @@ class ProductRow {
   const ProductRow({
     required this.product,
     required this.stock,
+    int? sellableStock,
     this.categoryName,
     this.brandName,
     this.unitName,
     this.unitAllowsDecimal = false,
-  });
+  }) : sellableStock = sellableStock ?? stock;
 
   final Product product;
   final int stock;
+
+  /// What can be sold: display-only places do not count.
+  final int sellableStock;
   final String? categoryName;
   final String? brandName;
   final String? unitName;
@@ -97,7 +101,10 @@ class ProductService {
            u.name_ar AS unit_name,
            COALESCE(u.allow_decimal, 0) AS unit_allow_decimal,
            COALESCE((SELECT SUM(m.qty) FROM stock_movements m
-                     WHERE m.product_id = p.id), 0) AS stock
+                     WHERE m.product_id = p.id), 0) AS stock,
+           COALESCE((SELECT SUM(m.qty) FROM stock_movements m
+                     JOIN locations l ON l.id = m.location_id
+                     WHERE m.product_id = p.id AND l.is_sellable = 1 AND l.is_active = 1), 0) AS sellable_stock
     FROM products p
     LEFT JOIN categories c ON c.id = p.category_id
     LEFT JOIN brands b ON b.id = p.brand_id
@@ -108,10 +115,11 @@ class ProductService {
     return db.customSelect(
       '$_listSql $where ORDER BY p.name_ar',
       variables: args,
-      readsFrom: {db.products, db.categories, db.brands, db.units, db.stockMovements},
+      readsFrom: {db.products, db.categories, db.brands, db.units, db.stockMovements, db.locations},
     ).map((row) => ProductRow(
           product: db.products.map(row.data),
           stock: row.read<int>('stock'),
+          sellableStock: row.read<int>('sellable_stock'),
           categoryName: row.readNullable<String>('category_name'),
           brandName: row.readNullable<String>('brand_name'),
           unitName: row.readNullable<String>('unit_name'),
@@ -260,11 +268,13 @@ class ProductService {
             vatRateBp: Value(input.vatRateBp),
             updatedAt: Value(DateTime.now()),
           ));
+      final fresh = await (db.select(db.products)..where((t) => t.id.equals(id))).getSingle();
       await AuditService(db).log(
         action: AuditAction.update,
         entity: 'product',
         entityId: id,
         userId: userId,
+        details: auditChanges(old.toJson(), fresh.toJson()),
       );
     });
   }
