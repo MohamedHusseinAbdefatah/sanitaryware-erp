@@ -156,7 +156,11 @@ final _content = <_B>[
         'never deleted, and documents keep using what they used.'],
     ['Full import', 'Excel with a name and a price column, and the maker\'s code when the list has one. Known '
         'products get a price, new ones a Product ID, duplicates and ambiguous rows stop in the review queue. A list '
-        'with no codes matches by exact name within the brand and colour. PDF lists must be converted to Excel first.'],
+        'with no codes matches by exact name within the brand and colour.'],
+    ['PDF import', 'A supplier PDF with real text is read page by page: codes, prices and the English description. '
+        'Price columns come from the headers (White, Pergamon, Colours, Price) or from where prices line up; the '
+        'person ticks the columns to take and names each one by its colour. A number under no column stops the row '
+        'for review with its page. Scanned pages (pictures) are refused, never guessed. The PDF is kept with the version.'],
     ['Small entry', 'A product or a few, into an existing version or a new dated one, with no file.'],
     ['Review queue', 'Link a stopped row to a product, make a new product, or skip it with a reason.'],
     ['Buying policy', 'Supplier + brand + list, scope all, category or product, base and extra discount. '

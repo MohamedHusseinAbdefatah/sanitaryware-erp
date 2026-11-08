@@ -65,6 +65,13 @@ void main() {
     await tester.tap(find.text('إلغاء'));
     await settle(tester);
 
+    await tester.tap(find.text('استيراد من PDF'));
+    await settle(tester);
+    expect(find.text('استيراد قائمة من ملف PDF (إصدار جديد)'), findsOneWidget);
+    expect(find.text('اختر ملف PDF'), findsOneWidget);
+    await tester.tap(find.text('إلغاء'));
+    await settle(tester);
+
     await tester.tap(find.text('إدخال صنف أو مجموعة أصناف'));
     await settle(tester);
     expect(find.text('سعر القائمة'), findsOneWidget);

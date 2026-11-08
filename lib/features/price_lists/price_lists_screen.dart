@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -6,10 +7,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/auth/session.dart';
 import '../../core/db/database.dart';
+import '../../core/error_log.dart';
 import '../../core/money.dart';
+import '../../core/pdf_import/pdf_reader.dart';
+import '../../core/pdf_import/price_table.dart';
 import '../../core/pricing_math.dart';
 import '../../core/providers.dart';
 import '../../core/services/buying_policy_service.dart';
+import '../../core/services/errors.dart';
 import '../../core/services/price_list_import_service.dart';
 import '../../core/services/price_list_service.dart';
 import '../../core/services/product_service.dart';
@@ -17,6 +22,8 @@ import '../../core/services/selling_policy_service.dart';
 import '../../core/widgets/feedback.dart';
 import '../../core/widgets/pickers.dart';
 import '../../core/widgets/report_view.dart';
+
+part 'pdf_import_dialog.dart';
 
 String _date(DateTime d) =>
     '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
@@ -109,6 +116,11 @@ class _VersionsTab extends ConsumerWidget {
                 icon: const Icon(Icons.upload_file_outlined),
                 label: const Text('استيراد قائمة كاملة'),
               ),
+              FilledButton.tonalIcon(
+                onPressed: () => showDialog<void>(context: context, builder: (_) => const _PdfImportDialog()),
+                icon: const Icon(Icons.picture_as_pdf_outlined),
+                label: const Text('استيراد من PDF'),
+              ),
             ],
           ),
           const SizedBox(height: 16),
@@ -173,9 +185,21 @@ class _VersionCard extends ConsumerWidget {
     });
   }
 
+  /// Opens the PDF this version was read from, kept beside the database.
+  Future<void> _openSource(BuildContext context, File pdf) async {
+    if (!await pdf.exists()) {
+      if (context.mounted) await showMessage(context, 'لم يعد ملف المصدر موجوداً في مجلد البيانات');
+      return;
+    }
+    await Process.run('explorer', [pdf.path]);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l = summary.list;
+    final pdf = (l.sourceFile ?? '').toLowerCase().endsWith('.pdf')
+        ? _sourcePdf(ref.read(databaseFileProvider), l.id)
+        : null;
     final period = 'من ${_date(l.effectiveFrom)}${l.effectiveTo == null ? ' (مفتوحة)' : ' إلى ${_date(l.effectiveTo!)}'}';
     return Card(
       child: ListTile(
@@ -198,6 +222,8 @@ class _VersionCard extends ConsumerWidget {
                 value: () => showDialog<void>(context: context, builder: (_) => _ApprovePendingDialog(list: l)),
                 child: const Text('مراجعة واعتماد'),
               ),
+            if (pdf != null)
+              PopupMenuItem(value: () => _openSource(context, pdf), child: const Text('فتح ملف المصدر')),
             PopupMenuItem(value: () => _setVat(context), child: const Text('تسجيل الضريبة بعد التحقق')),
             PopupMenuItem(value: () => _assignStock(context, ref), child: const Text('المخزون غير المحدد من هذه القائمة')),
             if (l.status != PriceListStatus.withdrawn)
@@ -910,6 +936,11 @@ class _ReviewTabState extends ConsumerState<_ReviewTab> {
 
   @override
   Widget build(BuildContext context) {
+    // Rows of a PDF list point to a page; rows of an Excel file to a row.
+    final pdfLists = {
+      for (final s in ref.watch(_summariesProvider).valueOrNull ?? const <PriceListSummary>[])
+        if ((s.list.sourceFile ?? '').toLowerCase().endsWith('.pdf')) s.list.id,
+    };
     return Padding(
       padding: const EdgeInsets.all(24),
       child: FutureBuilder<List<PriceListItem>>(
@@ -928,7 +959,7 @@ class _ReviewTabState extends ConsumerState<_ReviewTab> {
                     '${item.variant == null ? '' : ' (${item.variant})'}'),
                 subtitle: Text(
                     '${item.reviewReason ?? ''} · السعر: ${item.price == null ? 'غير موجود' : formatMoney(item.price!)}'
-                    '${item.sourceRow == null ? '' : ' · صف ${item.sourceRow}'}'),
+                    '${item.sourceRow == null ? '' : ' · ${pdfLists.contains(item.priceListId) ? 'صفحة' : 'صف'} ${item.sourceRow}'}'),
                 trailing: Wrap(
                   spacing: 8,
                   children: [

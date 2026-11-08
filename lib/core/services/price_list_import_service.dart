@@ -4,6 +4,7 @@ import '../auth/auth_service.dart';
 import '../db/database.dart';
 import '../excel_open.dart';
 import '../money.dart';
+import '../pdf_import/price_table.dart';
 import '../pricing_math.dart';
 import '../search_text.dart';
 import 'catalog_service.dart';
@@ -26,7 +27,7 @@ enum PriceRowAction {
 /// One sheet row after checking.
 class PriceImportRow {
   PriceImportRow(this.rowNumber, this.code, this.name, this.variant, this.priceText, this.packText,
-      {this.codeWasNumber = false, this.details = const {}});
+      {this.codeWasNumber = false, this.details = const {}, this.page, this.presetReason});
 
   /// As Excel numbers it (header is row 1).
   final int rowNumber;
@@ -43,6 +44,13 @@ class PriceImportRow {
 
   /// Optional master data for a new product.
   final Map<String, String> details;
+
+  /// The PDF page the row came from; null for Excel.
+  final int? page;
+
+  /// Set when the row was already doubtful as read (a PDF row with a number
+  /// outside every column, say). It keeps the row stopped on every check.
+  final String? presetReason;
 
   PriceRowAction action = PriceRowAction.create;
   String? reviewReason;
@@ -217,6 +225,44 @@ class PriceListImportService {
     return PriceImportPreview(brandId, rows, const []);
   }
 
+  /// Turns a price table read from a PDF into the same preview as an Excel
+  /// file. [include] is the columns to take (by label as read); [rename]
+  /// gives a column its colour name. With one column, or a column named only
+  /// "السعر", the rows get no colour; otherwise the column's name is the colour.
+  Future<PriceImportPreview> previewPdf(
+    PdfPriceTable table, {
+    required int brandId,
+    required Set<String> include,
+    Map<String, String> rename = const {},
+  }) async {
+    if (include.isEmpty) return PriceImportPreview(brandId, [], ['عمود السعر']);
+    String? variantOf(String label) {
+      if (include.length == 1) return null;
+      final name = (rename[label] ?? label).trim();
+      return name.isEmpty || name == genericPriceLabel ? null : name;
+    }
+
+    final rows = <PriceImportRow>[];
+    for (final (i, r) in table.rows.indexed) {
+      for (final label in include) {
+        final text = r.prices[label];
+        if (text == null) continue;
+        rows.add(PriceImportRow(
+          i + 1,
+          r.code,
+          r.name,
+          variantOf(label),
+          text.replaceAll(',', ''),
+          '',
+          page: r.page,
+          presetReason: r.issue,
+        ));
+      }
+    }
+    await _classify(rows, brandId);
+    return PriceImportPreview(brandId, rows, const []);
+  }
+
   Future<void> _classify(List<PriceImportRow> rows, int brandId) async {
     final products = await (db.select(db.products)..where((t) => t.brandId.equals(brandId))).get();
     final byKey = <String, List<Product>>{};
@@ -242,6 +288,7 @@ class PriceListImportService {
     }
     for (final r in rows) {
       final key = matchKeyOf(r.code);
+      if (r.presetReason != null) r.stop(r.presetReason!);
       r.price = _parsePrice(r.priceText);
       if (r.priceText.isEmpty) {
         r.stop('السعر غير موجود');
@@ -327,7 +374,7 @@ class PriceListImportService {
           packSize: r.packSize,
           productId: r.action == PriceRowAction.review ? null : productId,
           reviewReason: r.reviewReason,
-          sourceRow: r.rowNumber,
+          sourceRow: r.page ?? r.rowNumber,
         ));
       }
       final saved = await PriceListService(db).createVersion(

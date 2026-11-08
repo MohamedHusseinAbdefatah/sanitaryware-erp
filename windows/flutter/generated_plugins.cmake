@@ -6,10 +6,12 @@ list(APPEND FLUTTER_PLUGIN_LIST
   printing
   screen_retriever_windows
   sqlite3_flutter_libs
+  url_launcher_windows
   window_manager
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
+  pdfrx
 )
 
 set(PLUGIN_BUNDLED_LIBRARIES)

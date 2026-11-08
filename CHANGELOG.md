@@ -2,6 +2,27 @@
 
 Versions follow `version:` in `pubspec.yaml` and `lib/core/version.dart`.
 
+## 1.5.0
+
+Price lists can be imported straight from a supplier's PDF. No database change.
+
+- New on the Price Lists screen: "استيراد من PDF". Choose the brand, the file
+  and the pages, then read it. The program reads the text in the file (codes,
+  prices and the English description), finds the price columns from their
+  headers (White, Pergamon, Colours, Price) or from where prices line up, and
+  shows each column with its count and sample prices. The person ticks the
+  columns to take and names each by its colour. The rows then go through the
+  same preview, matching and review queue as an Excel file.
+- Nothing is guessed: a number under no column, two prices under one column,
+  a repeated code with different prices, or a new product with no name stops
+  the row for review, shown with its page.
+- Scanned PDFs (pictures with no text) are refused with a clear message; the
+  pages that are pictures in a mixed file are listed so they can be entered by
+  hand.
+- The PDF is kept beside the database (price_list_sources\PL-n.pdf) and opens
+  from the version's menu with "فتح ملف المصدر".
+- Uses PDFium through the pdfrx package; pdfium.dll ships with the program.
+
 ## 1.4.0
 
 A new look and a richer dashboard. No database change.
