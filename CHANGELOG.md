@@ -2,6 +2,23 @@
 
 Versions follow `version:` in `pubspec.yaml` and `lib/core/version.dart`.
 
+## 1.4.0
+
+A new look and a richer dashboard. No database change.
+
+- New design: dark grouped sidebar (daily work, stock and buying, finance and
+  admin) with the company name and the signed-in user, a top bar with the date
+  and a "new sale" button, F9 for a new sale from any screen, framed lists with
+  striped rows, clearer page headers, and a new login screen.
+- Dashboard: quick actions, an attention strip (backup, low stock, cheques,
+  price lists to review, stock with an unknown list), figure cards for today,
+  this month against last month and what customers owe, and for the admin
+  gross profit this month, stock value and what is owed to suppliers. Sales
+  for the last 14 days, best sellers this month, items under minimum and top
+  debtors.
+- Arabic user guide updated, and a new English Application Guide,
+  docs/application_guide_en.pdf, built from the program with every release.
+
 ## 1.3.0
 
 The database upgrades in place (schema 12) and keeps all existing data.

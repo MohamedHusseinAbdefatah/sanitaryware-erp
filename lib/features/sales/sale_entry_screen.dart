@@ -474,7 +474,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                   ),
                   AmountLabel(Strings.subtotal, _subtotal),
                   SizedBox(
-                    width: 110,
+                    width: 140,
                     child: MoneyField(
                       controller: _invoiceDiscount,
                       label: Strings.invoiceDiscount,
@@ -483,7 +483,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                   ),
                   AmountLabel(Strings.total, _total, big: true),
                   SizedBox(
-                    width: 120,
+                    width: 130,
                     child: MoneyField(
                       controller: _paid,
                       label: Strings.paidNow,

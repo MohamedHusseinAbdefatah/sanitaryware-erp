@@ -1,13 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../theme.dart';
+
 /// One column of a [DataList].
 class DataListColumn<T> {
-  const DataListColumn(
-    this.title,
-    this.cell, {
-    this.flex = 1,
-    this.numeric = false,
-  });
+  const DataListColumn(this.title, this.cell, {this.flex = 1, this.numeric = false});
 
   final String title;
   final Widget Function(T row) cell;
@@ -38,59 +35,85 @@ class DataList<T> extends StatelessWidget {
   final Color? Function(T row)? rowColor;
 
   Widget _cell(DataListColumn<T> column, Widget child) => Expanded(
-        flex: column.flex,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: Align(
-            alignment: column.numeric ? Alignment.center : AlignmentDirectional.centerStart,
-            child: child,
-          ),
-        ),
-      );
+    flex: column.flex,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Align(alignment: column.numeric ? Alignment.center : AlignmentDirectional.centerStart, child: child),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Column(
-      children: [
-        Container(
-          color: theme.colorScheme.surfaceContainerHigh,
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          child: Row(
+    // A bordered card with a tinted header and lightly striped rows.
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Column(
             children: [
-              for (final c in columns)
-                _cell(c, Text(c.title, style: const TextStyle(fontWeight: FontWeight.bold))),
-              if (trailing != null) const SizedBox(width: 48),
+              Container(
+                color: AppColors.canvas,
+                padding: const EdgeInsets.symmetric(vertical: 11),
+                child: Row(
+                  children: [
+                    for (final c in columns)
+                      _cell(
+                        c,
+                        Text(
+                          c.title,
+                          style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.muted, fontSize: 13),
+                        ),
+                      ),
+                    if (trailing != null) const SizedBox(width: 48),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: rows.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.inbox_outlined, size: 40, color: AppColors.border),
+                            const SizedBox(height: 8),
+                            Text(emptyText ?? '', style: const TextStyle(color: AppColors.muted)),
+                          ],
+                        ),
+                      )
+                    : ListView.separated(
+                        itemCount: rows.length,
+                        separatorBuilder: (_, _) => const Divider(height: 1),
+                        itemBuilder: (context, i) {
+                          final row = rows[i];
+                          return Material(
+                            color: rowColor?.call(row) ?? (i.isOdd ? AppColors.zebra : Colors.transparent),
+                            child: InkWell(
+                              onTap: onTap == null ? null : () => onTap!(row),
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(minHeight: 44),
+                                child: Row(
+                                  children: [
+                                    for (final c in columns) _cell(c, c.cell(row)),
+                                    if (trailing != null) SizedBox(width: 48, child: trailing!(row)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
             ],
           ),
         ),
-        Expanded(
-          child: rows.isEmpty
-              ? Center(child: Text(emptyText ?? ''))
-              : ListView.separated(
-                  itemCount: rows.length,
-                  separatorBuilder: (_, _) => const Divider(height: 1),
-                  itemBuilder: (context, i) {
-                    final row = rows[i];
-                    return Material(
-                      color: rowColor?.call(row) ?? Colors.transparent,
-                      child: InkWell(
-                        onTap: onTap == null ? null : () => onTap!(row),
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(minHeight: 44),
-                          child: Row(
-                            children: [
-                              for (final c in columns) _cell(c, c.cell(row)),
-                              if (trailing != null) SizedBox(width: 48, child: trailing!(row)),
-                            ],
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-        ),
-      ],
+      ),
     );
   }
 }
@@ -106,9 +129,15 @@ class PageHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 14),
       child: Row(
         children: [
+          Container(
+            width: 4,
+            height: 26,
+            decoration: BoxDecoration(color: AppColors.brand, borderRadius: BorderRadius.circular(2)),
+          ),
+          const SizedBox(width: 10),
           Text(title, style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(width: 16),
           Expanded(
@@ -140,12 +169,7 @@ class SearchBox extends StatelessWidget {
       width: width,
       child: TextField(
         onChanged: onChanged,
-        decoration: InputDecoration(
-          prefixIcon: const Icon(Icons.search),
-          hintText: hint,
-          isDense: true,
-          border: const OutlineInputBorder(),
-        ),
+        decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: hint, isDense: true),
       ),
     );
   }

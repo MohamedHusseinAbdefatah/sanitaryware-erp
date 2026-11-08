@@ -49,6 +49,19 @@ class DashboardSummary {
     required this.chequesOutDue,
     required this.chequesOutDueTotal,
     required this.topDebtors,
+    this.days = const [],
+    this.monthSales = 0,
+    this.lastMonthSales = 0,
+    this.monthInvoices = 0,
+    this.monthGrossProfit = 0,
+    this.stockValue = 0,
+    this.receivables = 0,
+    this.payables = 0,
+    this.lowStock = const [],
+    this.topProducts = const [],
+    this.pendingPriceLists = 0,
+    this.reviewRows = 0,
+    this.unknownPriceStock = 0,
   });
 
   final int todaySales;
@@ -66,6 +79,33 @@ class DashboardSummary {
 
   /// Up to five customers owing the most.
   final List<(String name, int balance)> topDebtors;
+
+  /// Sales per day for the last 14 days, oldest first.
+  final List<(DateTime day, int total)> days;
+
+  /// This month so far, and the whole of last month.
+  final int monthSales;
+  final int lastMonthSales;
+  final int monthInvoices;
+
+  /// This month: net sales less the FIFO cost of goods sold, before expenses.
+  final int monthGrossProfit;
+
+  /// Stock at actual FIFO cost.
+  final int stockValue;
+  final int receivables;
+  final int payables;
+
+  /// Up to five items at or under their minimum: name, stock, minimum.
+  final List<(String name, int stock, int min)> lowStock;
+
+  /// Up to five best sellers this month by net value.
+  final List<(String name, int value)> topProducts;
+  final int pendingPriceLists;
+  final int reviewRows;
+
+  /// Products with stock whose price list is not known.
+  final int unknownPriceStock;
 }
 
 /// Every report in the plan, each returning a [ReportTable].
@@ -111,8 +151,48 @@ class ReportService {
     final cheques = (await chequesDue(to: today.add(const Duration(days: 7)))).rows;
     final incoming = cheques.where((r) => r[4] == 'وارد');
     final outgoing = cheques.where((r) => r[4] == 'صادر');
-    final debtors = (await customersOwing()).rows.take(5);
+    final owing = await customersOwing();
+    final debtors = owing.rows.take(5);
+    final days = <(DateTime, int)>[];
+    final from14 = today.subtract(const Duration(days: 13));
+    final last14 = await _sales(from14, today);
+    for (var k = 0; k < 14; k++) {
+      final d = from14.add(Duration(days: k));
+      days.add((d, last14.where((i) => _day(i.date) == d).fold<int>(0, (s, i) => s + i.total)));
+    }
+    final monthStart = DateTime(today.year, today.month);
+    final lastMonthStart = DateTime(today.year, today.month - 1);
+    final month = await _sales(monthStart, today);
+    final lastMonth = await _sales(lastMonthStart, monthStart.subtract(const Duration(days: 1)));
+    final profitRows = (await profit(from: monthStart, to: today)).rows;
+    final gross = profitRows.firstWhere((r) => r[0] == 'مجمل الربح')[1] as int;
+    final stockValueRow = await db.customSelect(
+      'SELECT COALESCE(SUM((qty_remaining * unit_cost + 500) / 1000), 0) AS v FROM cost_layers WHERE qty_remaining > 0',
+    ).getSingle();
+    final suppliers = (await supplierBalances()).rows;
+    final low = (await lowStock()).rows;
+    final top = (await salesByProduct(from: monthStart, to: today)).rows;
+    final pendingLists = await db.customSelect(
+      "SELECT COUNT(*) AS n FROM price_lists WHERE status = 'pending_review'",
+    ).getSingle();
+    final review = await db.customSelect(
+      "SELECT COUNT(*) AS n FROM price_list_items WHERE status = 'review'",
+    ).getSingle();
+    final unknown = (await StockPriceService(db).summaries()).values.where((s) => s.unknown > 0).length;
     return DashboardSummary(
+      days: days,
+      monthSales: month.fold(0, (s, i) => s + i.total),
+      lastMonthSales: lastMonth.fold(0, (s, i) => s + i.total),
+      monthInvoices: month.length,
+      monthGrossProfit: gross,
+      stockValue: stockValueRow.read<int>('v'),
+      receivables: owing.rows.fold(0, (s, r) => s + (r[2] as int)),
+      payables: suppliers.fold(0, (s, r) => s + ((r[2] as int) > 0 ? r[2] as int : 0)),
+      lowStock: [for (final r in low.take(5)) (r[1] as String, r[2] as int, r[3] as int)],
+      topProducts: [for (final r in top.take(5)) (r[1] as String, r[6] as int)],
+      pendingPriceLists: pendingLists.read<int>('n'),
+      reviewRows: review.read<int>('n'),
+      unknownPriceStock: unknown,
       todaySales: sales.fold(0, (s, i) => s + i.total),
       todayInvoices: sales.length,
       todayReceived: received.read<int>('total'),

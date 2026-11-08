@@ -28,7 +28,12 @@ class MoneyField extends StatelessWidget {
     return TextFormField(
       controller: controller,
       textAlign: TextAlign.center,
-      decoration: InputDecoration(labelText: dense ? null : label, isDense: dense, hintText: dense ? label : null),
+      decoration: InputDecoration(
+        labelText: dense ? null : label,
+        isDense: dense,
+        hintText: dense ? label : null,
+        contentPadding: dense ? const EdgeInsets.symmetric(horizontal: 6, vertical: 9) : null,
+      ),
       onChanged: onChanged,
       validator: (text) {
         if ((text ?? '').trim().isEmpty) return required ? Strings.required : null;
@@ -70,7 +75,12 @@ class QtyField extends StatelessWidget {
       controller: controller,
       focusNode: focusNode,
       textAlign: TextAlign.center,
-      decoration: InputDecoration(labelText: dense ? null : label, isDense: dense, hintText: dense ? label : null),
+      decoration: InputDecoration(
+        labelText: dense ? null : label,
+        isDense: dense,
+        hintText: dense ? label : null,
+        contentPadding: dense ? const EdgeInsets.symmetric(horizontal: 6, vertical: 9) : null,
+      ),
       onChanged: onChanged,
       onFieldSubmitted: onSubmitted,
       validator: (text) {
