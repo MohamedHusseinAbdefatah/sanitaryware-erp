@@ -16,7 +16,7 @@ import 'sections.dart';
 const _groups = <(String, List<String>)>[
   ('', ['/dashboard']),
   ('العمليات اليومية', ['/sales', '/customers', '/returns', '/payments']),
-  ('المخزون والمشتريات', ['/products', '/suppliers', '/purchases', '/price-lists']),
+  ('المخزون والمشتريات', ['/inventory', '/products', '/suppliers', '/purchases', '/price-lists']),
   ('المالية والإدارة', ['/expenses', '/reports', '/settings']),
 ];
 

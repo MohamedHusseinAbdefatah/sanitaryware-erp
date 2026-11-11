@@ -15,6 +15,7 @@ import 'services/sale_preview_service.dart';
 import 'services/selling_policy_service.dart';
 import 'services/stock_price_service.dart';
 import 'services/expense_service.dart';
+import 'services/inventory_service.dart';
 import 'services/location_service.dart';
 import 'services/party_service.dart';
 import 'services/payment_service.dart';
@@ -65,6 +66,9 @@ final catalogServiceProvider =
 
 final productServiceProvider =
     Provider<ProductService>((ref) => ProductService(ref.watch(databaseProvider)));
+
+final inventoryServiceProvider =
+    Provider<InventoryService>((ref) => InventoryService(ref.watch(databaseProvider)));
 
 final stockServiceProvider =
     Provider<StockService>((ref) => StockService(ref.watch(databaseProvider)));

@@ -8,11 +8,8 @@ import '../../core/l10n/strings.dart';
 import '../../core/providers.dart';
 import '../../core/quantity.dart';
 import '../../core/services/product_service.dart';
-import '../../core/services/stock_price_service.dart';
 import '../../core/widgets/data_list.dart';
 import 'catalog_dialog.dart';
-import 'locations_dialog.dart';
-import 'reservations_dialog.dart';
 import 'price_history_dialog.dart';
 import 'product_form_dialog.dart';
 import 'stock_dialogs.dart';
@@ -28,15 +25,14 @@ class ProductsScreen extends ConsumerStatefulWidget {
 class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   String _search = '';
   int? _categoryId;
-  bool _lowOnly = false;
+
 
   @override
   Widget build(BuildContext context) {
     final isAdmin = ref.watch(currentUserProvider)?.isAdmin ?? false;
     final categories = ref.watch(_categoriesProvider).valueOrNull ?? const <Category>[];
-    final rows = ref.watch(_productListProvider((_search, _categoryId, _lowOnly)));
+    final rows = ref.watch(_productListProvider((_search, _categoryId, false)));
     final scheme = Theme.of(context).colorScheme;
-    final byPrice = ref.watch(_stockByPriceProvider).valueOrNull ?? const <int, StockPriceSummary>{};
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -52,24 +48,6 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                 ),
                 icon: const Icon(Icons.list_alt),
                 label: const Text(Strings.lists),
-              ),
-            if (isAdmin)
-              OutlinedButton.icon(
-                onPressed: () => showDialog<void>(
-                  context: context,
-                  builder: (_) => const ReservationsDialog(),
-                ),
-                icon: const Icon(Icons.bookmark_outline),
-                label: const Text('الحجوزات'),
-              ),
-            if (isAdmin)
-              OutlinedButton.icon(
-                onPressed: () => showDialog<void>(
-                  context: context,
-                  builder: (_) => const LocationsDialog(),
-                ),
-                icon: const Icon(Icons.warehouse_outlined),
-                label: const Text('الأماكن والتحويل'),
               ),
             if (isAdmin)
               FilledButton.icon(
@@ -104,11 +82,6 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                   onChanged: (v) => setState(() => _categoryId = v),
                 ),
               ),
-              FilterChip(
-                label: const Text(Strings.lowStockOnly),
-                selected: _lowOnly,
-                onSelected: (v) => setState(() => _lowOnly = v),
-              ),
               if (rows.valueOrNull != null) Text('${rows.value!.length} ${Strings.items}'),
             ],
           ),
@@ -133,7 +106,6 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                 DataListColumn(Strings.category, (r) => Text(r.categoryName ?? '')),
                 DataListColumn(Strings.brand, (r) => Text(r.brandName ?? '')),
                 DataListColumn(Strings.unit, numeric: true, (r) => Text(r.unitName ?? '')),
-                DataListColumn('جديد / قديم', flex: 2, (r) => Text(_priceSplit(byPrice[r.product.id]))),
                 DataListColumn(
                   Strings.stock,
                   numeric: true,
@@ -152,20 +124,6 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     );
   }
 }
-
-/// "new 40 · old 60", leaving out whatever is zero.
-String _priceSplit(StockPriceSummary? s) {
-  if (s == null) return '';
-  return [
-    if (s.current != 0) 'جديد ${formatQty(s.current)}',
-    if (s.old != 0) 'قديم ${formatQty(s.old)}',
-    if (s.unknown != 0) 'غير محدد ${formatQty(s.unknown)}',
-  ].join(' · ');
-}
-
-final _stockByPriceProvider = StreamProvider.autoDispose<Map<int, StockPriceSummary>>(
-  (ref) => ref.watch(stockPriceServiceProvider).watchSummaries(),
-);
 
 class _ProductMenu extends StatelessWidget {
   const _ProductMenu({required this.row, required this.isAdmin});

@@ -97,6 +97,27 @@ void main() {
     await tester.pump(Duration.zero); // drift closes its streams on a zero timer
   });
 
+  testWidgets('the inventory shows what is held, not the whole catalogue', (tester) async {
+    await pumpApp(tester);
+    // A product loaded from a price list and never bought.
+    await tester.runAsync(() async {
+      await ProductService(db).create(const ProductInput(code: 'B9', manufacturerCode: 'B9', nameAr: 'حوض غير مشترى'));
+    });
+    tester.view.physicalSize = const Size(1100, 700); // the smallest window
+    await tester.tap(find.text(Strings.inventory));
+    await settle(tester);
+    expect(find.text('خلاط حوض'), findsOneWidget);
+    expect(find.text('حوض غير مشترى'), findsNothing);
+    expect(find.textContaining('1 صنف في المخزون'), findsOneWidget);
+    // The catalogue still lists both.
+    await tester.tap(find.text(Strings.products));
+    await settle(tester);
+    expect(find.text('خلاط حوض'), findsOneWidget);
+    expect(find.text('حوض غير مشترى'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(Duration.zero);
+  });
+
   testWidgets('a cash sale entered on screen is saved and reduces stock', (tester) async {
     await pumpApp(tester);
     await tester.tap(find.text(Strings.sales));

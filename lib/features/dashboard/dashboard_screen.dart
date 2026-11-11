@@ -84,7 +84,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   if (isAdmin)
                     _AttentionItem.async(_backup.then(_backupText), Icons.backup_outlined, '/settings', bad: true),
                   if (d.lowStockCount > 0)
-                    _AttentionItem('${d.lowStockCount} صنف تحت حد الطلب', Icons.inventory_2_outlined, '/products'),
+                    _AttentionItem('${d.lowStockCount} صنف تحت حد الطلب', Icons.inventory_2_outlined, '/inventory'),
                   if (d.chequesInDue + d.chequesOutDue > 0)
                     _AttentionItem(
                         '${d.chequesInDue + d.chequesOutDue} شيك يستحق خلال أسبوع', Icons.event_note_outlined, '/payments'),
@@ -95,7 +95,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     _AttentionItem('${d.reviewRows} صف أسعار متوقف للمراجعة', Icons.rule_outlined, '/price-lists'),
                   if (isAdmin && d.unknownPriceStock > 0)
                     _AttentionItem('${d.unknownPriceStock} صنف مخزونه بقائمة غير محددة', Icons.help_outline,
-                        '/products'),
+                        '/inventory'),
                 ],
               ),
               LayoutBuilder(builder: (context, c) {
@@ -210,7 +210,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                 name,
                                 '${formatQty(stock)} من ${formatQty(min)}',
                                 color: stock <= 0 ? AppColors.bad : AppColors.warn,
-                                onTap: () => context.go('/products'),
+                                onTap: () => context.go('/inventory'),
                               ),
                           ],
                         ),

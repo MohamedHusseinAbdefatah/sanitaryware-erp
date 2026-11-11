@@ -5,7 +5,8 @@ class Strings {
   static const appTitle = 'إدارة الأدوات الصحية';
 
   static const dashboard = 'لوحة التحكم';
-  static const products = 'المنتجات والمخزون';
+  static const products = 'الأصناف';
+  static const inventory = 'المخزون';
   static const customers = 'العملاء';
   static const suppliers = 'الموردون';
   static const sales = 'فواتير البيع';

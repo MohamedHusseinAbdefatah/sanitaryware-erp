@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/l10n/strings.dart';
 import '../../core/services/doc_types.dart';
 import '../dashboard/dashboard_screen.dart';
+import '../inventory/inventory_screen.dart';
 import '../expenses/expenses_screen.dart';
 import '../parties/parties_screen.dart';
 import '../payments/payments_screen.dart';
@@ -48,6 +49,12 @@ final appSections = <AppSection>[
     title: Strings.dashboard,
     icon: Icons.dashboard_outlined,
     builder: (_) => const DashboardScreen(),
+  ),
+  AppSection(
+    path: '/inventory',
+    title: Strings.inventory,
+    icon: Icons.warehouse_outlined,
+    builder: (_) => const InventoryScreen(),
   ),
   AppSection(
     path: '/products',
