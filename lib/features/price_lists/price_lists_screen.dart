@@ -22,6 +22,7 @@ import '../../core/services/selling_policy_service.dart';
 import '../../core/widgets/feedback.dart';
 import '../../core/widgets/pickers.dart';
 import '../../core/widgets/report_view.dart';
+import 'list_type_field.dart';
 
 part 'pdf_import_dialog.dart';
 
@@ -596,11 +597,7 @@ class _ImportDialogState extends ConsumerState<_ImportDialog> {
                 }),
               ),
               const SizedBox(height: 12),
-              TextField(
-                controller: _type,
-                decoration: const InputDecoration(labelText: 'نوع القائمة (مثال: سيراميك، بانيوهات، Premium)'),
-                onChanged: (_) => setState(() {}),
-              ),
+              ListTypeField(brandId: _brandId, controller: _type, onChanged: () => setState(() {})),
               const SizedBox(height: 12),
               TextField(
                 controller: _name,

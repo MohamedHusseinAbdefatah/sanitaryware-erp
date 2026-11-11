@@ -119,6 +119,40 @@ void main() {
       expect(q.netCost, isNull);
     });
 
+    test('a new version of the list keeps each supplier discount; a separate list type does not', () async {
+      await buyPolicy(supplierA, 2000);
+      await buyPolicy(supplierB, 1000, extra: 500);
+      await sellPolicy(PricingType.b2c, 500);
+      // The same list, prices up 10%, uploaded again on the same day.
+      final v2 = (await PriceListService(db).createVersion(
+        PriceListHeader(name: 'ديورافيت +10%', brandId: duravit, listType: 'سيراميك', effectiveFrom: DateTime(2026, 1, 1)),
+        rows: [PriceRowInput(name: 'حوض', price: 110000, productId: basin.id)],
+        user: shop.admin,
+      ))
+          .id;
+      final a = await buyQuote(supplierA);
+      expect(a.quote.priceListId, v2);
+      expect(a.listPrice, 110000);
+      expect(a.netCost, 88000);
+      final b = await buyQuote(supplierB);
+      expect(b.baseBp, 1000);
+      expect(b.extraBp, 500);
+      expect(b.netCost, 93500);
+      final sellRules = await (db.select(db.sellingPolicies)..where((p) => p.priceListId.equals(v2))).get();
+      expect(sellRules.single.discountBp, 500);
+
+      // A different list type is a separate list: no discount is carried to it.
+      final other = (await PriceListService(db).createVersion(
+        PriceListHeader(name: 'بريميوم', brandId: duravit, listType: 'Premium', effectiveFrom: DateTime(2026, 1, 1)),
+        rows: [PriceRowInput(name: 'حوض', price: 121000, productId: basin.id)],
+        user: shop.admin,
+      ))
+          .id;
+      final quotes = await buying.quotes(basin.id, supplierId: supplierA);
+      expect(quotes.firstWhere((q) => q.quote.priceListId == other).missingPolicy, isTrue);
+      expect(await PriceListService(db).liveListsOf(duravit), hasLength(2));
+    });
+
     test('a policy needs a brand matching its price list', () async {
       await expectLater(
         buying.add(

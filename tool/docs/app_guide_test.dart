@@ -157,8 +157,11 @@ final _content = <_B>[
   const _T(['Item', 'Behaviour'], [
     ['Version', 'Each list file is a new version with its own ID (PL-n), brand, list type, version number, '
         'currency (EGP), effective from and to, import date, source file and pages, row count and VAT status.'],
-    ['Period', 'A new full version ends the previous one the day before it starts. A version for a few products '
-        'leaves the earlier list open for everything else.'],
+    ['Period', 'A new full version ends the previous one the day before it starts; one sent again on the same day '
+        'replaces it from that day. A version for a few products leaves the earlier list open for everything else.'],
+    ['Same type, new version', 'Only the same brand and list type make a new version. The import shows the brand\'s '
+        'list types to pick from and warns in red when a new type would make a separate list. A new version takes '
+        'over the active buying and selling policies of the one it follows, with the same discounts.'],
     ['Never overwritten', 'A product priced in a version cannot be changed in it. A mistaken version is withdrawn, '
         'never deleted, and documents keep using what they used.'],
     ['Full import', 'Excel with a name and a price column, and the maker\'s code when the list has one. Known '

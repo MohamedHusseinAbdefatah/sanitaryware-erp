@@ -76,10 +76,19 @@ void main() {
     expect((await lists.items(v1)).single.price, 100000);
   });
 
-  test('a new version cannot start on or before an existing one', () async {
+  test('a new version cannot start before an existing one', () async {
     await version('سيراميك', DateTime(2026, 7, 1), 120000);
-    await expectLater(version('سيراميك', DateTime(2026, 7, 1), 130000), throwsA(isA<ValidationException>()));
     await expectLater(version('سيراميك', DateTime(2026, 1, 1), 90000), throwsA(isA<ValidationException>()));
+  });
+
+  test('a list sent again on the same day replaces the first from that day', () async {
+    final v1 = await version('سيراميك', DateTime(2026, 7, 1), 120000);
+    final v2 = await version('سيراميك', DateTime(2026, 7, 1), 132000);
+    final q = (await lists.quotesFor(basin.id, asOf: DateTime(2026, 7, 1))).single;
+    expect(q.priceListId, v2);
+    expect(q.price, 132000);
+    // V1 stays on record.
+    expect((await lists.history(basin.id)).map((h) => h.list.id), containsAll([v1, v2]));
   });
 
   test('more than one list for a brand: Ceramic and Bathtubs stand apart, and the person chooses', () async {

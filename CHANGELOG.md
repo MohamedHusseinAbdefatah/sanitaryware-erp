@@ -2,6 +2,24 @@
 
 Versions follow `version:` in `pubspec.yaml` and `lib/core/version.dart`.
 
+## 1.6.1
+
+Fix for updated price lists. No database change.
+
+- Fixed: a price list uploaded again with new prices (for example 10% up)
+  under a different list type became a second list beside the old one, and
+  purchases kept the old price because the supplier discount was on the old
+  list. The import now shows the brand's list types to pick from, says when
+  the upload is a new version, and warns in red when a new type would make a
+  separate list.
+- A new version of the same brand and list type now takes over the active
+  buying and selling policies of the version it follows, with the same
+  discounts. Before, a new version had no supplier discount until one was
+  added again.
+- A list sent again on the same day as the current version is accepted and
+  replaces it from that day, instead of being refused. The old version stays
+  on record.
+
 ## 1.6.0
 
 The inventory is kept apart from the catalogue and the price lists. No

@@ -195,12 +195,14 @@ class PriceListService {
           .get();
       final live = earlier.where((l) => l.status == PriceListStatus.active).toList();
       for (final l in live) {
-        if (!l.effectiveFrom.isBefore(from)) {
+        if (l.effectiveFrom.isAfter(from)) {
           throw ValidationException(
-              'يوجد إصدار V${l.versionNo} يبدأ في نفس التاريخ أو بعده؛ الإصدار الجديد يجب أن يبدأ بعده');
+              'يوجد إصدار V${l.versionNo} يبدأ بعد هذا التاريخ؛ الإصدار الجديد يجب أن يبدأ في تاريخه أو بعده');
         }
       }
       if (closePrevious) {
+        // A version starting the same day (a corrected or re-sent list) is
+        // replaced from its first day: it stays on record, never in force.
         final dayBefore = from.subtract(const Duration(days: 1));
         for (final l in live) {
           if (l.effectiveTo == null || !l.effectiveTo!.isBefore(from)) {
@@ -235,16 +237,88 @@ class PriceListService {
         }
         await _insertRow(id, r, stopped);
       }
+      final carried = await _carryPolicies(live.map((l) => l.id).toList(), id);
       await AuditService(db).log(
         action: AuditAction.create,
         entity: 'price_list',
         entityId: id,
         userId: user.id,
-        details: '${header.name.trim()} V${(earlier.isEmpty ? 0 : earlier.first.versionNo) + 1}: ${rows.length} صف',
+        details: '${header.name.trim()} V${(earlier.isEmpty ? 0 : earlier.first.versionNo) + 1}: ${rows.length} صف'
+            '${carried == 0 ? '' : '، نُقلت $carried سياسة شراء/بيع من الإصدار السابق'}',
       );
       await StockPriceService(db).stampUnknown(productIds: rows.map((r) => r.productId).whereType<int>());
       return PriceListResult(id, rows: rows.length, matched: matched, review: review);
     });
+  }
+
+  /// A supplier's discount and a selling rule belong to the brand and list
+  /// type, not to one edition: a new version takes over the active policies
+  /// of the versions it follows, with the same discounts. The old ones stay on
+  /// the old version for the documents that used them.
+  Future<int> _carryPolicies(List<int> fromListIds, int toListId) async {
+    if (fromListIds.isEmpty) return 0;
+    var n = 0;
+    final buying = await (db.select(db.buyingPolicies)
+          ..where((p) => p.priceListId.isIn(fromListIds) & p.isActive.equals(true))
+          ..orderBy([(p) => OrderingTerm.desc(p.id)]))
+        .get();
+    final seenBuy = <String>{};
+    for (final p in buying) {
+      // The newest rule wins when two versions both had one for the same target.
+      if (!seenBuy.add('${p.supplierId}|${p.scope}|${p.categoryId}|${p.productId}')) continue;
+      await db.into(db.buyingPolicies).insert(BuyingPoliciesCompanion.insert(
+            supplierId: p.supplierId,
+            brandId: Value(p.brandId),
+            priceListId: Value(toListId),
+            scope: p.scope,
+            categoryId: Value(p.categoryId),
+            productId: Value(p.productId),
+            baseDiscountBp: Value(p.baseDiscountBp),
+            extraDiscountBp: Value(p.extraDiscountBp),
+            validFrom: Value(p.validFrom),
+            validTo: Value(p.validTo),
+            note: Value(p.note),
+          ));
+      n++;
+    }
+    final selling = await (db.select(db.sellingPolicies)
+          ..where((p) => p.priceListId.isIn(fromListIds) & p.isActive.equals(true))
+          ..orderBy([(p) => OrderingTerm.desc(p.id)]))
+        .get();
+    final seenSell = <String>{};
+    for (final p in selling) {
+      if (!seenSell.add('${p.pricingType}|${p.scope}|${p.categoryId}|${p.productId}')) continue;
+      await db.into(db.sellingPolicies).insert(SellingPoliciesCompanion.insert(
+            brandId: p.brandId,
+            priceListId: toListId,
+            pricingType: p.pricingType,
+            scope: p.scope,
+            categoryId: Value(p.categoryId),
+            productId: Value(p.productId),
+            discountBp: Value(p.discountBp),
+            maxDiscountBp: Value(p.maxDiscountBp),
+            minMarginBp: Value(p.minMarginBp),
+            validFrom: Value(p.validFrom),
+            validTo: Value(p.validTo),
+            note: Value(p.note),
+          ));
+      n++;
+    }
+    return n;
+  }
+
+  /// The newest active version of each list type of [brandId], so an import
+  /// can offer to be a new version of one of them.
+  Future<List<PriceList>> liveListsOf(int brandId) async {
+    final all = await (db.select(db.priceLists)
+          ..where((l) => l.brandId.equals(brandId) & l.status.equals(PriceListStatus.active))
+          ..orderBy([(l) => OrderingTerm.desc(l.versionNo), (l) => OrderingTerm.desc(l.id)]))
+        .get();
+    final byType = <String, PriceList>{};
+    for (final l in all) {
+      byType.putIfAbsent(l.listType, () => l);
+    }
+    return byType.values.toList();
   }
 
   Future<int> _insertRow(int listId, PriceRowInput r, bool stopped) {

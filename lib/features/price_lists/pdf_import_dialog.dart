@@ -321,10 +321,11 @@ class _PdfImportDialogState extends ConsumerState<_PdfImportDialog> {
                 },
               ),
               const SizedBox(height: 12),
-              TextField(
+              ListTypeField(
+                brandId: _brandId,
                 controller: _type,
-                decoration: const InputDecoration(labelText: 'نوع القائمة (مثال: أطقم اقتصادية، بانيوهات)'),
-                onChanged: (_) => setState(() {}),
+                label: 'نوع القائمة (مثال: أطقم اقتصادية، بانيوهات)',
+                onChanged: () => setState(() {}),
               ),
               const SizedBox(height: 12),
               TextField(
