@@ -254,6 +254,9 @@ void main() {
     await pumpApp(tester, user: shop.admin);
     await shot(tester, '02_dashboard');
 
+    await go(tester, '/inventory');
+    await shot(tester, '15_inventory');
+
     await go(tester, '/products');
     await shot(tester, '03_products');
 

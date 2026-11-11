@@ -2,6 +2,25 @@
 
 Versions follow `version:` in `pubspec.yaml` and `lib/core/version.dart`.
 
+## 1.6.0
+
+The inventory is kept apart from the catalogue and the price lists. No
+database change.
+
+- New screen "المخزون" (Inventory): lists only products that came into stock
+  (a purchase, opening stock, an adjustment or a return). Products loaded
+  from a supplier's price list but never bought are not in it. Each row shows
+  the balance, its places, how much is at the new and the old list price, the
+  last receipt and, for the admin, the value at FIFO cost, with the total at
+  the top. Filters: search, category, brand, under minimum, and "include sold
+  out" for items bought and since sold out.
+- "المنتجات والمخزون" becomes "الأصناف": the catalogue of every product,
+  including those from price lists. Reservations, places and transfers and
+  the under-minimum filter moved to the inventory screen.
+- Dashboard links for items under minimum and stock with an unknown list now
+  open the inventory.
+- Guides updated with the new screen.
+
 ## 1.5.0
 
 Price lists can be imported straight from a supplier's PDF. No database change.

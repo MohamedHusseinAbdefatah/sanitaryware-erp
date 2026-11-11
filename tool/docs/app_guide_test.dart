@@ -97,7 +97,8 @@ final _content = <_B>[
       'login, failed login and change is written to the audit trail.'),
   const _T(['Area', 'Administrator', 'Cashier'], [
     ['Dashboard, customers, sales, returns, payments', 'Yes', 'Yes'],
-    ['Products', 'Create, edit, adjust stock', 'View and stock card'],
+    ['Inventory', 'Adjust stock, reservations, places, value at cost', 'View and stock card'],
+    ['Products (catalogue)', 'Create and edit', 'View'],
     ['Suppliers, purchases, purchase orders, price lists, policies', 'Yes', 'No'],
     ['Expenses, reports, settings, users, backup, import', 'Yes', 'No'],
     ['Price not from an approved list', 'Allowed, logged', 'Refused'],
@@ -111,7 +112,7 @@ final _content = <_B>[
       'and re-activates the user.'),
   const _H('3. The main window'),
   const _P('A dark sidebar on the right lists the screens in three groups: daily work (sales, customers, returns, '
-      'payments), stock and buying (products, suppliers, purchases, price lists) and finance and admin (expenses, '
+      'payments), stock and buying (inventory, products, suppliers, purchases, price lists) and finance and admin (expenses, '
       'reports, settings). The top bar shows the date and a "new sale" button; F9 opens a new sale from anywhere.'),
   const _S('02_dashboard', 'Dashboard'),
   const _T(['Dashboard part', 'What it shows'], [
@@ -123,8 +124,14 @@ final _content = <_B>[
     ['Charts and lists', 'Sales for the last 14 days, best sellers this month, items under minimum, top debtors.'],
   ], widths: [1.2, 3.4]),
   const _Page(),
-  const _H('4. Products, stock and places'),
-  const _S('03_products', 'Products list with stock at the new and old price'),
+  const _H('4. Inventory, products and places'),
+  const _S('15_inventory', 'Inventory: only the stock the shop holds'),
+  const _P('The Inventory screen lists only products that came into stock (a purchase, opening stock, an adjustment '
+      'or a return), never the whole catalogue loaded from price lists. Each row shows the balance, where it is, how '
+      'much is at the new and the old list price, the last receipt and, for the admin, the value at FIFO cost; the '
+      'total value is at the top. Filters: search, category, brand, under minimum, and "include sold out". '
+      'Reservations and places and transfers open from this screen.'),
+  const _S('03_products', 'Products: the catalogue, including everything loaded from price lists'),
   const _L([
     'Product ID: given automatically when left blank (P-000001 ...) and never changes. The maker\'s code is kept '
         'exactly as text. The same maker\'s code under the same brand and variant is refused as a duplicate.',
