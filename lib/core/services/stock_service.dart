@@ -129,7 +129,7 @@ class StockService {
       }
       final fifo = FifoService(db);
       final cost = await fifo.lastKnownCost(productId) ?? 0;
-      await record(
+      final moveId = await record(
         productId: productId,
         type: StockMovementType.adjustment,
         qty: delta,
@@ -146,6 +146,7 @@ class StockService {
           productId: productId,
           qty: -delta,
           refType: 'adjustment',
+          refId: moveId,
           locationId: locationId,
           fallbackCost: cost,
         );

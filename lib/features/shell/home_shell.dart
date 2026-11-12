@@ -15,9 +15,9 @@ import 'sections.dart';
 /// Sidebar groups: section paths in the order shown.
 const _groups = <(String, List<String>)>[
   ('', ['/dashboard']),
-  ('العمليات اليومية', ['/sales', '/customers', '/returns', '/payments']),
+  ('العمليات اليومية', ['/sales', '/customers', '/projects', '/returns', '/payments']),
   ('المخزون والمشتريات', ['/inventory', '/products', '/suppliers', '/purchases', '/price-lists']),
-  ('المالية والإدارة', ['/expenses', '/reports', '/settings']),
+  ('المالية والإدارة', ['/accounting', '/expenses', '/reports', '/settings']),
 ];
 
 final _companyNameProvider = FutureProvider.autoDispose<String>(
@@ -49,7 +49,7 @@ class HomeShell extends ConsumerWidget {
             borderRadius: BorderRadius.circular(8),
             onTap: () => navigationShell.goBranch(i),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3.5),
               child: Row(
                 children: [
                   Icon(s.icon, size: 20, color: selected ? AppColors.sideAccent : AppColors.sideText),

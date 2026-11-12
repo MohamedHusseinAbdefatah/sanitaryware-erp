@@ -127,6 +127,7 @@ class SalesOrderService {
     String? externalId,
     bool asQuotation = false,
     String? approvalReason,
+    int? projectId,
     required User user,
   }) {
     return db.transaction(() async {
@@ -161,6 +162,7 @@ class SalesOrderService {
             notes: Value((notes ?? '').trim().isEmpty ? null : notes!.trim()),
             externalId: Value(ext.isEmpty ? null : ext),
             createdBy: Value(user.id),
+            projectId: Value(projectId),
           ));
       for (final l in lines) {
         await db.into(db.salesOrderLines).insert(SalesOrderLinesCompanion.insert(

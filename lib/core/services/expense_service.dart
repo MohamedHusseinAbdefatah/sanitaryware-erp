@@ -16,6 +16,7 @@ class ExpenseInput {
     this.method = PaymentMethod.cash,
     this.date,
     this.description,
+    this.projectId,
   });
 
   final int categoryId;
@@ -23,6 +24,9 @@ class ExpenseInput {
   final String method;
   final DateTime? date;
   final String? description;
+
+  /// Spent for this project, if any.
+  final int? projectId;
 }
 
 class ExpenseRow {
@@ -82,6 +86,7 @@ class ExpenseService {
             method: Value(input.method),
             description: Value((input.description ?? '').trim().isEmpty ? null : input.description!.trim()),
             createdBy: Value(user.id),
+            projectId: Value(input.projectId),
           ));
       await AuditService(db).log(
         action: AuditAction.create,

@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 
 import '../pricing_math.dart';
 import '../services/stock_price_service.dart';
+import 'ledger_setup.dart';
 import 'tables.dart';
 
 part 'database.g.dart';
@@ -46,6 +47,12 @@ part 'database.g.dart';
   SupplierAdvances,
   SupplierAdvanceLists,
   ProductImages,
+  Accounts,
+  JournalEntries,
+  JournalLines,
+  LedgerQueue,
+  Projects,
+  ProjectBoqLines,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
@@ -53,7 +60,7 @@ class AppDatabase extends _$AppDatabase {
   @override
   int get schemaVersion => latestSchemaVersion;
 
-  static const latestSchemaVersion = 16;
+  static const latestSchemaVersion = 17;
 
   /// The categories every shop starts with. The first three are the old
   /// price levels; discounts start at 0 until the owner sets them.
@@ -410,12 +417,39 @@ class AppDatabase extends _$AppDatabase {
         'ON selling_policies (customer_category_id)');
   }
 
+  /// Schema 17: the double-entry ledger and projects. The chart of accounts
+  /// is seeded, the triggers installed, and every existing document queued so
+  /// the ledger is built from the shop's history the first time it is opened.
+  Future<void> _upgradeToV17(Migrator m) async {
+    for (final TableInfo t in [accounts, journalEntries, journalLines, ledgerQueue, projects, projectBoqLines]) {
+      if (!await _tableExists(t.actualTableName)) await m.createTable(t);
+    }
+    for (final s in [
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_journal_entries_ref ON journal_entries (ref_type, ref_id)',
+      'CREATE INDEX IF NOT EXISTS idx_journal_entries_date ON journal_entries (date)',
+      'CREATE INDEX IF NOT EXISTS idx_journal_lines_entry ON journal_lines (entry_id)',
+      'CREATE INDEX IF NOT EXISTS idx_journal_lines_account ON journal_lines (account_id)',
+    ]) {
+      await customStatement(s);
+    }
+    await _addColumns(m, salesOrders, [salesOrders.projectId]);
+    await _addColumns(m, salesInvoices, [salesInvoices.projectId]);
+    await _addColumns(m, purchaseOrders, [purchaseOrders.projectId]);
+    await _addColumns(m, purchaseInvoices, [purchaseInvoices.projectId]);
+    await _addColumns(m, expenses, [expenses.projectId]);
+    await seedChart(this);
+    await installLedgerTriggers(this);
+    await enqueueEverything(this);
+  }
+
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) async {
           await m.createAll();
           await _seedMainLocation();
           await _seedCustomerCategories();
+          await seedChart(this);
+          await installLedgerTriggers(this);
         },
         onUpgrade: (m, from, to) async {
           if (from < 2) {
@@ -514,10 +548,14 @@ class AppDatabase extends _$AppDatabase {
             // v16: product photos.
             if (!await _tableExists('product_images')) await m.createTable(productImages);
           }
+          if (from < 17) await _upgradeToV17(m);
         },
         beforeOpen: (details) async {
           // Make SQLite enforce references between tables.
           await customStatement('PRAGMA foreign_keys = ON');
+          // The ledger's triggers are always there (they are only created if
+          // missing).
+          if (await _tableExists('ledger_queue')) await installLedgerTriggers(this);
         },
       );
 }

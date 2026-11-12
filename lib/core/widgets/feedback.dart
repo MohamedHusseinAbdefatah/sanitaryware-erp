@@ -17,6 +17,13 @@ Future<T?> runGuarded<T>(BuildContext context, Future<T> Function() action) asyn
   } on ValidationException catch (e) {
     if (context.mounted) await showMessage(context, e.message);
   } catch (e, stack) {
+    if ('$e'.contains('PERIOD_LOCKED')) {
+      if (context.mounted) {
+        await showMessage(context,
+            'هذا التاريخ داخل فترة مقفلة؛ لا يُضاف فيها أو يُلغى شيء.\nيمكن للمدير إعادة فتح الفترة من: المحاسبة ← إقفال الفترات.');
+      }
+      return null;
+    }
     ErrorLog.record(e, stack, where: 'action');
     if (context.mounted) await showMessage(context, '${Strings.unexpectedError}\n$e');
   }

@@ -84,7 +84,10 @@ class _Line {
 String _plain(int piastres) => formatMoney(piastres).replaceAll(',', '');
 
 class SaleEntryScreen extends ConsumerStatefulWidget {
-  const SaleEntryScreen({super.key, this.customerId});
+  const SaleEntryScreen({super.key, this.customerId, this.projectId});
+
+  /// Starts the invoice for this project (from the project page).
+  final int? projectId;
 
   /// Starts the invoice for this customer (from the customer's page).
   final int? customerId;
@@ -106,6 +109,17 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
   bool _paidEdited = false;
   bool _saving = false;
   int _searchKey = 0; // bumped to clear the product search field
+  int? _projectId;
+  List<Project> _projects = const [];
+
+  Future<void> _loadProjects() async {
+    final list = await ref.read(projectServiceProvider).open(customerId: _customer?.id);
+    if (!mounted) return;
+    setState(() {
+      _projects = list;
+      if (!list.any((p) => p.id == _projectId)) _projectId = null;
+    });
+  }
 
   int get _subtotal => _lines.fold(0, (s, l) => s + (l.total ?? 0));
   bool _discountPercent = false;
@@ -117,6 +131,8 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
   @override
   void initState() {
     super.initState();
+    _projectId = widget.projectId;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadProjects());
     final id = widget.customerId;
     if (id != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -194,6 +210,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
   Future<void> _setCustomer(Customer? c) async {
     _customer = c;
     _customerBalance = null;
+    _loadProjects();
     // The pricing type and the customer's discount come with the customer.
     final policies = ref.read(sellingPolicyServiceProvider);
     for (final l in List.of(_lines)) {
@@ -262,6 +279,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       paidAmount: _paidValue,
       paymentMethod: _method,
       notes: _notes.text,
+      projectId: _projectId,
     );
     final user = ref.read(currentUserProvider);
     // Blueprint 3.4: everything is shown before approval.
@@ -438,6 +456,21 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                         ),
                     ],
                   ),
+                  if (_projects.isNotEmpty)
+                    SizedBox(
+                      width: 280,
+                      child: DropdownButtonFormField<int?>(
+                        key: ValueKey(('prj', _projectId, _projects.length)),
+                        initialValue: _projectId,
+                        isExpanded: true,
+                        decoration: const InputDecoration(labelText: 'المشروع', isDense: true, prefixIcon: Icon(Icons.apartment_outlined)),
+                        items: [
+                          const DropdownMenuItem<int?>(value: null, child: Text('بدون مشروع')),
+                          for (final p in _projects) DropdownMenuItem<int?>(value: p.id, child: Text(p.name, overflow: TextOverflow.ellipsis)),
+                        ],
+                        onChanged: (v) => setState(() => _projectId = v),
+                      ),
+                    ),
                 ],
               ),
             ),

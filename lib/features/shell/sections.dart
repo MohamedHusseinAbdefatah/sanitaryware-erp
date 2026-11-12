@@ -25,6 +25,9 @@ import '../sales/sale_view_screen.dart';
 import '../sales/sales_list_screen.dart';
 import '../settings/settings_tabs.dart';
 import 'coming_soon_page.dart';
+import '../accounting/accounting_books.dart';
+import '../accounting/accounting_screen.dart';
+import '../projects/projects_screen.dart';
 
 /// One sidebar entry and its page. Cashiers do not see [adminOnly] sections
 /// and the router sends them away if they try to open one. [routes] are
@@ -123,6 +126,7 @@ final appSections = <AppSection>[
         builder: (_, state) => SaleEntryScreen(
           key: ValueKey(state.uri.query),
           customerId: int.tryParse(state.uri.queryParameters['customer'] ?? ''),
+          projectId: int.tryParse(state.uri.queryParameters['project'] ?? ''),
         ),
       ),
       GoRoute(path: 'orders', builder: (_, _) => const SalesOrdersScreen()),
@@ -202,6 +206,42 @@ final appSections = <AppSection>[
     builder: (_) => const ExpensesScreen(),
   ),
   AppSection(
+    path: '/projects',
+    title: 'المشروعات',
+    icon: Icons.apartment_outlined,
+    adminOnly: true,
+    builder: (_) => const ProjectsScreen(),
+    routes: [
+      GoRoute(
+        path: ':id',
+        builder: (_, state) {
+          final id = int.tryParse(state.pathParameters['id'] ?? '');
+          return id == null
+              ? const ComingSoonPage(title: 'المشروعات')
+              : ProjectPage(key: ValueKey(id), projectId: id);
+        },
+      ),
+    ],
+  ),
+  AppSection(
+    path: '/accounting',
+    title: 'المحاسبة',
+    icon: Icons.account_balance_outlined,
+    adminOnly: true,
+    builder: (_) => const _AccountingEntry(),
+    routes: [
+      GoRoute(
+        path: 'accounts/:id',
+        builder: (_, state) {
+          final id = int.tryParse(state.pathParameters['id'] ?? '');
+          return id == null
+              ? const ComingSoonPage(title: 'المحاسبة')
+              : AccountLedgerPage(key: ValueKey(id), accountId: id);
+        },
+      ),
+    ],
+  ),
+  AppSection(
     path: '/reports',
     title: Strings.reports,
     icon: Icons.bar_chart_outlined,
@@ -216,3 +256,14 @@ final appSections = <AppSection>[
     builder: (_) => const SettingsScreen(),
   ),
 ];
+
+/// Opens the accounting page on the tab named in ?tab=.
+class _AccountingEntry extends StatelessWidget {
+  const _AccountingEntry();
+
+  @override
+  Widget build(BuildContext context) {
+    final tab = GoRouterState.of(context).uri.queryParameters['tab'];
+    return AccountingScreen(key: ValueKey(tab), tab: tab);
+  }
+}

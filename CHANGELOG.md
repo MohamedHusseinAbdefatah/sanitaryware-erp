@@ -2,6 +2,51 @@
 
 Versions follow `version:` in `pubspec.yaml` and `lib/core/version.dart`.
 
+## 2.0.0
+
+Accounting, projects, financial statements and charts. Database schema 17;
+the upgrade builds the books from every existing document on first start.
+
+- Double-entry books built from the documents themselves: every sales and
+  purchase invoice, payment, cheque, return, expense, stock adjustment,
+  opening stock and opening balance posts its own entry automatically, and
+  changes or voids with it. Nothing is typed twice. Cost of sales is the
+  exact FIFO cost; VAT is split out only where it is verified.
+- A starting chart of accounts suited to a sanitaryware showroom (cash, bank,
+  cheques under collection, customers, stock, supplier advances, VAT, fixed
+  assets, loans, capital, sales, returns, cost of sales, operating expenses).
+  Each expense category gets its own account. New accounts can be added.
+- Manual entries for what has no document: opening cash and bank, capital,
+  owner's drawings, fixed assets, depreciation, bank charges, corrections.
+  They must balance; quick templates fill the usual ones. Customers,
+  suppliers, stock, cheques and advances move only from their documents, so
+  the books always equal the statements and the stock value.
+- Account ledger with running balance for any account, linked to the source
+  documents. Journal with filters and search.
+- Statements: trial balance, profit and loss with comparison to the previous
+  period and margins, balance sheet with ratios, cash flow (operating,
+  investing, financing), VAT report, and aging of customers and suppliers
+  (not due, 1-30, 31-60, 61-90, over 90 days). All export to Excel.
+- Accounting overview: cash, bank, cheques, receivables (with overdue),
+  payables, stock value, month's profit, a 12-month sales/costs/profit chart,
+  the month's expenses, top debtors and creditors, and an aging bar.
+- Period closing: close the books up to a day so nothing dated in it can be
+  added or cancelled; reopen with a reason (recorded in the audit log).
+  Enforced in the database itself. A rebuild of the books from the documents
+  is available as a check.
+- Projects: sites and contractors with their customer, location, site
+  contact, dates, contract value and payment terms. A bill of quantities per
+  project showing for each line what was quoted, ordered, bought, delivered,
+  what is left, what is in stock and what still has to be bought. One click
+  makes a quotation for what is left (priced by the usual lists and
+  discounts) or purchase orders for the shortages per preferred supplier.
+- Project profitability: revenue without VAT after returns, exact cost of
+  what was delivered, project expenses, net profit and margin, collected and
+  still due, and orders not yet invoiced. Invoices delivered from a project's
+  order belong to the project automatically; a sale or expense can be
+  entered for a project; earlier documents of the customer can be linked.
+- The sidebar gains Projects and Accounting (admin only).
+
 ## 1.11.0
 
 A new look for the screens, in the manner of a full ERP. No database change

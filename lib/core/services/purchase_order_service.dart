@@ -80,6 +80,7 @@ class PurchaseOrderService {
     DateTime? orderDate,
     DateTime? expectedDate,
     String? notes,
+    int? projectId,
     required User user,
   }) {
     return db.transaction(() async {
@@ -104,6 +105,7 @@ class PurchaseOrderService {
             expectedDate: Value(expectedDate),
             notes: Value((notes ?? '').trim().isEmpty ? null : notes!.trim()),
             createdBy: Value(user.id),
+            projectId: Value(projectId),
           ));
       for (final l in lines) {
         await db.into(db.purchaseOrderLines).insert(PurchaseOrderLinesCompanion.insert(

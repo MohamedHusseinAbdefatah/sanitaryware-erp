@@ -18,6 +18,7 @@ import 'services/supplier_advance_service.dart';
 import 'services/product_image_service.dart';
 import 'services/stock_price_service.dart';
 import 'services/expense_service.dart';
+import 'services/ledger_service.dart';
 import 'services/inventory_service.dart';
 import 'services/location_service.dart';
 import 'services/party_service.dart';
@@ -25,6 +26,7 @@ import 'services/payment_service.dart';
 import 'services/price_list_import_service.dart';
 import 'services/price_list_service.dart';
 import 'services/product_service.dart';
+import 'services/project_service.dart';
 import 'services/purchase_service.dart';
 import 'services/purchase_order_service.dart';
 import 'services/reservation_service.dart';
@@ -149,3 +151,9 @@ final customerCategoriesProvider = StreamProvider.autoDispose<List<CustomerCateg
 
 final salePreviewServiceProvider =
     Provider<SalePreviewService>((ref) => SalePreviewService(ref.watch(databaseProvider)));
+
+final ledgerServiceProvider =
+    Provider<LedgerService>((ref) => LedgerService(ref.watch(databaseProvider)));
+
+final projectServiceProvider =
+    Provider<ProjectService>((ref) => ProjectService(ref.watch(databaseProvider)));

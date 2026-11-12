@@ -41,6 +41,9 @@ import 'package:sanitaryware_erp/core/services/sales_order_service.dart';
 import 'package:sanitaryware_erp/core/services/selling_policy_service.dart';
 import 'package:sanitaryware_erp/core/services/supplier_advance_service.dart';
 import 'package:sanitaryware_erp/core/services/settings_service.dart';
+import 'package:sanitaryware_erp/core/services/expense_service.dart';
+import 'package:sanitaryware_erp/core/services/ledger_service.dart';
+import 'package:sanitaryware_erp/core/services/project_service.dart';
 
 import '../../test/support/fixture.dart';
 
@@ -223,6 +226,47 @@ Future<(Shop, SalesInvoice)> _shopWithData() async {
     user: shop.admin,
   );
   await orders.confirm(so, manualPrices: {(await orders.detail(so)).lines.single.line.id: 140000}, user: shop.admin);
+  // A project for the contractor: its order, a bill of quantities, an
+  // invoice, an expense; and the owner's capital in the books.
+  final projects = ProjectService(db);
+  final prj = await projects.save(
+    ProjectInput(
+      name: 'كمبوند الياسمين - المرحلة الأولى',
+      customerId: contractor,
+      location: 'المنصورة الجديدة',
+      contactName: 'م. أحمد سمير',
+      contractValue: 15000000,
+      paymentTerms: '30% مقدم والباقي مع كل توريد',
+      endDate: DateTime.now().add(const Duration(days: 60)),
+    ),
+    user: shop.admin,
+  );
+  await projects.assign(RefType.salesOrder, so, prj, user: shop.admin);
+  await projects.boqFromOrder(prj, so, user: shop.admin);
+  await projects.saveBoqLine(
+      projectId: prj, productId: shop.mixer.id, qtyRequired: qtyOf(40), preferredSupplierId: supplier, user: shop.admin);
+  await projects.saveBoqLine(projectId: prj, productId: shop.pipe.id, qtyRequired: qtyOf(300), user: shop.admin);
+  await SalesService(db).post(
+    SaleInput(
+      customerId: contractor,
+      projectId: prj,
+      lines: [SaleLineInput(productId: shop.mixer.id, qty: qtyOf(6), unitPrice: 110000)],
+      paidAmount: 300000,
+    ),
+    userId: shop.admin.id,
+  );
+  final cat = (await db.select(db.expenseCategories).get()).first;
+  await ExpenseService(db).add(
+      ExpenseInput(categoryId: cat.id, amount: 45000, description: 'نقل للموقع', projectId: prj), user: shop.admin);
+  final ledger = LedgerService(db);
+  final accounts = await ledger.accounts();
+  int acc(String k) => accounts.firstWhere((a) => a.systemKey == k).id;
+  await ledger.addManual(
+    date: DateTime.now().subtract(const Duration(days: 20)),
+    memo: 'إيداع رأس مال',
+    lines: [ManualLine(accountId: acc('cash'), debit: 5000000), ManualLine(accountId: acc('capital'), credit: 5000000)],
+    user: shop.admin,
+  );
   return (shop, credit);
 }
 
@@ -452,6 +496,30 @@ void main() {
 
     await go(tester, '/settings');
     await shot(tester, '12_settings');
+
+    // Accounting and projects.
+    for (final (tab, name) in const [
+      ('overview', '28_accounting_overview'),
+      ('accounts', '29_chart_of_accounts'),
+      ('journal', '30_journal'),
+      ('trial', '31_trial_balance'),
+      ('pl', '32_profit_and_loss'),
+      ('bs', '33_balance_sheet'),
+      ('aging', '34_aging'),
+      ('closing', '35_period_closing'),
+    ]) {
+      await go(tester, '/accounting?tab=$tab');
+      await settle(tester);
+      await shot(tester, name);
+    }
+    await go(tester, '/projects');
+    await shot(tester, '36_projects');
+    await tester.tap(find.text('كمبوند الياسمين - المرحلة الأولى').first);
+    await settle(tester);
+    await shot(tester, '37_project_page');
+    await tester.tap(find.text('الربحية'));
+    await settle(tester);
+    await shot(tester, '38_project_profit');
     await unmount(tester);
   });
 }

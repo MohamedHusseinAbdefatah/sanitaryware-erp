@@ -65,7 +65,11 @@ class PurchaseInput {
     this.locationId = mainLocationId,
     this.allowDuplicateSupplierNo = false,
     this.advanceId,
+    this.projectId,
   });
+
+  /// Bought for this project, if any.
+  final int? projectId;
 
   /// Taken against this supplier advance, at its locked prices. The invoice
   /// is then paid from the advance and must fit in what is left of it.
@@ -212,6 +216,7 @@ class PurchaseService {
             date: date,
             supplierId: input.supplierId,
             subtotal: subtotal,
+            projectId: Value(input.projectId),
             discount: Value(input.discount),
             total: total,
             paidAmount: Value(input.paidAmount),
@@ -308,6 +313,7 @@ class PurchaseService {
                   '${_blankToNull(input.extraCostsNote) == null ? '' : ' — ${input.extraCostsNote!.trim()}'}'),
               createdBy: Value(user.id),
               purchaseInvoiceId: Value(invoiceId),
+              projectId: Value(input.projectId),
             ));
       }
 

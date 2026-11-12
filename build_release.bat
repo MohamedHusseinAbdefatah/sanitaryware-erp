@@ -2,7 +2,7 @@
 chcp 65001 >nul
 title Sanitaryware ERP - release build
 cd /d "%~dp0"
-set "FLUTTER_BIN=E:\Apps , Software , 2026\applications\programming\flutter\bin"
+set "FLUTTER_BIN=C:\src\flutter\bin"
 set "PATH=%FLUTTER_BIN%;%PATH%"
 
 rem Version from lib\core\version.dart (const appVersion = 'x.y.z';)

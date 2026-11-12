@@ -151,6 +151,7 @@ class _ExpenseDialogState extends ConsumerState<_ExpenseDialog> {
   int? _categoryId;
   String _method = PaymentMethod.cash;
   DateTime _date = DateTime.now();
+  int? _projectId;
 
   @override
   void dispose() {
@@ -182,6 +183,7 @@ class _ExpenseDialogState extends ConsumerState<_ExpenseDialog> {
               method: _method,
               date: _date,
               description: _description.text,
+              projectId: _projectId,
             ),
             user: ref.read(currentUserProvider)!,
           );
@@ -231,6 +233,20 @@ class _ExpenseDialogState extends ConsumerState<_ExpenseDialog> {
               TextFormField(
                 controller: _description,
                 decoration: const InputDecoration(labelText: Strings.description),
+              ),
+              FutureBuilder<List<Project>>(
+                future: ref.read(projectServiceProvider).open(),
+                builder: (context, snap) => (snap.data ?? const []).isEmpty
+                    ? const SizedBox()
+                    : DropdownButtonFormField<int?>(
+                        initialValue: _projectId,
+                        decoration: const InputDecoration(labelText: 'على مشروع (اختياري)'),
+                        items: [
+                          const DropdownMenuItem<int?>(value: null, child: Text('بدون مشروع')),
+                          for (final p in snap.data!) DropdownMenuItem<int?>(value: p.id, child: Text(p.name)),
+                        ],
+                        onChanged: (v) => _projectId = v,
+                      ),
               ),
             ],
           ),

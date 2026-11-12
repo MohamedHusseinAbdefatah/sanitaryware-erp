@@ -284,6 +284,104 @@ class SupplierAdvances extends Table with Timestamps {
   IntColumn get createdBy => integer().nullable().references(Users, #id)();
 }
 
+// ---------------------------------------------------------------- accounting
+// Schema 17: a real double-entry ledger. Every posted document makes one
+// balanced entry, built from the document itself; manual entries are for
+// capital, loans, drawings, depreciation and corrections only.
+
+/// One account of the chart: assets, liabilities, equity, income, expenses.
+class Accounts extends Table with Timestamps {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get code => text().unique()();
+  TextColumn get nameAr => text()();
+  // 'asset', 'liability', 'equity', 'income' or 'expense'
+  TextColumn get kind => text()();
+  IntColumn get parentId => integer().nullable()();
+  // A heading that groups accounts; nothing is posted to it.
+  BoolColumn get isGroup => boolean().withDefault(const Constant(false))();
+  // Set on the accounts the program posts to by itself ('cash', 'ar', ...).
+  TextColumn get systemKey => text().nullable().unique()();
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+  TextColumn get note => text().nullable()();
+}
+
+@TableIndex(name: 'idx_journal_entries_ref', columns: {#refType, #refId}, unique: true)
+@TableIndex(name: 'idx_journal_entries_date', columns: {#date})
+class JournalEntries extends Table with Timestamps {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get number => text().unique()();
+  DateTimeColumn get date => dateTime()();
+  // 'auto' (from a document) or 'manual'
+  TextColumn get source => text()();
+  // The document it comes from; null for a manual entry.
+  TextColumn get refType => text().nullable()();
+  IntColumn get refId => integer().nullable()();
+  TextColumn get memo => text().nullable()();
+  // 'posted' or 'void' (its document was cancelled)
+  TextColumn get status => text().withDefault(const Constant('posted'))();
+  IntColumn get createdBy => integer().nullable()();
+}
+
+@TableIndex(name: 'idx_journal_lines_entry', columns: {#entryId})
+@TableIndex(name: 'idx_journal_lines_account', columns: {#accountId})
+class JournalLines extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get entryId => integer().references(JournalEntries, #id)();
+  IntColumn get accountId => integer().references(Accounts, #id)();
+  // Piastres; one of the two is zero.
+  IntColumn get debit => integer().withDefault(const Constant(0))();
+  IntColumn get credit => integer().withDefault(const Constant(0))();
+  // The customer or supplier the line is about (receivables, payables).
+  TextColumn get partyType => text().nullable()();
+  IntColumn get partyId => integer().nullable()();
+  IntColumn get projectId => integer().nullable()();
+  TextColumn get memo => text().nullable()();
+}
+
+/// Documents whose entry must be built again; filled by database triggers,
+/// so no way of changing a document can skip the ledger.
+class LedgerQueue extends Table {
+  TextColumn get refType => text()();
+  IntColumn get refId => integer()();
+
+  @override
+  Set<Column> get primaryKey => {refType, refId};
+}
+
+// ------------------------------------------------------------------ projects
+// Schema 17: a project gathers a customer's need (the BOQ), its quotations,
+// orders, purchases, deliveries, collections, costs and profit.
+
+class Projects extends Table with Timestamps {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get code => text().unique()();
+  TextColumn get name => text()();
+  IntColumn get customerId => integer().nullable().references(Customers, #id)();
+  TextColumn get location => text().nullable()();
+  TextColumn get contactName => text().nullable()();
+  TextColumn get contactPhone => text().nullable()();
+  DateTimeColumn get startDate => dateTime().nullable()();
+  DateTimeColumn get endDate => dateTime().nullable()();
+  // 'lead', 'active', 'on_hold', 'done' or 'cancelled'
+  TextColumn get status => text().withDefault(const Constant('active'))();
+  IntColumn get contractValue => integer().withDefault(const Constant(0))();
+  TextColumn get paymentTerms => text().nullable()();
+  TextColumn get notes => text().nullable()();
+}
+
+/// One line of a project's bill of quantities: what the site needs.
+class ProjectBoqLines extends Table with Timestamps {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get projectId => integer().references(Projects, #id)();
+  IntColumn get productId => integer().nullable().references(Products, #id)();
+  TextColumn get description => text()();
+  // Thousandths.
+  IntColumn get qtyRequired => integer()();
+  IntColumn get preferredSupplierId => integer().nullable().references(Suppliers, #id)();
+  DateTimeColumn get neededBy => dateTime().nullable()();
+  TextColumn get notes => text().nullable()();
+}
+
 /// A product's photo (schema 16), kept inside the database so backups and
 /// restores carry it. Stored shrunk to a small JPEG; one per product.
 class ProductImages extends Table {
@@ -321,6 +419,8 @@ class PurchaseOrders extends Table with Timestamps {
   IntColumn get approvedBy => integer().nullable().references(Users, #id)();
   DateTimeColumn get approvedAt => dateTime().nullable()();
   IntColumn get createdBy => integer().nullable().references(Users, #id)();
+  // Schema 17: bought for this project.
+  IntColumn get projectId => integer().nullable()();
 }
 
 @TableIndex(name: 'idx_po_lines_order', columns: {#orderId})
@@ -368,6 +468,8 @@ class SalesOrders extends Table with Timestamps {
   IntColumn get confirmedBy => integer().nullable().references(Users, #id)();
   DateTimeColumn get confirmedAt => dateTime().nullable()();
   IntColumn get createdBy => integer().nullable().references(Users, #id)();
+  // Schema 17: for this project.
+  IntColumn get projectId => integer().nullable()();
 }
 
 @TableIndex(name: 'idx_so_lines_order', columns: {#orderId})
@@ -474,6 +576,8 @@ class SalesInvoices extends Table with Timestamps {
   TextColumn get status => text().withDefault(const Constant('active'))();
   TextColumn get notes => text().nullable()();
   IntColumn get createdBy => integer().nullable().references(Users, #id)();
+  // Schema 17: sold for this project.
+  IntColumn get projectId => integer().nullable()();
 }
 
 class SalesInvoiceItems extends Table {
@@ -533,6 +637,8 @@ class PurchaseInvoices extends Table with Timestamps {
   // amount of the advance it used counts as paid on this invoice.
   IntColumn get advanceId => integer().nullable()();
   IntColumn get advanceUsed => integer().withDefault(const Constant(0))();
+  // Schema 17: bought for this project.
+  IntColumn get projectId => integer().nullable()();
 }
 
 class PurchaseInvoiceItems extends Table {
@@ -634,6 +740,8 @@ class Expenses extends Table with Timestamps {
   // someone other than the supplier. It is already in the goods' cost, so
   // net profit does not take it off a second time.
   IntColumn get purchaseInvoiceId => integer().nullable()();
+  // Schema 17: a direct cost of this project.
+  IntColumn get projectId => integer().nullable()();
 }
 
 class AuditLogs extends Table {

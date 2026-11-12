@@ -16,6 +16,8 @@ class NumberingService {
     'payment': 'R',
     'return': 'T',
     'supplier_advance': 'SA',
+    'journal': 'JE',
+    'project': 'PRJ',
   };
 
   /// Returns the next number for [kind], e.g. "S-000001".

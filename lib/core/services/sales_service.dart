@@ -66,7 +66,11 @@ class SaleInput {
     this.paidAmount = 0,
     this.paymentMethod = PaymentMethod.cash,
     this.notes,
+    this.projectId,
   });
+
+  /// The project this sale is for, if any.
+  final int? projectId;
 
   final List<SaleLineInput> lines;
 
@@ -328,6 +332,7 @@ class SalesService {
             total: total,
             paidAmount: Value(input.paidAmount),
             notes: Value(_blankToNull(input.notes)),
+            projectId: Value(input.projectId),
             createdBy: Value(userId),
           ));
       final fifo = FifoService(db);
