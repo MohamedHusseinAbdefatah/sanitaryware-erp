@@ -476,6 +476,14 @@ class PurchaseInvoices extends Table with Timestamps {
   TextColumn get status => text().withDefault(const Constant('active'))();
   TextColumn get notes => text().nullable()();
   IntColumn get createdBy => integer().nullable().references(Users, #id)();
+  // Schema 14. Transport, unloading and the like: part of the goods' cost,
+  // split over the lines by value. On the supplier's invoice they are owed to
+  // the supplier (in [total]); paid to someone else they are a purchase
+  // expense linked to this invoice.
+  IntColumn get extraCosts => integer().withDefault(const Constant(0))();
+  BoolColumn get extraCostsOnSupplier => boolean().withDefault(const Constant(true))();
+  // When what is left to pay is due (a credit purchase).
+  DateTimeColumn get dueDate => dateTime().nullable()();
 }
 
 class PurchaseInvoiceItems extends Table {
@@ -495,6 +503,9 @@ class PurchaseInvoiceItems extends Table {
   // cost of the goods is the net, so the shares add up to the discount exactly.
   IntColumn get invoiceDiscountShare => integer().withDefault(const Constant(0))();
   IntColumn get netTotal => integer().withDefault(const Constant(0))();
+  // Schema 14: this line's part of the invoice's extra costs. The FIFO cost
+  // of the goods is netTotal + extraCostShare; the supplier is owed netTotal.
+  IntColumn get extraCostShare => integer().withDefault(const Constant(0))();
 }
 
 @DataClassName('ReturnDoc')
@@ -570,6 +581,10 @@ class Expenses extends Table with Timestamps {
   TextColumn get description => text().nullable()();
   TextColumn get status => text().withDefault(const Constant('active'))();
   IntColumn get createdBy => integer().nullable().references(Users, #id)();
+  // Schema 14: set when this is a purchase invoice's extra cost paid to
+  // someone other than the supplier. It is already in the goods' cost, so
+  // net profit does not take it off a second time.
+  IntColumn get purchaseInvoiceId => integer().nullable()();
 }
 
 class AuditLogs extends Table {

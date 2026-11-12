@@ -11,7 +11,11 @@ import '../../core/money.dart';
 import '../../core/providers.dart';
 import '../../core/quantity.dart';
 import '../../core/reports/report_service.dart';
+import '../../core/services/purchase_service.dart';
 import '../../core/theme.dart';
+
+final _supplierDuesProvider = StreamProvider.autoDispose<List<SupplierDue>>(
+    (ref) => ref.watch(purchaseServiceProvider).watchDue());
 
 /// Today and this month at a glance, with what needs attention. Money that
 /// shows margins or what the shop owes is for the admin only. Tapping a card
@@ -44,6 +48,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final theme = Theme.of(context);
     final user = ref.watch(currentUserProvider);
     final isAdmin = user?.isAdmin ?? false;
+    final dues = isAdmin ? ref.watch(_supplierDuesProvider).valueOrNull ?? const <SupplierDue>[] : const <SupplierDue>[];
+    final overdue = dues.where((x) => x.overdue).toList();
     return FutureBuilder<DashboardSummary>(
       future: _summary,
       builder: (context, snap) {
@@ -93,6 +99,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         '/price-lists'),
                   if (isAdmin && d.reviewRows > 0)
                     _AttentionItem('${d.reviewRows} صف أسعار متوقف للمراجعة', Icons.rule_outlined, '/price-lists'),
+                  if (overdue.isNotEmpty)
+                    _AttentionItem(
+                        '${overdue.length} فاتورة مورد متأخرة السداد (${formatMoney(overdue.fold(0, (s, x) => s + x.remaining))})',
+                        Icons.alarm_outlined,
+                        '/purchases'),
                   if (isAdmin && d.unknownPriceStock > 0)
                     _AttentionItem('${d.unknownPriceStock} صنف مخزونه بقائمة غير محددة', Icons.help_outline,
                         '/inventory'),
@@ -234,6 +245,26 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   ),
                 );
               }),
+              if (isAdmin) ...[
+                const SizedBox(height: 16),
+                _Panel(
+                  title: 'مستحق للموردين خلال أسبوع',
+                  child: dues.isEmpty
+                      ? const _Empty('لا توجد فواتير موردين مستحقة خلال أسبوع')
+                      : Column(
+                          children: [
+                            for (final x in dues.take(8))
+                              _Line(
+                                '${x.supplierName} · ${x.invoice.number} · '
+                                '${x.overdue ? 'متأخرة منذ' : 'تستحق'} ${formatDate(x.invoice.dueDate!)}',
+                                formatMoney(x.remaining),
+                                color: x.overdue ? AppColors.bad : AppColors.warn,
+                                onTap: () => context.go('/purchases/${x.invoice.id}'),
+                              ),
+                          ],
+                        ),
+                ),
+              ],
             ],
           ],
         );

@@ -11,6 +11,7 @@ import 'doc_types.dart';
 import 'errors.dart';
 import 'fifo_service.dart';
 import 'numbering_service.dart';
+import 'payment_service.dart';
 import 'query_helpers.dart';
 import 'settings_service.dart';
 import 'stock_service.dart';
@@ -52,11 +53,34 @@ class PurchaseInput {
     this.supplierInvoiceNo,
     this.date,
     this.discount = 0,
+    this.extraCosts = 0,
+    this.extraCostsOnSupplier = true,
+    this.extraCostsNote,
+    this.dueDate,
     this.paidAmount = 0,
     this.paymentMethod = PaymentMethod.cash,
+    this.cheque,
     this.notes,
     this.locationId = mainLocationId,
+    this.allowDuplicateSupplierNo = false,
   });
+
+  /// Transport, unloading and the like, added to the goods' cost. On the
+  /// supplier's invoice ([extraCostsOnSupplier]) they are owed to the
+  /// supplier; otherwise they were paid in cash to someone else.
+  final int extraCosts;
+  final bool extraCostsOnSupplier;
+  final String? extraCostsNote;
+
+  /// When what is left to pay is due.
+  final DateTime? dueDate;
+
+  /// Required when [paymentMethod] is a cheque.
+  final ChequeInput? cheque;
+
+  /// The supplier's invoice number was already used for this supplier and
+  /// the person confirmed it is a different invoice.
+  final bool allowDuplicateSupplierNo;
 
   /// Where the goods are received.
   final int locationId;
@@ -70,8 +94,22 @@ class PurchaseInput {
   final String? notes;
 
   int get subtotal => lines.fold(0, (s, l) => s + l.total);
-  int get total => subtotal - discount;
+
+  /// What is owed to the supplier.
+  int get total => subtotal - discount + (extraCostsOnSupplier ? extraCosts : 0);
 }
+
+/// Thrown when the supplier's invoice number is already on another of this
+/// supplier's invoices; the screen asks before saving again.
+class DuplicateSupplierInvoiceException extends ValidationException {
+  DuplicateSupplierInvoiceException(this.existing)
+      : super('رقم فاتورة المورد ${existing.supplierInvoiceNo} مسجل من قبل في الفاتورة ${existing.number}');
+
+  final PurchaseInvoice existing;
+}
+
+/// The expense category for extra purchase costs paid to someone else.
+const purchaseCostsCategoryName = 'نقل وتحميل مشتريات';
 
 class PurchaseInvoiceRow {
   const PurchaseInvoiceRow(this.invoice, this.supplierName, this.paid);
@@ -129,16 +167,25 @@ class PurchaseService {
       if (input.discount < 0 || input.discount > subtotal) {
         throw ValidationException('خصم الفاتورة أكبر من قيمتها');
       }
+      if (input.extraCosts < 0) throw ValidationException('المصاريف الإضافية لا يمكن أن تكون سالبة');
       final total = input.total;
       if (input.paidAmount < 0 || input.paidAmount > total) {
         throw ValidationException('المبلغ المدفوع يجب أن يكون بين صفر وإجمالي الفاتورة');
       }
+      final supplierNo = _blankToNull(input.supplierInvoiceNo);
+      if (supplierNo != null && !input.allowDuplicateSupplierNo) {
+        final same = await findBySupplierNo(input.supplierId, supplierNo);
+        if (same != null) throw DuplicateSupplierInvoiceException(same);
+      }
 
       final numbering = NumberingService(db);
       final date = input.date ?? DateTime.now();
+      if (input.dueDate != null && dayOf(input.dueDate!).isBefore(dayOf(date))) {
+        throw ValidationException('تاريخ الاستحقاق قبل تاريخ الفاتورة');
+      }
       final invoiceId = await db.into(db.purchaseInvoices).insert(PurchaseInvoicesCompanion.insert(
             number: await numbering.next('purchase'),
-            supplierInvoiceNo: Value(_blankToNull(input.supplierInvoiceNo)),
+            supplierInvoiceNo: Value(supplierNo),
             date: date,
             supplierId: input.supplierId,
             subtotal: subtotal,
@@ -147,6 +194,9 @@ class PurchaseService {
             paidAmount: Value(input.paidAmount),
             notes: Value(_blankToNull(input.notes)),
             createdBy: Value(user.id),
+            extraCosts: Value(input.extraCosts),
+            extraCostsOnSupplier: Value(input.extraCostsOnSupplier),
+            dueDate: Value(input.paidAmount >= total || input.dueDate == null ? null : dayOf(input.dueDate!)),
           ));
 
       final place = await (db.select(db.locations)..where((l) => l.id.equals(input.locationId))).getSingleOrNull();
@@ -155,10 +205,13 @@ class PurchaseService {
       final fifo = FifoService(db);
       // The invoice discount lowers the real cost of the goods, line by line.
       final shares = allocateProportionally(input.discount, [for (final l in input.lines) l.total]);
+      // Extra costs raise it, split by each line's value after the discount.
+      final extraShares = allocateProportionally(
+          input.extraCosts, [for (var n = 0; n < input.lines.length; n++) input.lines[n].total - shares[n]]);
       for (var n = 0; n < input.lines.length; n++) {
         final line = input.lines[n];
         final net = line.total - shares[n];
-        final netUnitCost = (net * qtyScale / line.qty).round();
+        final netUnitCost = ((net + extraShares[n]) * qtyScale / line.qty).round();
         await db.into(db.purchaseInvoiceItems).insert(PurchaseInvoiceItemsCompanion.insert(
               invoiceId: invoiceId,
               productId: line.productId,
@@ -172,6 +225,7 @@ class PurchaseService {
               extraDiscountBp: Value(line.extraDiscountBp),
               invoiceDiscountShare: Value(shares[n]),
               netTotal: Value(net),
+              extraCostShare: Value(extraShares[n]),
             ));
         final p = products[line.productId]!;
         await fifo.addLayer(
@@ -200,20 +254,33 @@ class PurchaseService {
       }
 
       if (input.paidAmount > 0) {
-        if (input.paymentMethod != PaymentMethod.cash && input.paymentMethod != PaymentMethod.bank) {
-          throw ArgumentError.value(input.paymentMethod, 'paymentMethod');
-        }
-        await db.into(db.payments).insert(PaymentsCompanion.insert(
-              number: await numbering.next('payment'),
+        // Cash, bank or a cheque, through the same rules as any payment.
+        await PaymentService(db).pay(
+          PaymentInput(
+            partyId: input.supplierId,
+            amount: input.paidAmount,
+            method: input.paymentMethod,
+            cheque: input.cheque,
+            invoiceId: invoiceId,
+            date: date,
+          ),
+          user: user,
+        );
+      }
+
+      // Extra costs paid to someone else: a purchase expense tied to this
+      // invoice, already in the goods' cost.
+      if (input.extraCosts > 0 && !input.extraCostsOnSupplier) {
+        final categoryId = await _purchaseCostsCategory();
+        final invoiceNo = (await (db.select(db.purchaseInvoices)..where((t) => t.id.equals(invoiceId))).getSingle()).number;
+        await db.into(db.expenses).insert(ExpensesCompanion.insert(
               date: date,
-              direction: PaymentDirection.outbound,
-              partyType: PartyType.supplier,
-              partyId: input.supplierId,
-              amount: input.paidAmount,
-              method: input.paymentMethod,
-              invoiceRefType: const Value(RefType.purchaseInvoice),
-              invoiceRefId: Value(invoiceId),
+              categoryId: categoryId,
+              amount: input.extraCosts,
+              description: Value('مصاريف فاتورة الشراء $invoiceNo'
+                  '${_blankToNull(input.extraCostsNote) == null ? '' : ' — ${input.extraCostsNote!.trim()}'}'),
               createdBy: Value(user.id),
+              purchaseInvoiceId: Value(invoiceId),
             ));
       }
 
@@ -322,12 +389,24 @@ class PurchaseService {
           updatedAt: Value(DateTime.now()),
         ),
       );
-      await (db.update(db.payments)
-            ..where((t) =>
-                t.invoiceRefType.equals(RefType.purchaseInvoice) &
-                t.invoiceRefId.equals(invoiceId) &
-                t.status.equals(DocStatus.active)))
+      final paymentIds = (await (db.select(db.payments)
+                ..where((t) =>
+                    t.invoiceRefType.equals(RefType.purchaseInvoice) &
+                    t.invoiceRefId.equals(invoiceId) &
+                    t.status.equals(DocStatus.active)))
+              .get())
+          .map((p) => p.id)
+          .toList();
+      await (db.update(db.payments)..where((t) => t.id.isIn(paymentIds)))
           .write(PaymentsCompanion(status: const Value(DocStatus.cancelled), updatedAt: Value(DateTime.now())));
+      // A cheque written with it is cancelled too, unless it was already paid.
+      await (db.update(db.cheques)
+            ..where((t) => t.paymentId.isIn(paymentIds) & t.status.equals(ChequeStatus.pending)))
+          .write(ChequesCompanion(status: const Value(ChequeStatus.cancelled), updatedAt: Value(DateTime.now())));
+      // Its extra costs paid to someone else.
+      await (db.update(db.expenses)
+            ..where((t) => t.purchaseInvoiceId.equals(invoiceId) & t.status.equals(DocStatus.active)))
+          .write(ExpensesCompanion(status: const Value(DocStatus.cancelled), updatedAt: Value(DateTime.now())));
       await AuditService(db).log(
         action: AuditAction.cancel,
         entity: 'purchase_invoice',
@@ -390,6 +469,63 @@ class PurchaseService {
     );
   }
 
+  /// This supplier's active invoice with that number of theirs, if any.
+  Future<PurchaseInvoice?> findBySupplierNo(int supplierId, String supplierInvoiceNo) async {
+    final no = supplierInvoiceNo.trim();
+    if (no.isEmpty) return null;
+    final rows = await (db.select(db.purchaseInvoices)
+          ..where((t) =>
+              t.supplierId.equals(supplierId) &
+              t.supplierInvoiceNo.equals(no) &
+              t.status.equals(DocStatus.active)))
+        .get();
+    return rows.firstOrNull;
+  }
+
+  Future<int> _purchaseCostsCategory() async {
+    final all = await db.select(db.expenseCategories).get();
+    final found = all.where((c) => c.nameAr == purchaseCostsCategoryName).firstOrNull;
+    if (found != null) return found.id;
+    return db.into(db.expenseCategories).insert(ExpenseCategoriesCompanion.insert(nameAr: purchaseCostsCategoryName));
+  }
+
+  /// Credit purchases with something left to pay and a due date, the
+  /// earliest first: overdue ones, and those due within [days].
+  Stream<List<SupplierDue>> watchDue({int days = 7}) async* {
+    final pending = await SettingsService(db).getBool(SettingKey.countPendingCheques);
+    final until = dayOf(DateTime.now()).add(Duration(days: days + 1));
+    yield* db.customSelect(
+      '''
+      SELECT pi.*, su.name AS supplier_name,
+             COALESCE((SELECT SUM(p.amount) FROM payments p
+                       WHERE p.invoice_ref_type = '${RefType.purchaseInvoice}' AND p.invoice_ref_id = pi.id
+                         AND ${BalanceService.countedPayment('p')}), 0) AS paid
+      FROM purchase_invoices pi
+      JOIN suppliers su ON su.id = pi.supplier_id
+      WHERE pi.status = '${DocStatus.active}' AND pi.due_date IS NOT NULL AND pi.due_date < ?
+      ORDER BY pi.due_date, pi.id
+      ''',
+      variables: [Variable.withBool(pending), Variable.withDateTime(until)],
+      readsFrom: {db.purchaseInvoices, db.suppliers, db.payments, db.cheques},
+    ).watch().map((rows) => [
+          for (final r in rows)
+            if (r.read<int>('total') - r.read<int>('paid') > 0)
+              SupplierDue(db.purchaseInvoices.map(r.data), r.read<String>('supplier_name'),
+                  r.read<int>('total') - r.read<int>('paid')),
+        ]);
+  }
+
   static String? _blankToNull(String? s) =>
       (s == null || s.trim().isEmpty) ? null : s.trim();
+}
+
+/// A purchase invoice with money still owed and a due date.
+class SupplierDue {
+  const SupplierDue(this.invoice, this.supplierName, this.remaining);
+
+  final PurchaseInvoice invoice;
+  final String supplierName;
+  final int remaining;
+
+  bool get overdue => dayOf(invoice.dueDate!).isBefore(dayOf(DateTime.now()));
 }

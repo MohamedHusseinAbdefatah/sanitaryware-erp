@@ -101,6 +101,9 @@ class ExpenseService {
       if (reason.trim().isEmpty) throw ValidationException('سبب الإلغاء مطلوب');
       final e = await (db.select(db.expenses)..where((t) => t.id.equals(expenseId))).getSingle();
       if (e.status == DocStatus.cancelled) throw ValidationException('المصروف ملغى من قبل');
+      if (e.purchaseInvoiceId != null) {
+        throw ValidationException('هذا المصروف من فاتورة شراء وهو جزء من تكلفة البضاعة؛ يُلغى بإلغاء الفاتورة');
+      }
       final note = 'سبب الإلغاء: ${reason.trim()}';
       await (db.update(db.expenses)..where((t) => t.id.equals(expenseId))).write(ExpensesCompanion(
             status: const Value(DocStatus.cancelled),

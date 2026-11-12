@@ -15,6 +15,12 @@ import '../../core/widgets/amounts.dart';
 import '../../core/widgets/feedback.dart';
 import '../payments/payment_dialog.dart';
 
+/// "20%" or "20% + 2%".
+String _pct(int base, int extra) {
+  String p(int bp) => '${(bp / 100).toStringAsFixed(bp % 100 == 0 ? 0 : 1)}%';
+  return extra == 0 ? p(base) : '${p(base)} + ${p(extra)}';
+}
+
 class PurchaseViewScreen extends ConsumerStatefulWidget {
   const PurchaseViewScreen({super.key, required this.invoiceId});
 
@@ -120,6 +126,7 @@ class _PurchaseViewScreenState extends ConsumerState<PurchaseViewScreen> {
                 Text('${Strings.date}: ${formatDateTime(inv.date)}'),
                 Text('${Strings.supplier}: ${d.supplier.name}'),
                 if (inv.supplierInvoiceNo != null) Text('${Strings.supplierInvoiceNo}: ${inv.supplierInvoiceNo}'),
+                if (inv.dueDate != null) Text('يستحق الباقي: ${formatDate(inv.dueDate!)}'),
               ],
             ),
             const SizedBox(height: 16),
@@ -132,8 +139,11 @@ class _PurchaseViewScreenState extends ConsumerState<PurchaseViewScreen> {
                   DataColumn(label: Text(Strings.productName)),
                   DataColumn(label: Text(Strings.qty), numeric: true),
                   DataColumn(label: Text(Strings.unit)),
+                  DataColumn(label: Text('سعر القائمة'), numeric: true),
+                  DataColumn(label: Text('الخصم'), numeric: true),
                   DataColumn(label: Text(Strings.unitCost), numeric: true),
                   DataColumn(label: Text(Strings.lineTotal), numeric: true),
+                  DataColumn(label: Text('التكلفة في المخزون'), numeric: true),
                 ],
                 rows: [
                   for (var i = 0; i < d.lines.length; i++)
@@ -143,8 +153,16 @@ class _PurchaseViewScreenState extends ConsumerState<PurchaseViewScreen> {
                       DataCell(Text(d.lines[i].productName)),
                       DataCell(Text(formatQty(d.lines[i].item.qty))),
                       DataCell(Text(d.lines[i].unitName ?? '')),
+                      DataCell(Text(d.lines[i].item.listPrice == null ? '—' : formatMoney(d.lines[i].item.listPrice!))),
+                      DataCell(Text(d.lines[i].item.listPrice == null
+                          ? '—'
+                          : _pct(d.lines[i].item.baseDiscountBp, d.lines[i].item.extraDiscountBp))),
                       DataCell(Text(formatMoney(d.lines[i].item.unitCost))),
                       DataCell(Text(formatMoney(d.lines[i].item.lineTotal))),
+                      // Net of the invoice discount, plus its share of the transport.
+                      DataCell(Text(formatMoney(
+                          ((d.lines[i].item.netTotal + d.lines[i].item.extraCostShare) * qtyScale / d.lines[i].item.qty)
+                              .round()))),
                     ]),
                 ],
               ),
@@ -158,6 +176,9 @@ class _PurchaseViewScreenState extends ConsumerState<PurchaseViewScreen> {
                   children: [
                     TotalRow(Strings.subtotal, inv.subtotal),
                     if (inv.discount != 0) TotalRow(Strings.invoiceDiscount, inv.discount),
+                    if (inv.extraCosts != 0)
+                      TotalRow(inv.extraCostsOnSupplier ? 'نقل وتحميل (على المورد)' : 'نقل وتحميل (دُفع لجهة أخرى، خارج الإجمالي)',
+                          inv.extraCosts),
                     TotalRow(Strings.total, inv.total, bold: true),
                     TotalRow(Strings.paid, d.paid),
                     TotalRow(Strings.remaining, inv.total - d.paid, bold: true),

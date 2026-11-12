@@ -50,7 +50,7 @@ class AppDatabase extends _$AppDatabase {
   @override
   int get schemaVersion => latestSchemaVersion;
 
-  static const latestSchemaVersion = 13;
+  static const latestSchemaVersion = 14;
 
   /// The categories every shop starts with. The first three are the old
   /// price levels; discounts start at 0 until the owner sets them.
@@ -489,6 +489,16 @@ class AppDatabase extends _$AppDatabase {
           if (from < 11) await _upgradeToV11(m);
           if (from < 12) await _upgradeToV12(m);
           if (from < 13) await _upgradeToV13(m);
+          if (from < 14) {
+            // v14: extra costs on a purchase, its due date, and purchase expenses.
+            await _addColumns(m, purchaseInvoices, [
+              purchaseInvoices.extraCosts,
+              purchaseInvoices.extraCostsOnSupplier,
+              purchaseInvoices.dueDate,
+            ]);
+            await _addColumns(m, purchaseInvoiceItems, [purchaseInvoiceItems.extraCostShare]);
+            await _addColumns(m, expenses, [expenses.purchaseInvoiceId]);
+          }
         },
         beforeOpen: (details) async {
           // Make SQLite enforce references between tables.

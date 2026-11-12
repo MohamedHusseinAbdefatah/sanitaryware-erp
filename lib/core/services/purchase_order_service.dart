@@ -172,7 +172,17 @@ class PurchaseOrderService {
     String? supplierInvoiceNo,
     int paidAmount = 0,
     String paymentMethod = PaymentMethod.cash,
+    ChequeInput? cheque,
     int locationId = mainLocationId,
+    int discount = 0,
+    int extraCosts = 0,
+    bool extraCostsOnSupplier = true,
+    String? extraCostsNote,
+    DateTime? dueDate,
+    String? notes,
+    bool allowDuplicateSupplierNo = false,
+    // Products on the same supplier invoice that were not on the order.
+    List<PurchaseLineInput> extraLines = const [],
     required User user,
   }) {
     return db.transaction(() async {
@@ -208,12 +218,19 @@ class PurchaseOrderService {
       final invoice = await PurchaseService(db).post(
         PurchaseInput(
           supplierId: order.supplierId,
-          lines: inputs,
+          lines: [...inputs, ...extraLines],
           supplierInvoiceNo: supplierInvoiceNo,
           date: date,
           paidAmount: paidAmount,
           paymentMethod: paymentMethod,
-          notes: 'أمر شراء ${order.number}',
+          cheque: cheque,
+          discount: discount,
+          extraCosts: extraCosts,
+          extraCostsOnSupplier: extraCostsOnSupplier,
+          extraCostsNote: extraCostsNote,
+          dueDate: dueDate,
+          allowDuplicateSupplierNo: allowDuplicateSupplierNo,
+          notes: (notes ?? '').trim().isEmpty ? 'أمر شراء ${order.number}' : 'أمر شراء ${order.number}\n${notes!.trim()}',
           locationId: locationId,
         ),
         user: user,
@@ -270,6 +287,17 @@ class PurchaseOrderService {
         PoLineRow(r.readTable(db.purchaseOrderLines), r.readTable(db.products).code,
             r.readTable(db.products).nameAr),
     ]);
+  }
+
+  /// Approved orders still waiting for goods, for [supplierId] if given.
+  Future<List<PoDetail>> openOrders({int? supplierId}) async {
+    final orders = await (db.select(db.purchaseOrders)
+          ..where((o) =>
+              o.status.isIn([PoStatus.approved, PoStatus.partlyReceived]) &
+              (supplierId == null ? const Constant(true) : o.supplierId.equals(supplierId)))
+          ..orderBy([(o) => OrderingTerm.desc(o.id)]))
+        .get();
+    return [for (final o in orders) await detail(o.id)];
   }
 
   Stream<List<PoDetail>> watchAll() {

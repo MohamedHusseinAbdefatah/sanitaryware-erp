@@ -97,9 +97,9 @@ void main() {
     expect((await SellingPolicyService(db).quotes(1, customer: retail)).single.policyBp, 0);
   });
 
-  test('the file is at schema 13 and passes its own check', () async {
+  test('the file is at the latest schema and passes its own check', () async {
     final v = await db.customSelect('PRAGMA user_version').getSingle();
-    expect(v.data.values.first, 13);
+    expect(v.data.values.first, AppDatabase.latestSchemaVersion);
     expect(await db.integrityOk(), isTrue);
   });
 }

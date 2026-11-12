@@ -24,7 +24,10 @@ import 'package:sanitaryware_erp/core/l10n/strings.dart';
 import 'package:sanitaryware_erp/core/providers.dart';
 import 'package:sanitaryware_erp/core/quantity.dart';
 import 'package:sanitaryware_erp/core/router.dart';
+import 'package:sanitaryware_erp/core/services/buying_policy_service.dart';
 import 'package:sanitaryware_erp/core/services/catalog_service.dart';
+import 'package:sanitaryware_erp/core/widgets/number_fields.dart';
+import 'package:sanitaryware_erp/core/widgets/pickers.dart';
 import 'package:sanitaryware_erp/core/services/party_service.dart';
 import 'package:sanitaryware_erp/core/services/payment_service.dart';
 import 'package:sanitaryware_erp/core/pricing_math.dart';
@@ -182,6 +185,12 @@ Future<(Shop, SalesInvoice)> _shopWithData() async {
     method: PaymentMethod.cheque,
     cheque: ChequeInput(number: '458812', bank: 'البنك الأهلي', dueDate: DateTime.now().add(const Duration(days: 4))),
   ));
+  // The supplier's agreed discount on the list in force, for the purchase screen.
+  final inForce = (await PriceListService(db).quotesFor(shop.mixer.id)).single.priceListId;
+  await BuyingPolicyService(db).add(
+    BuyingPolicyInput(supplierId: supplier, brandId: shop.brandId, priceListId: inForce, baseDiscountBp: 2000),
+    user: shop.admin,
+  );
   return (shop, credit);
 }
 
@@ -285,6 +294,28 @@ void main() {
     await tester.tap(find.text('خصومات البيع'));
     await settle(tester);
     await shot(tester, '16_selling_discounts');
+
+    // A purchase: supplier, two products at the agreed discount, one priced
+    // above it by the supplier, and transport.
+    await go(tester, '/purchases/new');
+    await tester.enterText(find.widgetWithText(TextField, Strings.supplier), 'المصرية');
+    await settle(tester);
+    await tester.tap(find.text('الشركة المصرية للخلاطات').last);
+    await settle(tester);
+    final search = find.descendant(of: find.byType(ProductSearchField), matching: find.byType(TextField));
+    for (final code in ['M1', 'P1']) {
+      await tester.enterText(search, code);
+      await settle(tester);
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await settle(tester);
+    }
+    await tester.enterText(find.byType(QtyField).at(0), '10');
+    await tester.enterText(find.byType(QtyField).at(1), '200');
+    await tester.enterText(find.byType(MoneyField).at(1), '30');
+    await tester.enterText(find.widgetWithText(TextFormField, 'نقل وتحميل'), '450');
+    await tester.enterText(find.widgetWithText(TextField, Strings.supplierInvoiceNo), 'INV-5602');
+    await settle(tester);
+    await shot(tester, '17_purchase_entry');
 
     await go(tester, '/sales/new');
     await tester.enterText(find.byType(TextField).at(1), 'M1');

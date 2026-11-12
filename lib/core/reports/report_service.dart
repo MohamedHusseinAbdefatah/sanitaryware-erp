@@ -4,6 +4,7 @@ import '../db/database.dart';
 import '../quantity.dart';
 import '../services/balance_service.dart';
 import '../services/doc_types.dart';
+import '../services/purchase_service.dart' show purchaseCostsCategoryName;
 import '../services/query_helpers.dart';
 import '../services/settings_service.dart';
 import '../services/stock_price_service.dart';
@@ -321,7 +322,9 @@ class ReportService {
         .get()) {
       if (returnIds.contains(m.refId)) returnedCost += lineAmount(m.qty, m.unitCost);
     }
-    final expenses = (await _expenses(from, to)).fold(0, (s, e) => s + e.amount);
+    // Extra costs of a purchase are already in the cost of the goods.
+    final expenses =
+        (await _expenses(from, to)).where((e) => e.purchaseInvoiceId == null).fold(0, (s, e) => s + e.amount);
     final netSales = salesTotal - returnsTotal;
     final netCost = cost - returnedCost;
     final gross = netSales - netCost;
@@ -356,7 +359,12 @@ class ReportService {
       x[1] += e.amount;
     }
     final list = [
-      for (final e in v.entries) [names[e.key] ?? '', e.value[0], e.value[1]],
+      for (final e in v.entries)
+        [
+          names[e.key] == purchaseCostsCategoryName ? '${names[e.key]} (ضمن تكلفة البضاعة)' : names[e.key] ?? '',
+          e.value[0],
+          e.value[1],
+        ],
     ]..sort((a, b) => (b[2] as int).compareTo(a[2] as int));
     return ReportTable(
       title: ReportKind.expensesByCategory.title,

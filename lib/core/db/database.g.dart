@@ -7462,6 +7462,43 @@ class $PurchaseInvoicesTable extends PurchaseInvoices
       'REFERENCES users (id)',
     ),
   );
+  static const VerificationMeta _extraCostsMeta = const VerificationMeta(
+    'extraCosts',
+  );
+  @override
+  late final GeneratedColumn<int> extraCosts = GeneratedColumn<int>(
+    'extra_costs',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _extraCostsOnSupplierMeta =
+      const VerificationMeta('extraCostsOnSupplier');
+  @override
+  late final GeneratedColumn<bool> extraCostsOnSupplier = GeneratedColumn<bool>(
+    'extra_costs_on_supplier',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("extra_costs_on_supplier" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  static const VerificationMeta _dueDateMeta = const VerificationMeta(
+    'dueDate',
+  );
+  @override
+  late final GeneratedColumn<DateTime> dueDate = GeneratedColumn<DateTime>(
+    'due_date',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     createdAt,
@@ -7478,6 +7515,9 @@ class $PurchaseInvoicesTable extends PurchaseInvoices
     status,
     notes,
     createdBy,
+    extraCosts,
+    extraCostsOnSupplier,
+    dueDate,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -7585,6 +7625,27 @@ class $PurchaseInvoicesTable extends PurchaseInvoices
         createdBy.isAcceptableOrUnknown(data['created_by']!, _createdByMeta),
       );
     }
+    if (data.containsKey('extra_costs')) {
+      context.handle(
+        _extraCostsMeta,
+        extraCosts.isAcceptableOrUnknown(data['extra_costs']!, _extraCostsMeta),
+      );
+    }
+    if (data.containsKey('extra_costs_on_supplier')) {
+      context.handle(
+        _extraCostsOnSupplierMeta,
+        extraCostsOnSupplier.isAcceptableOrUnknown(
+          data['extra_costs_on_supplier']!,
+          _extraCostsOnSupplierMeta,
+        ),
+      );
+    }
+    if (data.containsKey('due_date')) {
+      context.handle(
+        _dueDateMeta,
+        dueDate.isAcceptableOrUnknown(data['due_date']!, _dueDateMeta),
+      );
+    }
     return context;
   }
 
@@ -7650,6 +7711,18 @@ class $PurchaseInvoicesTable extends PurchaseInvoices
         DriftSqlType.int,
         data['${effectivePrefix}created_by'],
       ),
+      extraCosts: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}extra_costs'],
+      )!,
+      extraCostsOnSupplier: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}extra_costs_on_supplier'],
+      )!,
+      dueDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}due_date'],
+      ),
     );
   }
 
@@ -7674,6 +7747,9 @@ class PurchaseInvoice extends DataClass implements Insertable<PurchaseInvoice> {
   final String status;
   final String? notes;
   final int? createdBy;
+  final int extraCosts;
+  final bool extraCostsOnSupplier;
+  final DateTime? dueDate;
   const PurchaseInvoice({
     required this.createdAt,
     required this.updatedAt,
@@ -7689,6 +7765,9 @@ class PurchaseInvoice extends DataClass implements Insertable<PurchaseInvoice> {
     required this.status,
     this.notes,
     this.createdBy,
+    required this.extraCosts,
+    required this.extraCostsOnSupplier,
+    this.dueDate,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -7712,6 +7791,11 @@ class PurchaseInvoice extends DataClass implements Insertable<PurchaseInvoice> {
     }
     if (!nullToAbsent || createdBy != null) {
       map['created_by'] = Variable<int>(createdBy);
+    }
+    map['extra_costs'] = Variable<int>(extraCosts);
+    map['extra_costs_on_supplier'] = Variable<bool>(extraCostsOnSupplier);
+    if (!nullToAbsent || dueDate != null) {
+      map['due_date'] = Variable<DateTime>(dueDate);
     }
     return map;
   }
@@ -7738,6 +7822,11 @@ class PurchaseInvoice extends DataClass implements Insertable<PurchaseInvoice> {
       createdBy: createdBy == null && nullToAbsent
           ? const Value.absent()
           : Value(createdBy),
+      extraCosts: Value(extraCosts),
+      extraCostsOnSupplier: Value(extraCostsOnSupplier),
+      dueDate: dueDate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(dueDate),
     );
   }
 
@@ -7763,6 +7852,11 @@ class PurchaseInvoice extends DataClass implements Insertable<PurchaseInvoice> {
       status: serializer.fromJson<String>(json['status']),
       notes: serializer.fromJson<String?>(json['notes']),
       createdBy: serializer.fromJson<int?>(json['createdBy']),
+      extraCosts: serializer.fromJson<int>(json['extraCosts']),
+      extraCostsOnSupplier: serializer.fromJson<bool>(
+        json['extraCostsOnSupplier'],
+      ),
+      dueDate: serializer.fromJson<DateTime?>(json['dueDate']),
     );
   }
   @override
@@ -7783,6 +7877,9 @@ class PurchaseInvoice extends DataClass implements Insertable<PurchaseInvoice> {
       'status': serializer.toJson<String>(status),
       'notes': serializer.toJson<String?>(notes),
       'createdBy': serializer.toJson<int?>(createdBy),
+      'extraCosts': serializer.toJson<int>(extraCosts),
+      'extraCostsOnSupplier': serializer.toJson<bool>(extraCostsOnSupplier),
+      'dueDate': serializer.toJson<DateTime?>(dueDate),
     };
   }
 
@@ -7801,6 +7898,9 @@ class PurchaseInvoice extends DataClass implements Insertable<PurchaseInvoice> {
     String? status,
     Value<String?> notes = const Value.absent(),
     Value<int?> createdBy = const Value.absent(),
+    int? extraCosts,
+    bool? extraCostsOnSupplier,
+    Value<DateTime?> dueDate = const Value.absent(),
   }) => PurchaseInvoice(
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
@@ -7818,6 +7918,9 @@ class PurchaseInvoice extends DataClass implements Insertable<PurchaseInvoice> {
     status: status ?? this.status,
     notes: notes.present ? notes.value : this.notes,
     createdBy: createdBy.present ? createdBy.value : this.createdBy,
+    extraCosts: extraCosts ?? this.extraCosts,
+    extraCostsOnSupplier: extraCostsOnSupplier ?? this.extraCostsOnSupplier,
+    dueDate: dueDate.present ? dueDate.value : this.dueDate,
   );
   PurchaseInvoice copyWithCompanion(PurchaseInvoicesCompanion data) {
     return PurchaseInvoice(
@@ -7841,6 +7944,13 @@ class PurchaseInvoice extends DataClass implements Insertable<PurchaseInvoice> {
       status: data.status.present ? data.status.value : this.status,
       notes: data.notes.present ? data.notes.value : this.notes,
       createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
+      extraCosts: data.extraCosts.present
+          ? data.extraCosts.value
+          : this.extraCosts,
+      extraCostsOnSupplier: data.extraCostsOnSupplier.present
+          ? data.extraCostsOnSupplier.value
+          : this.extraCostsOnSupplier,
+      dueDate: data.dueDate.present ? data.dueDate.value : this.dueDate,
     );
   }
 
@@ -7860,7 +7970,10 @@ class PurchaseInvoice extends DataClass implements Insertable<PurchaseInvoice> {
           ..write('paidAmount: $paidAmount, ')
           ..write('status: $status, ')
           ..write('notes: $notes, ')
-          ..write('createdBy: $createdBy')
+          ..write('createdBy: $createdBy, ')
+          ..write('extraCosts: $extraCosts, ')
+          ..write('extraCostsOnSupplier: $extraCostsOnSupplier, ')
+          ..write('dueDate: $dueDate')
           ..write(')'))
         .toString();
   }
@@ -7881,6 +7994,9 @@ class PurchaseInvoice extends DataClass implements Insertable<PurchaseInvoice> {
     status,
     notes,
     createdBy,
+    extraCosts,
+    extraCostsOnSupplier,
+    dueDate,
   );
   @override
   bool operator ==(Object other) =>
@@ -7899,7 +8015,10 @@ class PurchaseInvoice extends DataClass implements Insertable<PurchaseInvoice> {
           other.paidAmount == this.paidAmount &&
           other.status == this.status &&
           other.notes == this.notes &&
-          other.createdBy == this.createdBy);
+          other.createdBy == this.createdBy &&
+          other.extraCosts == this.extraCosts &&
+          other.extraCostsOnSupplier == this.extraCostsOnSupplier &&
+          other.dueDate == this.dueDate);
 }
 
 class PurchaseInvoicesCompanion extends UpdateCompanion<PurchaseInvoice> {
@@ -7917,6 +8036,9 @@ class PurchaseInvoicesCompanion extends UpdateCompanion<PurchaseInvoice> {
   final Value<String> status;
   final Value<String?> notes;
   final Value<int?> createdBy;
+  final Value<int> extraCosts;
+  final Value<bool> extraCostsOnSupplier;
+  final Value<DateTime?> dueDate;
   const PurchaseInvoicesCompanion({
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -7932,6 +8054,9 @@ class PurchaseInvoicesCompanion extends UpdateCompanion<PurchaseInvoice> {
     this.status = const Value.absent(),
     this.notes = const Value.absent(),
     this.createdBy = const Value.absent(),
+    this.extraCosts = const Value.absent(),
+    this.extraCostsOnSupplier = const Value.absent(),
+    this.dueDate = const Value.absent(),
   });
   PurchaseInvoicesCompanion.insert({
     this.createdAt = const Value.absent(),
@@ -7948,6 +8073,9 @@ class PurchaseInvoicesCompanion extends UpdateCompanion<PurchaseInvoice> {
     this.status = const Value.absent(),
     this.notes = const Value.absent(),
     this.createdBy = const Value.absent(),
+    this.extraCosts = const Value.absent(),
+    this.extraCostsOnSupplier = const Value.absent(),
+    this.dueDate = const Value.absent(),
   }) : number = Value(number),
        date = Value(date),
        supplierId = Value(supplierId),
@@ -7968,6 +8096,9 @@ class PurchaseInvoicesCompanion extends UpdateCompanion<PurchaseInvoice> {
     Expression<String>? status,
     Expression<String>? notes,
     Expression<int>? createdBy,
+    Expression<int>? extraCosts,
+    Expression<bool>? extraCostsOnSupplier,
+    Expression<DateTime>? dueDate,
   }) {
     return RawValuesInsertable({
       if (createdAt != null) 'created_at': createdAt,
@@ -7984,6 +8115,10 @@ class PurchaseInvoicesCompanion extends UpdateCompanion<PurchaseInvoice> {
       if (status != null) 'status': status,
       if (notes != null) 'notes': notes,
       if (createdBy != null) 'created_by': createdBy,
+      if (extraCosts != null) 'extra_costs': extraCosts,
+      if (extraCostsOnSupplier != null)
+        'extra_costs_on_supplier': extraCostsOnSupplier,
+      if (dueDate != null) 'due_date': dueDate,
     });
   }
 
@@ -8002,6 +8137,9 @@ class PurchaseInvoicesCompanion extends UpdateCompanion<PurchaseInvoice> {
     Value<String>? status,
     Value<String?>? notes,
     Value<int?>? createdBy,
+    Value<int>? extraCosts,
+    Value<bool>? extraCostsOnSupplier,
+    Value<DateTime?>? dueDate,
   }) {
     return PurchaseInvoicesCompanion(
       createdAt: createdAt ?? this.createdAt,
@@ -8018,6 +8156,9 @@ class PurchaseInvoicesCompanion extends UpdateCompanion<PurchaseInvoice> {
       status: status ?? this.status,
       notes: notes ?? this.notes,
       createdBy: createdBy ?? this.createdBy,
+      extraCosts: extraCosts ?? this.extraCosts,
+      extraCostsOnSupplier: extraCostsOnSupplier ?? this.extraCostsOnSupplier,
+      dueDate: dueDate ?? this.dueDate,
     );
   }
 
@@ -8066,6 +8207,17 @@ class PurchaseInvoicesCompanion extends UpdateCompanion<PurchaseInvoice> {
     if (createdBy.present) {
       map['created_by'] = Variable<int>(createdBy.value);
     }
+    if (extraCosts.present) {
+      map['extra_costs'] = Variable<int>(extraCosts.value);
+    }
+    if (extraCostsOnSupplier.present) {
+      map['extra_costs_on_supplier'] = Variable<bool>(
+        extraCostsOnSupplier.value,
+      );
+    }
+    if (dueDate.present) {
+      map['due_date'] = Variable<DateTime>(dueDate.value);
+    }
     return map;
   }
 
@@ -8085,7 +8237,10 @@ class PurchaseInvoicesCompanion extends UpdateCompanion<PurchaseInvoice> {
           ..write('paidAmount: $paidAmount, ')
           ..write('status: $status, ')
           ..write('notes: $notes, ')
-          ..write('createdBy: $createdBy')
+          ..write('createdBy: $createdBy, ')
+          ..write('extraCosts: $extraCosts, ')
+          ..write('extraCostsOnSupplier: $extraCostsOnSupplier, ')
+          ..write('dueDate: $dueDate')
           ..write(')'))
         .toString();
   }
@@ -8249,6 +8404,18 @@ class $PurchaseInvoiceItemsTable extends PurchaseInvoiceItems
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _extraCostShareMeta = const VerificationMeta(
+    'extraCostShare',
+  );
+  @override
+  late final GeneratedColumn<int> extraCostShare = GeneratedColumn<int>(
+    'extra_cost_share',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -8264,6 +8431,7 @@ class $PurchaseInvoiceItemsTable extends PurchaseInvoiceItems
     extraDiscountBp,
     invoiceDiscountShare,
     netTotal,
+    extraCostShare,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -8377,6 +8545,15 @@ class $PurchaseInvoiceItemsTable extends PurchaseInvoiceItems
         netTotal.isAcceptableOrUnknown(data['net_total']!, _netTotalMeta),
       );
     }
+    if (data.containsKey('extra_cost_share')) {
+      context.handle(
+        _extraCostShareMeta,
+        extraCostShare.isAcceptableOrUnknown(
+          data['extra_cost_share']!,
+          _extraCostShareMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -8438,6 +8615,10 @@ class $PurchaseInvoiceItemsTable extends PurchaseInvoiceItems
         DriftSqlType.int,
         data['${effectivePrefix}net_total'],
       )!,
+      extraCostShare: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}extra_cost_share'],
+      )!,
     );
   }
 
@@ -8462,6 +8643,7 @@ class PurchaseInvoiceItem extends DataClass
   final int extraDiscountBp;
   final int invoiceDiscountShare;
   final int netTotal;
+  final int extraCostShare;
   const PurchaseInvoiceItem({
     required this.id,
     required this.invoiceId,
@@ -8476,6 +8658,7 @@ class PurchaseInvoiceItem extends DataClass
     required this.extraDiscountBp,
     required this.invoiceDiscountShare,
     required this.netTotal,
+    required this.extraCostShare,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -8499,6 +8682,7 @@ class PurchaseInvoiceItem extends DataClass
     map['extra_discount_bp'] = Variable<int>(extraDiscountBp);
     map['invoice_discount_share'] = Variable<int>(invoiceDiscountShare);
     map['net_total'] = Variable<int>(netTotal);
+    map['extra_cost_share'] = Variable<int>(extraCostShare);
     return map;
   }
 
@@ -8523,6 +8707,7 @@ class PurchaseInvoiceItem extends DataClass
       extraDiscountBp: Value(extraDiscountBp),
       invoiceDiscountShare: Value(invoiceDiscountShare),
       netTotal: Value(netTotal),
+      extraCostShare: Value(extraCostShare),
     );
   }
 
@@ -8547,6 +8732,7 @@ class PurchaseInvoiceItem extends DataClass
         json['invoiceDiscountShare'],
       ),
       netTotal: serializer.fromJson<int>(json['netTotal']),
+      extraCostShare: serializer.fromJson<int>(json['extraCostShare']),
     );
   }
   @override
@@ -8566,6 +8752,7 @@ class PurchaseInvoiceItem extends DataClass
       'extraDiscountBp': serializer.toJson<int>(extraDiscountBp),
       'invoiceDiscountShare': serializer.toJson<int>(invoiceDiscountShare),
       'netTotal': serializer.toJson<int>(netTotal),
+      'extraCostShare': serializer.toJson<int>(extraCostShare),
     };
   }
 
@@ -8583,6 +8770,7 @@ class PurchaseInvoiceItem extends DataClass
     int? extraDiscountBp,
     int? invoiceDiscountShare,
     int? netTotal,
+    int? extraCostShare,
   }) => PurchaseInvoiceItem(
     id: id ?? this.id,
     invoiceId: invoiceId ?? this.invoiceId,
@@ -8599,6 +8787,7 @@ class PurchaseInvoiceItem extends DataClass
     extraDiscountBp: extraDiscountBp ?? this.extraDiscountBp,
     invoiceDiscountShare: invoiceDiscountShare ?? this.invoiceDiscountShare,
     netTotal: netTotal ?? this.netTotal,
+    extraCostShare: extraCostShare ?? this.extraCostShare,
   );
   PurchaseInvoiceItem copyWithCompanion(PurchaseInvoiceItemsCompanion data) {
     return PurchaseInvoiceItem(
@@ -8625,6 +8814,9 @@ class PurchaseInvoiceItem extends DataClass
           ? data.invoiceDiscountShare.value
           : this.invoiceDiscountShare,
       netTotal: data.netTotal.present ? data.netTotal.value : this.netTotal,
+      extraCostShare: data.extraCostShare.present
+          ? data.extraCostShare.value
+          : this.extraCostShare,
     );
   }
 
@@ -8643,7 +8835,8 @@ class PurchaseInvoiceItem extends DataClass
           ..write('baseDiscountBp: $baseDiscountBp, ')
           ..write('extraDiscountBp: $extraDiscountBp, ')
           ..write('invoiceDiscountShare: $invoiceDiscountShare, ')
-          ..write('netTotal: $netTotal')
+          ..write('netTotal: $netTotal, ')
+          ..write('extraCostShare: $extraCostShare')
           ..write(')'))
         .toString();
   }
@@ -8663,6 +8856,7 @@ class PurchaseInvoiceItem extends DataClass
     extraDiscountBp,
     invoiceDiscountShare,
     netTotal,
+    extraCostShare,
   );
   @override
   bool operator ==(Object other) =>
@@ -8680,7 +8874,8 @@ class PurchaseInvoiceItem extends DataClass
           other.baseDiscountBp == this.baseDiscountBp &&
           other.extraDiscountBp == this.extraDiscountBp &&
           other.invoiceDiscountShare == this.invoiceDiscountShare &&
-          other.netTotal == this.netTotal);
+          other.netTotal == this.netTotal &&
+          other.extraCostShare == this.extraCostShare);
 }
 
 class PurchaseInvoiceItemsCompanion
@@ -8698,6 +8893,7 @@ class PurchaseInvoiceItemsCompanion
   final Value<int> extraDiscountBp;
   final Value<int> invoiceDiscountShare;
   final Value<int> netTotal;
+  final Value<int> extraCostShare;
   const PurchaseInvoiceItemsCompanion({
     this.id = const Value.absent(),
     this.invoiceId = const Value.absent(),
@@ -8712,6 +8908,7 @@ class PurchaseInvoiceItemsCompanion
     this.extraDiscountBp = const Value.absent(),
     this.invoiceDiscountShare = const Value.absent(),
     this.netTotal = const Value.absent(),
+    this.extraCostShare = const Value.absent(),
   });
   PurchaseInvoiceItemsCompanion.insert({
     this.id = const Value.absent(),
@@ -8727,6 +8924,7 @@ class PurchaseInvoiceItemsCompanion
     this.extraDiscountBp = const Value.absent(),
     this.invoiceDiscountShare = const Value.absent(),
     this.netTotal = const Value.absent(),
+    this.extraCostShare = const Value.absent(),
   }) : invoiceId = Value(invoiceId),
        productId = Value(productId),
        qty = Value(qty),
@@ -8746,6 +8944,7 @@ class PurchaseInvoiceItemsCompanion
     Expression<int>? extraDiscountBp,
     Expression<int>? invoiceDiscountShare,
     Expression<int>? netTotal,
+    Expression<int>? extraCostShare,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -8762,6 +8961,7 @@ class PurchaseInvoiceItemsCompanion
       if (invoiceDiscountShare != null)
         'invoice_discount_share': invoiceDiscountShare,
       if (netTotal != null) 'net_total': netTotal,
+      if (extraCostShare != null) 'extra_cost_share': extraCostShare,
     });
   }
 
@@ -8779,6 +8979,7 @@ class PurchaseInvoiceItemsCompanion
     Value<int>? extraDiscountBp,
     Value<int>? invoiceDiscountShare,
     Value<int>? netTotal,
+    Value<int>? extraCostShare,
   }) {
     return PurchaseInvoiceItemsCompanion(
       id: id ?? this.id,
@@ -8794,6 +8995,7 @@ class PurchaseInvoiceItemsCompanion
       extraDiscountBp: extraDiscountBp ?? this.extraDiscountBp,
       invoiceDiscountShare: invoiceDiscountShare ?? this.invoiceDiscountShare,
       netTotal: netTotal ?? this.netTotal,
+      extraCostShare: extraCostShare ?? this.extraCostShare,
     );
   }
 
@@ -8839,6 +9041,9 @@ class PurchaseInvoiceItemsCompanion
     if (netTotal.present) {
       map['net_total'] = Variable<int>(netTotal.value);
     }
+    if (extraCostShare.present) {
+      map['extra_cost_share'] = Variable<int>(extraCostShare.value);
+    }
     return map;
   }
 
@@ -8857,7 +9062,8 @@ class PurchaseInvoiceItemsCompanion
           ..write('baseDiscountBp: $baseDiscountBp, ')
           ..write('extraDiscountBp: $extraDiscountBp, ')
           ..write('invoiceDiscountShare: $invoiceDiscountShare, ')
-          ..write('netTotal: $netTotal')
+          ..write('netTotal: $netTotal, ')
+          ..write('extraCostShare: $extraCostShare')
           ..write(')'))
         .toString();
   }
@@ -11701,6 +11907,17 @@ class $ExpensesTable extends Expenses with TableInfo<$ExpensesTable, Expense> {
       'REFERENCES users (id)',
     ),
   );
+  static const VerificationMeta _purchaseInvoiceIdMeta = const VerificationMeta(
+    'purchaseInvoiceId',
+  );
+  @override
+  late final GeneratedColumn<int> purchaseInvoiceId = GeneratedColumn<int>(
+    'purchase_invoice_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     createdAt,
@@ -11713,6 +11930,7 @@ class $ExpensesTable extends Expenses with TableInfo<$ExpensesTable, Expense> {
     description,
     status,
     createdBy,
+    purchaseInvoiceId,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -11792,6 +12010,15 @@ class $ExpensesTable extends Expenses with TableInfo<$ExpensesTable, Expense> {
         createdBy.isAcceptableOrUnknown(data['created_by']!, _createdByMeta),
       );
     }
+    if (data.containsKey('purchase_invoice_id')) {
+      context.handle(
+        _purchaseInvoiceIdMeta,
+        purchaseInvoiceId.isAcceptableOrUnknown(
+          data['purchase_invoice_id']!,
+          _purchaseInvoiceIdMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -11841,6 +12068,10 @@ class $ExpensesTable extends Expenses with TableInfo<$ExpensesTable, Expense> {
         DriftSqlType.int,
         data['${effectivePrefix}created_by'],
       ),
+      purchaseInvoiceId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}purchase_invoice_id'],
+      ),
     );
   }
 
@@ -11861,6 +12092,7 @@ class Expense extends DataClass implements Insertable<Expense> {
   final String? description;
   final String status;
   final int? createdBy;
+  final int? purchaseInvoiceId;
   const Expense({
     required this.createdAt,
     required this.updatedAt,
@@ -11872,6 +12104,7 @@ class Expense extends DataClass implements Insertable<Expense> {
     this.description,
     required this.status,
     this.createdBy,
+    this.purchaseInvoiceId,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -11889,6 +12122,9 @@ class Expense extends DataClass implements Insertable<Expense> {
     map['status'] = Variable<String>(status);
     if (!nullToAbsent || createdBy != null) {
       map['created_by'] = Variable<int>(createdBy);
+    }
+    if (!nullToAbsent || purchaseInvoiceId != null) {
+      map['purchase_invoice_id'] = Variable<int>(purchaseInvoiceId);
     }
     return map;
   }
@@ -11909,6 +12145,9 @@ class Expense extends DataClass implements Insertable<Expense> {
       createdBy: createdBy == null && nullToAbsent
           ? const Value.absent()
           : Value(createdBy),
+      purchaseInvoiceId: purchaseInvoiceId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(purchaseInvoiceId),
     );
   }
 
@@ -11928,6 +12167,7 @@ class Expense extends DataClass implements Insertable<Expense> {
       description: serializer.fromJson<String?>(json['description']),
       status: serializer.fromJson<String>(json['status']),
       createdBy: serializer.fromJson<int?>(json['createdBy']),
+      purchaseInvoiceId: serializer.fromJson<int?>(json['purchaseInvoiceId']),
     );
   }
   @override
@@ -11944,6 +12184,7 @@ class Expense extends DataClass implements Insertable<Expense> {
       'description': serializer.toJson<String?>(description),
       'status': serializer.toJson<String>(status),
       'createdBy': serializer.toJson<int?>(createdBy),
+      'purchaseInvoiceId': serializer.toJson<int?>(purchaseInvoiceId),
     };
   }
 
@@ -11958,6 +12199,7 @@ class Expense extends DataClass implements Insertable<Expense> {
     Value<String?> description = const Value.absent(),
     String? status,
     Value<int?> createdBy = const Value.absent(),
+    Value<int?> purchaseInvoiceId = const Value.absent(),
   }) => Expense(
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
@@ -11969,6 +12211,9 @@ class Expense extends DataClass implements Insertable<Expense> {
     description: description.present ? description.value : this.description,
     status: status ?? this.status,
     createdBy: createdBy.present ? createdBy.value : this.createdBy,
+    purchaseInvoiceId: purchaseInvoiceId.present
+        ? purchaseInvoiceId.value
+        : this.purchaseInvoiceId,
   );
   Expense copyWithCompanion(ExpensesCompanion data) {
     return Expense(
@@ -11986,6 +12231,9 @@ class Expense extends DataClass implements Insertable<Expense> {
           : this.description,
       status: data.status.present ? data.status.value : this.status,
       createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
+      purchaseInvoiceId: data.purchaseInvoiceId.present
+          ? data.purchaseInvoiceId.value
+          : this.purchaseInvoiceId,
     );
   }
 
@@ -12001,7 +12249,8 @@ class Expense extends DataClass implements Insertable<Expense> {
           ..write('method: $method, ')
           ..write('description: $description, ')
           ..write('status: $status, ')
-          ..write('createdBy: $createdBy')
+          ..write('createdBy: $createdBy, ')
+          ..write('purchaseInvoiceId: $purchaseInvoiceId')
           ..write(')'))
         .toString();
   }
@@ -12018,6 +12267,7 @@ class Expense extends DataClass implements Insertable<Expense> {
     description,
     status,
     createdBy,
+    purchaseInvoiceId,
   );
   @override
   bool operator ==(Object other) =>
@@ -12032,7 +12282,8 @@ class Expense extends DataClass implements Insertable<Expense> {
           other.method == this.method &&
           other.description == this.description &&
           other.status == this.status &&
-          other.createdBy == this.createdBy);
+          other.createdBy == this.createdBy &&
+          other.purchaseInvoiceId == this.purchaseInvoiceId);
 }
 
 class ExpensesCompanion extends UpdateCompanion<Expense> {
@@ -12046,6 +12297,7 @@ class ExpensesCompanion extends UpdateCompanion<Expense> {
   final Value<String?> description;
   final Value<String> status;
   final Value<int?> createdBy;
+  final Value<int?> purchaseInvoiceId;
   const ExpensesCompanion({
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -12057,6 +12309,7 @@ class ExpensesCompanion extends UpdateCompanion<Expense> {
     this.description = const Value.absent(),
     this.status = const Value.absent(),
     this.createdBy = const Value.absent(),
+    this.purchaseInvoiceId = const Value.absent(),
   });
   ExpensesCompanion.insert({
     this.createdAt = const Value.absent(),
@@ -12069,6 +12322,7 @@ class ExpensesCompanion extends UpdateCompanion<Expense> {
     this.description = const Value.absent(),
     this.status = const Value.absent(),
     this.createdBy = const Value.absent(),
+    this.purchaseInvoiceId = const Value.absent(),
   }) : date = Value(date),
        categoryId = Value(categoryId),
        amount = Value(amount);
@@ -12083,6 +12337,7 @@ class ExpensesCompanion extends UpdateCompanion<Expense> {
     Expression<String>? description,
     Expression<String>? status,
     Expression<int>? createdBy,
+    Expression<int>? purchaseInvoiceId,
   }) {
     return RawValuesInsertable({
       if (createdAt != null) 'created_at': createdAt,
@@ -12095,6 +12350,7 @@ class ExpensesCompanion extends UpdateCompanion<Expense> {
       if (description != null) 'description': description,
       if (status != null) 'status': status,
       if (createdBy != null) 'created_by': createdBy,
+      if (purchaseInvoiceId != null) 'purchase_invoice_id': purchaseInvoiceId,
     });
   }
 
@@ -12109,6 +12365,7 @@ class ExpensesCompanion extends UpdateCompanion<Expense> {
     Value<String?>? description,
     Value<String>? status,
     Value<int?>? createdBy,
+    Value<int?>? purchaseInvoiceId,
   }) {
     return ExpensesCompanion(
       createdAt: createdAt ?? this.createdAt,
@@ -12121,6 +12378,7 @@ class ExpensesCompanion extends UpdateCompanion<Expense> {
       description: description ?? this.description,
       status: status ?? this.status,
       createdBy: createdBy ?? this.createdBy,
+      purchaseInvoiceId: purchaseInvoiceId ?? this.purchaseInvoiceId,
     );
   }
 
@@ -12157,6 +12415,9 @@ class ExpensesCompanion extends UpdateCompanion<Expense> {
     if (createdBy.present) {
       map['created_by'] = Variable<int>(createdBy.value);
     }
+    if (purchaseInvoiceId.present) {
+      map['purchase_invoice_id'] = Variable<int>(purchaseInvoiceId.value);
+    }
     return map;
   }
 
@@ -12172,7 +12433,8 @@ class ExpensesCompanion extends UpdateCompanion<Expense> {
           ..write('method: $method, ')
           ..write('description: $description, ')
           ..write('status: $status, ')
-          ..write('createdBy: $createdBy')
+          ..write('createdBy: $createdBy, ')
+          ..write('purchaseInvoiceId: $purchaseInvoiceId')
           ..write(')'))
         .toString();
   }
@@ -31061,6 +31323,9 @@ typedef $$PurchaseInvoicesTableCreateCompanionBuilder =
       Value<String> status,
       Value<String?> notes,
       Value<int?> createdBy,
+      Value<int> extraCosts,
+      Value<bool> extraCostsOnSupplier,
+      Value<DateTime?> dueDate,
     });
 typedef $$PurchaseInvoicesTableUpdateCompanionBuilder =
     PurchaseInvoicesCompanion Function({
@@ -31078,6 +31343,9 @@ typedef $$PurchaseInvoicesTableUpdateCompanionBuilder =
       Value<String> status,
       Value<String?> notes,
       Value<int?> createdBy,
+      Value<int> extraCosts,
+      Value<bool> extraCostsOnSupplier,
+      Value<DateTime?> dueDate,
     });
 
 final class $$PurchaseInvoicesTableReferences
@@ -31252,6 +31520,21 @@ class $$PurchaseInvoicesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<int> get extraCosts => $composableBuilder(
+    column: $table.extraCosts,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get extraCostsOnSupplier => $composableBuilder(
+    column: $table.extraCostsOnSupplier,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get dueDate => $composableBuilder(
+    column: $table.dueDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$SuppliersTableFilterComposer get supplierId {
     final $$SuppliersTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -31419,6 +31702,21 @@ class $$PurchaseInvoicesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get extraCosts => $composableBuilder(
+    column: $table.extraCosts,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get extraCostsOnSupplier => $composableBuilder(
+    column: $table.extraCostsOnSupplier,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get dueDate => $composableBuilder(
+    column: $table.dueDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$SuppliersTableOrderingComposer get supplierId {
     final $$SuppliersTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -31514,6 +31812,19 @@ class $$PurchaseInvoicesTableAnnotationComposer
 
   GeneratedColumn<String> get notes =>
       $composableBuilder(column: $table.notes, builder: (column) => column);
+
+  GeneratedColumn<int> get extraCosts => $composableBuilder(
+    column: $table.extraCosts,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get extraCostsOnSupplier => $composableBuilder(
+    column: $table.extraCostsOnSupplier,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get dueDate =>
+      $composableBuilder(column: $table.dueDate, builder: (column) => column);
 
   $$SuppliersTableAnnotationComposer get supplierId {
     final $$SuppliersTableAnnotationComposer composer = $composerBuilder(
@@ -31663,6 +31974,9 @@ class $$PurchaseInvoicesTableTableManager
                 Value<String> status = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<int?> createdBy = const Value.absent(),
+                Value<int> extraCosts = const Value.absent(),
+                Value<bool> extraCostsOnSupplier = const Value.absent(),
+                Value<DateTime?> dueDate = const Value.absent(),
               }) => PurchaseInvoicesCompanion(
                 createdAt: createdAt,
                 updatedAt: updatedAt,
@@ -31678,6 +31992,9 @@ class $$PurchaseInvoicesTableTableManager
                 status: status,
                 notes: notes,
                 createdBy: createdBy,
+                extraCosts: extraCosts,
+                extraCostsOnSupplier: extraCostsOnSupplier,
+                dueDate: dueDate,
               ),
           createCompanionCallback:
               ({
@@ -31695,6 +32012,9 @@ class $$PurchaseInvoicesTableTableManager
                 Value<String> status = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<int?> createdBy = const Value.absent(),
+                Value<int> extraCosts = const Value.absent(),
+                Value<bool> extraCostsOnSupplier = const Value.absent(),
+                Value<DateTime?> dueDate = const Value.absent(),
               }) => PurchaseInvoicesCompanion.insert(
                 createdAt: createdAt,
                 updatedAt: updatedAt,
@@ -31710,6 +32030,9 @@ class $$PurchaseInvoicesTableTableManager
                 status: status,
                 notes: notes,
                 createdBy: createdBy,
+                extraCosts: extraCosts,
+                extraCostsOnSupplier: extraCostsOnSupplier,
+                dueDate: dueDate,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -31867,6 +32190,7 @@ typedef $$PurchaseInvoiceItemsTableCreateCompanionBuilder =
       Value<int> extraDiscountBp,
       Value<int> invoiceDiscountShare,
       Value<int> netTotal,
+      Value<int> extraCostShare,
     });
 typedef $$PurchaseInvoiceItemsTableUpdateCompanionBuilder =
     PurchaseInvoiceItemsCompanion Function({
@@ -31883,6 +32207,7 @@ typedef $$PurchaseInvoiceItemsTableUpdateCompanionBuilder =
       Value<int> extraDiscountBp,
       Value<int> invoiceDiscountShare,
       Value<int> netTotal,
+      Value<int> extraCostShare,
     });
 
 final class $$PurchaseInvoiceItemsTableReferences
@@ -32004,6 +32329,11 @@ class $$PurchaseInvoiceItemsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<int> get extraCostShare => $composableBuilder(
+    column: $table.extraCostShare,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$PurchaseInvoicesTableFilterComposer get invoiceId {
     final $$PurchaseInvoicesTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -32115,6 +32445,11 @@ class $$PurchaseInvoiceItemsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get extraCostShare => $composableBuilder(
+    column: $table.extraCostShare,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$PurchaseInvoicesTableOrderingComposer get invoiceId {
     final $$PurchaseInvoicesTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -32214,6 +32549,11 @@ class $$PurchaseInvoiceItemsTableAnnotationComposer
   GeneratedColumn<int> get netTotal =>
       $composableBuilder(column: $table.netTotal, builder: (column) => column);
 
+  GeneratedColumn<int> get extraCostShare => $composableBuilder(
+    column: $table.extraCostShare,
+    builder: (column) => column,
+  );
+
   $$PurchaseInvoicesTableAnnotationComposer get invoiceId {
     final $$PurchaseInvoicesTableAnnotationComposer composer = $composerBuilder(
       composer: this,
@@ -32310,6 +32650,7 @@ class $$PurchaseInvoiceItemsTableTableManager
                 Value<int> extraDiscountBp = const Value.absent(),
                 Value<int> invoiceDiscountShare = const Value.absent(),
                 Value<int> netTotal = const Value.absent(),
+                Value<int> extraCostShare = const Value.absent(),
               }) => PurchaseInvoiceItemsCompanion(
                 id: id,
                 invoiceId: invoiceId,
@@ -32324,6 +32665,7 @@ class $$PurchaseInvoiceItemsTableTableManager
                 extraDiscountBp: extraDiscountBp,
                 invoiceDiscountShare: invoiceDiscountShare,
                 netTotal: netTotal,
+                extraCostShare: extraCostShare,
               ),
           createCompanionCallback:
               ({
@@ -32340,6 +32682,7 @@ class $$PurchaseInvoiceItemsTableTableManager
                 Value<int> extraDiscountBp = const Value.absent(),
                 Value<int> invoiceDiscountShare = const Value.absent(),
                 Value<int> netTotal = const Value.absent(),
+                Value<int> extraCostShare = const Value.absent(),
               }) => PurchaseInvoiceItemsCompanion.insert(
                 id: id,
                 invoiceId: invoiceId,
@@ -32354,6 +32697,7 @@ class $$PurchaseInvoiceItemsTableTableManager
                 extraDiscountBp: extraDiscountBp,
                 invoiceDiscountShare: invoiceDiscountShare,
                 netTotal: netTotal,
+                extraCostShare: extraCostShare,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -34551,6 +34895,7 @@ typedef $$ExpensesTableCreateCompanionBuilder =
       Value<String?> description,
       Value<String> status,
       Value<int?> createdBy,
+      Value<int?> purchaseInvoiceId,
     });
 typedef $$ExpensesTableUpdateCompanionBuilder =
     ExpensesCompanion Function({
@@ -34564,6 +34909,7 @@ typedef $$ExpensesTableUpdateCompanionBuilder =
       Value<String?> description,
       Value<String> status,
       Value<int?> createdBy,
+      Value<int?> purchaseInvoiceId,
     });
 
 final class $$ExpensesTableReferences
@@ -34654,6 +35000,11 @@ class $$ExpensesTableFilterComposer
 
   ColumnFilters<String> get status => $composableBuilder(
     column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get purchaseInvoiceId => $composableBuilder(
+    column: $table.purchaseInvoiceId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -34753,6 +35104,11 @@ class $$ExpensesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get purchaseInvoiceId => $composableBuilder(
+    column: $table.purchaseInvoiceId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$ExpenseCategoriesTableOrderingComposer get categoryId {
     final $$ExpenseCategoriesTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -34834,6 +35190,11 @@ class $$ExpensesTableAnnotationComposer
 
   GeneratedColumn<String> get status =>
       $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<int> get purchaseInvoiceId => $composableBuilder(
+    column: $table.purchaseInvoiceId,
+    builder: (column) => column,
+  );
 
   $$ExpenseCategoriesTableAnnotationComposer get categoryId {
     final $$ExpenseCategoriesTableAnnotationComposer composer =
@@ -34921,6 +35282,7 @@ class $$ExpensesTableTableManager
                 Value<String?> description = const Value.absent(),
                 Value<String> status = const Value.absent(),
                 Value<int?> createdBy = const Value.absent(),
+                Value<int?> purchaseInvoiceId = const Value.absent(),
               }) => ExpensesCompanion(
                 createdAt: createdAt,
                 updatedAt: updatedAt,
@@ -34932,6 +35294,7 @@ class $$ExpensesTableTableManager
                 description: description,
                 status: status,
                 createdBy: createdBy,
+                purchaseInvoiceId: purchaseInvoiceId,
               ),
           createCompanionCallback:
               ({
@@ -34945,6 +35308,7 @@ class $$ExpensesTableTableManager
                 Value<String?> description = const Value.absent(),
                 Value<String> status = const Value.absent(),
                 Value<int?> createdBy = const Value.absent(),
+                Value<int?> purchaseInvoiceId = const Value.absent(),
               }) => ExpensesCompanion.insert(
                 createdAt: createdAt,
                 updatedAt: updatedAt,
@@ -34956,6 +35320,7 @@ class $$ExpensesTableTableManager
                 description: description,
                 status: status,
                 createdBy: createdBy,
+                purchaseInvoiceId: purchaseInvoiceId,
               ),
           withReferenceMapper: (p0) => p0
               .map(

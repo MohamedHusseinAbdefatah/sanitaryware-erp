@@ -2,6 +2,34 @@
 
 Versions follow `version:` in `pubspec.yaml` and `lib/core/version.dart`.
 
+## 1.8.0
+
+A fuller purchase invoice. The database upgrades in place (schema 14, new
+columns only) and keeps all existing data.
+
+- Each line shows the list price, the supplier's agreed discount, an extra
+  discount % for that line, and the final cost. The list version is kept on
+  the line even when the cost is typed, so stock knows its list.
+- A cost above the list price less the agreed discount is marked orange on
+  the line, with both discounts, and asked about before saving.
+- Transport and unloading: added to the goods' cost, split over the lines by
+  value after the invoice discount. "On the supplier's invoice" adds it to
+  what the supplier is owed; "paid to someone else" records a purchase
+  expense (category "نقل وتحميل مشتريات") tied to the invoice. Net profit does
+  not take that expense off again, since it is in the cost of the goods.
+- The supplier's invoice number already used for the same supplier is asked
+  about before saving.
+- Paid now can be a cheque (number, bank, due date). What is left can have a
+  due date; the dashboard lists supplier invoices due within a week and an
+  attention line for overdue ones.
+- "From a purchase order": fills the order's remaining lines at their locked
+  cost; quantities can be lowered (partial receipt) and other products added
+  to the same invoice. "From a price list": tick products of a list, with a
+  search and quantities, and add them at once.
+- The saved invoice shows each line's list price, discount and cost in stock,
+  the transport, and the due date. Cancelling it also cancels its pending
+  cheque and its transport expense.
+
 ## 1.7.0
 
 Customer categories and a simpler way to give selling discounts. The

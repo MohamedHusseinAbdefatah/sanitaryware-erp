@@ -204,13 +204,23 @@ final _content = <_B>[
   const _Page(),
   const _H('7. Buying'),
   const _L([
-    'Purchase invoice (admin): supplier, their invoice number, receiving place, lines, invoice discount, paid now. '
-        'With a supplier chosen the cost starts at the list price less that supplier\'s policy.',
-    'Each line makes a FIFO lot at its net cost: the invoice discount is split over the lines and lowers the cost.',
+    'Purchase invoice (admin): supplier, their invoice number, receiving place, lines, invoice discount, transport, '
+        'paid now. Each line shows the list price, the supplier\'s agreed discount, an extra % for that line, and the '
+        'final cost. A cost above the agreed one is marked orange and asked about before saving.',
+    'Many lines at once: "from a purchase order" fills the order\'s remaining lines at their locked cost (other '
+        'products can be added to the same invoice); "from a price list" ticks products of a list with quantities.',
+    'Each line makes a FIFO lot at its net cost: the invoice discount is split over the lines and lowers the cost; '
+        'transport and unloading are split by value and raise it. On the supplier\'s invoice they are owed to the '
+        'supplier; paid to someone else they become a purchase expense that net profit does not take off twice.',
+    'The supplier\'s invoice number used twice for the same supplier is asked about. Paid now: cash, bank or a '
+        'cheque. What is left can have a due date; the dashboard lists supplier invoices due within a week and '
+        'those overdue.',
     'Purchase orders: draft, approve (locks list, policy and cost, or takes a typed cost), receive in parts into a '
         'chosen place; each receipt is an ordinary purchase invoice. Advances to suppliers move to the invoice.',
-    'Cancel (admin, with a reason): empties the lots it made, place by place; refused if the goods were sold.',
+    'Cancel (admin, with a reason): empties the lots it made, place by place; refused if the goods were sold. Its '
+        'cheque and its transport expense are cancelled with it.',
   ]),
+  const _S('17_purchase_entry', 'Purchase invoice: list price, agreed discount, extra %, transport'),
   const _H('8. Returns, payments, balances and expenses'),
   const _L([
     'Sale return (anyone) back into a chosen place, keeping the price list version the goods left under; purchase '
