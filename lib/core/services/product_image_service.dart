@@ -20,7 +20,7 @@ class ProductImageService {
   /// Reads any common picture (JPEG, PNG, WebP, BMP, GIF), shrinks it and
   /// stores it as the product's photo, replacing the old one.
   Future<void> setImage(int productId, Uint8List raw, {required User user}) async {
-    if (!user.isAdmin) throw ValidationException('صور الأصناف للمدير فقط');
+    if (!user.can(Perm.catalog)) throw ValidationException('صور الأصناف لصلاحية الأصناف');
     final product = await (db.select(db.products)..where((t) => t.id.equals(productId))).getSingleOrNull();
     if (product == null) throw ValidationException('الصنف غير موجود');
     final (full, thumb, w, h) = shrink(raw);
@@ -61,7 +61,7 @@ class ProductImageService {
   }
 
   Future<void> remove(int productId, {required User user}) async {
-    if (!user.isAdmin) throw ValidationException('صور الأصناف للمدير فقط');
+    if (!user.can(Perm.catalog)) throw ValidationException('صور الأصناف لصلاحية الأصناف');
     await (db.delete(db.productImages)..where((t) => t.productId.equals(productId))).go();
     await AuditService(db).log(
         action: AuditAction.update, entity: 'product', entityId: productId, userId: user.id, details: 'حذف صورة الصنف');

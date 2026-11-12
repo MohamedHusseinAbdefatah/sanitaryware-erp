@@ -2,6 +2,45 @@
 
 Versions follow `version:` in `pubspec.yaml` and `lib/core/version.dart`.
 
+## 2.1.0
+
+Finishing round: new screens, roles, stock count and a full reports page.
+No database change.
+
+- Fix: the period closing tab loaded forever when no period was closed yet.
+- New invoice: "Browse products" (F3) with photos, categories, brands, stock
+  and list price; each tap adds the product or one more of it, the count
+  shows on the photo. An empty invoice offers the best sellers in one tap.
+  The customer's balance shows beside their name, red when the invoice
+  would pass the credit limit.
+- Customers and suppliers lists: figures on top (active, owed, over limit,
+  year's sales or purchases), filters with counts (owing, over limit, credit,
+  stopped), category filter, sorting by balance, last dealing or year's
+  total, avatar and phone in one cell, last purchase, credit-limit usage
+  bar, quick actions per row, and a card view.
+- Products: figures (active, in stock, under minimum, without a price in
+  force), filters (in stock, low, out, no price, stopped), category and
+  brand menus, list price and stock state on each row, and a photo card view.
+- Inventory: figures (items, value, low, old-price stock, sold out), filters,
+  places as chips, a new/old price bar per item, sellable stock.
+- Price lists: page header, tabs with icons, figures (lists in force, brands,
+  priced products, rows waiting review), filters by state, search, and cards
+  with the state, brand, VAT state and a matched/review bar.
+- Reports: grouped catalogue with search and descriptions; key figures, a
+  chart view and the table for each report. New reports: monthly sales,
+  sales by category, by brand and by user, profit by product and by
+  customer, projects, purchases by supplier and by product, slow-moving
+  stock.
+- Roles (blueprint 9.3): owner, accountant, purchasing, warehouse, sales /
+  cashier and read-only, each with its own screens and rights; cost and
+  profit only for owner, accountant and purchasing; approvals and reopening
+  a closed period stay with the owner; read-only users record nothing.
+- Stock count (blueprint 5.1): count one place, see each difference and its
+  value, and post all differences as adjustments in one step with a reason;
+  the books follow.
+- The Arabic user guide covers accounting, projects, roles and the new
+  screens.
+
 ## 2.0.0
 
 Accounting, projects, financial statements and charts. Database schema 17;

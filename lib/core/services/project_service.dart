@@ -167,7 +167,7 @@ class ProjectService {
   final AppDatabase db;
 
   void _admin(User user) {
-    if (!user.isAdmin) throw ValidationException('المشروعات للمدير فقط');
+    if (!user.can(Perm.projects)) throw ValidationException('المشروعات لصلاحية المشروعات');
   }
 
   String? _blank(String? s) => (s ?? '').trim().isEmpty ? null : s!.trim();

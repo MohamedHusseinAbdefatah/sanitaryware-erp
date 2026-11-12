@@ -262,7 +262,7 @@ class LedgerService {
     String? note,
     required User user,
   }) async {
-    if (!user.isAdmin) throw ValidationException('دليل الحسابات للمدير فقط');
+    if (!user.can(Perm.accounts)) throw ValidationException('دليل الحسابات لصلاحية المحاسبة');
     if (code.trim().isEmpty || name.trim().isEmpty) throw ValidationException('اكتب الكود والاسم');
     final parent = await (db.select(db.accounts)..where((a) => a.id.equals(parentId))).getSingle();
     if (!parent.isGroup) throw ValidationException('الحساب الأب يجب أن يكون حساباً رئيسياً');
@@ -281,7 +281,7 @@ class LedgerService {
   }
 
   Future<void> renameAccount(int id, String name, {required User user}) async {
-    if (!user.isAdmin) throw ValidationException('دليل الحسابات للمدير فقط');
+    if (!user.can(Perm.accounts)) throw ValidationException('دليل الحسابات لصلاحية المحاسبة');
     if (name.trim().isEmpty) throw ValidationException('اكتب الاسم');
     await (db.update(db.accounts)..where((a) => a.id.equals(id)))
         .write(AccountsCompanion(nameAr: Value(name.trim()), updatedAt: Value(DateTime.now())));
@@ -531,7 +531,7 @@ class LedgerService {
     required User user,
   }) {
     return db.transaction(() async {
-      if (!user.isAdmin) throw ValidationException('القيود اليدوية للمدير فقط');
+      if (!user.can(Perm.accounts)) throw ValidationException('القيود اليدوية لصلاحية المحاسبة');
       if (memo.trim().isEmpty) throw ValidationException('اكتب بيان القيد');
       final used = lines.where((l) => l.debit != 0 || l.credit != 0).toList();
       if (used.length < 2) throw ValidationException('القيد يحتاج سطرين على الأقل');
@@ -587,7 +587,7 @@ class LedgerService {
   /// voided by cancelling their document.
   Future<void> voidManual(int entryId, {required String reason, required User user}) {
     return db.transaction(() async {
-      if (!user.isAdmin) throw ValidationException('القيود اليدوية للمدير فقط');
+      if (!user.can(Perm.accounts)) throw ValidationException('القيود اليدوية لصلاحية المحاسبة');
       if (reason.trim().isEmpty) throw ValidationException('سبب الإلغاء مطلوب');
       final e = await (db.select(db.journalEntries)..where((t) => t.id.equals(entryId))).getSingle();
       if (e.source != 'manual') throw ValidationException('هذا القيد من مستند؛ يُلغى بإلغاء المستند نفسه');
@@ -620,7 +620,7 @@ class LedgerService {
   /// Closes the books up to the end of [day]: nothing dated on or before it
   /// can be added or cancelled. Admin only.
   Future<void> closeUntil(DateTime day, {required User user}) async {
-    if (!user.isAdmin) throw ValidationException('إقفال الفترات للمدير فقط');
+    if (!user.can(Perm.accounts)) throw ValidationException('إقفال الفترات لصلاحية المحاسبة');
     final end = DateTime(day.year, day.month, day.day, 23, 59, 59);
     final before = await lockedUntil();
     if (before != null && !end.isAfter(before)) {

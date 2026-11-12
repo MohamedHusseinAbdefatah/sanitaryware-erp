@@ -64,7 +64,7 @@ class _StockByPriceDialogState extends ConsumerState<_StockByPriceDialog> {
   @override
   Widget build(BuildContext context) {
     final p = widget.row.product;
-    final isAdmin = ref.watch(currentUserProvider)?.isAdmin ?? false;
+    final isAdmin = ref.watch(currentUserProvider)?.seesCost ?? false;
     final scheme = Theme.of(context).colorScheme;
     return AlertDialog(
       title: Text('المخزون حسب السعر: ${p.code} — ${p.nameAr}'),

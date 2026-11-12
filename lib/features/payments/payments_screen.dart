@@ -44,7 +44,7 @@ class PaymentsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isAdmin = ref.watch(currentUserProvider)?.isAdmin ?? false;
+    final isAdmin = ref.watch(currentUserProvider)?.can(Perm.payOut) ?? false;
     return DefaultTabController(
       length: isAdmin ? 3 : 2,
       child: Column(
@@ -107,7 +107,7 @@ class _PaymentList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isAdmin = ref.watch(currentUserProvider)?.isAdmin ?? false;
+    final isAdmin = ref.watch(currentUserProvider)?.can(Perm.payOut) ?? false;
     final rows = ref.watch(_paymentsProvider(direction));
     return rows.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -250,7 +250,7 @@ class _ChequeListState extends ConsumerState<_ChequeList> {
 
   @override
   Widget build(BuildContext context) {
-    final isAdmin = ref.watch(currentUserProvider)?.isAdmin ?? false;
+    final isAdmin = ref.watch(currentUserProvider)?.can(Perm.payOut) ?? false;
     final rows = ref.watch(_chequesProvider(_pendingOnly));
     final scheme = Theme.of(context).colorScheme;
     final today = DateTime.now();

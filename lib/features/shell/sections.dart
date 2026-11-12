@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/auth/auth_service.dart';
+import '../../core/db/database.dart';
 import '../../core/l10n/strings.dart';
 import '../../core/services/doc_types.dart';
 import '../dashboard/dashboard_screen.dart';
@@ -39,8 +41,14 @@ class AppSection {
     required this.icon,
     required this.builder,
     this.adminOnly = false,
+    this.roles = const {},
     this.routes = const [],
   });
+
+  /// Besides the owner, the roles that may open an [adminOnly] section.
+  final Set<String> roles;
+
+  bool allows(User user) => !adminOnly || user.isAdmin || roles.contains(user.role);
 
   final String path;
   final String title;
@@ -102,6 +110,7 @@ final appSections = <AppSection>[
     title: Strings.suppliers,
     icon: Icons.local_shipping_outlined,
     adminOnly: true,
+    roles: {UserRole.accountant, UserRole.purchasing, UserRole.viewer},
     builder: (_) => const SuppliersScreen(),
     routes: [
       GoRoute(
@@ -146,6 +155,7 @@ final appSections = <AppSection>[
     title: Strings.purchases,
     icon: Icons.shopping_cart_outlined,
     adminOnly: true,
+    roles: {UserRole.accountant, UserRole.purchasing, UserRole.viewer},
     builder: (_) => const PurchaseListScreen(),
     routes: [
       GoRoute(
@@ -172,6 +182,7 @@ final appSections = <AppSection>[
     title: 'قوائم الأسعار',
     icon: Icons.price_change_outlined,
     adminOnly: true,
+    roles: {UserRole.purchasing, UserRole.viewer},
     builder: (_) => const PriceListsScreen(),
   ),
   AppSection(
@@ -203,6 +214,7 @@ final appSections = <AppSection>[
     title: Strings.expenses,
     icon: Icons.money_off_outlined,
     adminOnly: true,
+    roles: {UserRole.accountant, UserRole.viewer},
     builder: (_) => const ExpensesScreen(),
   ),
   AppSection(
@@ -210,6 +222,7 @@ final appSections = <AppSection>[
     title: 'المشروعات',
     icon: Icons.apartment_outlined,
     adminOnly: true,
+    roles: {UserRole.accountant, UserRole.purchasing, UserRole.viewer},
     builder: (_) => const ProjectsScreen(),
     routes: [
       GoRoute(
@@ -228,6 +241,7 @@ final appSections = <AppSection>[
     title: 'المحاسبة',
     icon: Icons.account_balance_outlined,
     adminOnly: true,
+    roles: {UserRole.accountant, UserRole.viewer},
     builder: (_) => const _AccountingEntry(),
     routes: [
       GoRoute(
@@ -246,6 +260,7 @@ final appSections = <AppSection>[
     title: Strings.reports,
     icon: Icons.bar_chart_outlined,
     adminOnly: true,
+    roles: {UserRole.accountant, UserRole.purchasing, UserRole.viewer},
     builder: (_) => const ReportsScreen(),
   ),
   AppSection(

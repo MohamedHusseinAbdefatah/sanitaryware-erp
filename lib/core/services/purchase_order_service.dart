@@ -65,7 +65,7 @@ class PurchaseOrderService {
   final AppDatabase db;
 
   void _admin(User user) {
-    if (!user.isAdmin) throw ValidationException('أوامر الشراء للمدير فقط');
+    if (!user.can(Perm.purchase)) throw ValidationException('أوامر الشراء لصلاحية المشتريات');
   }
 
   Future<PurchaseOrder> _order(int id) async {

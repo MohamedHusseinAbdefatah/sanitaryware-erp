@@ -32,8 +32,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       final section = appSections
           .where((s) => location == s.path || location.startsWith('${s.path}/'))
           .firstOrNull;
-      if (section != null && section.adminOnly && !user.isAdmin) {
+      if (section != null && !section.allows(user)) {
         return appSections.first.path;
+      }
+      // A read-only user opens lists and records, never a new document.
+      if (user.readOnly && location.split('?').first.endsWith('/new')) {
+        return section?.path ?? appSections.first.path;
       }
       return null;
     },

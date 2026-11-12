@@ -44,7 +44,7 @@ class SupplierAdvanceService {
   final AppDatabase db;
 
   void _admin(User user) {
-    if (!user.isAdmin) throw ValidationException('الدفعات المقدمة للمدير فقط');
+    if (!user.can(Perm.purchase)) throw ValidationException('الدفعات المقدمة لصلاحية المشتريات');
   }
 
   /// The versions of [brandId] in force on [day] (one per list type).

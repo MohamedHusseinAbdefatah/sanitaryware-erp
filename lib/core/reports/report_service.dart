@@ -4,6 +4,7 @@ import '../db/database.dart';
 import '../quantity.dart';
 import '../services/balance_service.dart';
 import '../services/doc_types.dart';
+import '../services/project_service.dart';
 import '../services/purchase_service.dart' show purchaseCostsCategoryName;
 import '../services/query_helpers.dart';
 import '../services/settings_service.dart';
@@ -11,33 +12,68 @@ import '../services/stock_price_service.dart';
 import '../services/stock_service.dart';
 import 'report_table.dart';
 
-enum ReportKind {
-  dailySales('المبيعات اليومية', dated: true),
-  salesByCustomer('المبيعات حسب العميل', dated: true),
-  salesByProduct('المبيعات حسب الصنف', dated: true),
-  profit('الأرباح', dated: true),
-  expensesByCategory('المصروفات حسب البند', dated: true),
-  chequesDue('الشيكات المستحقة', dated: true),
-  stockLevels('أرصدة المخزن', byCategory: true),
-  lowStock('الأصناف تحت حد الطلب'),
-  stockValuation('تقييم المخزون', byCategory: true),
-  stockByPrice('المخزون بالسعر القديم والجديد', byCategory: true),
-  stockByPlace('المخزون حسب المكان', byCategory: true),
-  purchasePlan('تخطيط الشراء'),
-  customersOwing('مديونيات العملاء'),
-  supplierBalances('أرصدة الموردين');
+/// The groups the reports page lists its reports under.
+abstract final class ReportGroup {
+  static const sales = 'المبيعات';
+  static const profit = 'الأرباح';
+  static const purchases = 'المشتريات';
+  static const stock = 'المخزون';
+  static const parties = 'العملاء والموردون';
+  static const money = 'المصروفات والشيكات';
+  static const all = [sales, profit, purchases, stock, parties, money];
+}
 
-  const ReportKind(this.title, {this.dated = false, this.byCategory = false});
+enum ReportKind {
+  dailySales('المبيعات اليومية', ReportGroup.sales, 'كل يوم: عدد الفواتير والمبيعات والمرتجعات والصافي',
+      dated: true, chart: ReportChart.trend),
+  monthlySales('المبيعات الشهرية', ReportGroup.sales, 'اتجاه المبيعات ومجمل الربح والهامش شهراً بشهر',
+      dated: true, chart: ReportChart.trend),
+  salesByCustomer('المبيعات حسب العميل', ReportGroup.sales, 'أكبر العملاء شراءً في الفترة', dated: true),
+  salesByProduct('المبيعات حسب الصنف', ReportGroup.sales, 'الكميات والقيم المباعة والمرتجعة لكل صنف', dated: true),
+  salesByCategory('المبيعات حسب التصنيف', ReportGroup.sales, 'خلاطات، أحواض، مواسير... وربح كل تصنيف', dated: true),
+  salesByBrand('المبيعات حسب الماركة', ReportGroup.sales, 'مبيعات وربح كل ماركة', dated: true),
+  salesByUser('المبيعات حسب المستخدم', ReportGroup.sales, 'فواتير كل كاشير أو بائع وما حصّله', dated: true),
+  profit('الأرباح', ReportGroup.profit, 'من المبيعات إلى صافي الربح بعد التكلفة الفعلية والمصروفات',
+      dated: true, chart: ReportChart.none),
+  profitByProduct('ربحية الأصناف', ReportGroup.profit, 'ربح وهامش كل صنف بالتكلفة الفعلية', dated: true),
+  profitByCustomer('ربحية العملاء', ReportGroup.profit, 'أي العملاء يحقق ربحاً أكبر وليس مبيعات فقط', dated: true),
+  projects('ربحية المشروعات', ReportGroup.profit, 'التعاقد والمفوتر والمحصّل والربح لكل مشروع'),
+  purchasesBySupplier('المشتريات حسب المورد', ReportGroup.purchases, 'حجم التعامل مع كل مورد والمرتجعات', dated: true),
+  purchasesByProduct('المشتريات حسب الصنف', ReportGroup.purchases, 'الكميات المشتراة ومتوسط تكلفة الوحدة', dated: true),
+  purchasePlan('تخطيط الشراء', ReportGroup.purchases, 'ما يجب طلبه الآن: تحت الحد ومطلوب للعملاء'),
+  stockLevels('أرصدة المخزن', ReportGroup.stock, 'رصيد كل صنف', byCategory: true, chart: ReportChart.none),
+  lowStock('الأصناف تحت حد الطلب', ReportGroup.stock, 'ما نفد أو قارب على النفاد', chart: ReportChart.none),
+  stockValuation('تقييم المخزون', ReportGroup.stock, 'قيمة المخزون بالتكلفة الفعلية', byCategory: true),
+  stockByPrice('المخزون بالسعر القديم والجديد', ReportGroup.stock, 'كم من المخزون دخل بأسعار قوائم قديمة',
+      byCategory: true, chart: ReportChart.none),
+  stockByPlace('المخزون حسب المكان', ReportGroup.stock, 'المعرض والمخزن وأي مكان آخر',
+      byCategory: true, chart: ReportChart.none),
+  slowMoving('المخزون الراكد', ReportGroup.stock, 'أصناف لم تُبع منذ 90 يوماً: أموال متوقفة'),
+  customersOwing('مديونيات العملاء', ReportGroup.parties, 'من عليه فلوس ومن تجاوز حد الائتمان'),
+  supplierBalances('أرصدة الموردين', ReportGroup.parties, 'المستحق لكل مورد'),
+  chequesDue('الشيكات المستحقة', ReportGroup.money, 'الشيكات الواردة والصادرة حسب تاريخ الاستحقاق',
+      dated: true, chart: ReportChart.none),
+  expensesByCategory('المصروفات حسب البند', ReportGroup.money, 'إيجار، كهرباء، رواتب، نقل...', dated: true);
+
+  const ReportKind(this.title, this.group, this.description,
+      {this.dated = false, this.byCategory = false, this.chart = ReportChart.ranking});
 
   final String title;
+  final String group;
+  final String description;
 
   /// Takes a date range (otherwise it is "as of now").
   final bool dated;
 
   /// Can be limited to one product category.
   final bool byCategory;
+
+  /// How the page draws it above the table.
+  final ReportChart chart;
 }
 
+/// A chart above a report: bars over time, or the top rows ranked.
+enum ReportChart { none, trend, ranking }
 /// The numbers on the dashboard.
 class DashboardSummary {
   const DashboardSummary({
@@ -132,6 +168,16 @@ class ReportService {
       ReportKind.purchasePlan => purchasePlan(),
       ReportKind.customersOwing => customersOwing(),
       ReportKind.supplierBalances => supplierBalances(),
+      ReportKind.monthlySales => monthlySales(from: from, to: to),
+      ReportKind.salesByCategory => salesByCategory(from: from, to: to),
+      ReportKind.salesByBrand => salesByBrand(from: from, to: to),
+      ReportKind.salesByUser => salesByUser(from: from, to: to),
+      ReportKind.profitByProduct => profitByProduct(from: from, to: to),
+      ReportKind.profitByCustomer => profitByCustomer(from: from, to: to),
+      ReportKind.projects => projectsReport(),
+      ReportKind.purchasesBySupplier => purchasesBySupplier(from: from, to: to),
+      ReportKind.purchasesByProduct => purchasesByProduct(from: from, to: to),
+      ReportKind.slowMoving => slowMoving(),
     };
   }
 
@@ -681,6 +727,344 @@ class ReportService {
         ReportColumn('الرصيد', ColumnType.money, sum: true),
       ],
       rows: list,
+    );
+  }
+
+  // ------------------------------------------------------ analysis (2.1)
+
+  String _pct(int part, int whole) => whole == 0 ? '—' : '${(part * 100 / whole).toStringAsFixed(1)}%';
+
+  /// Every sold line in the period, net of returns, with its exact cost:
+  /// (product, invoice, net value, cost, qty), returns as negative lines.
+  Future<List<({int productId, SalesInvoice? invoice, int customerKey, int value, int cost, int qty})>> _soldLines(
+      DateTime? from, DateTime? to) async {
+    final invoices = {for (final s in await _sales(from, to)) s.id: s};
+    final out = <({int productId, SalesInvoice? invoice, int customerKey, int value, int cost, int qty})>[];
+    if (invoices.isNotEmpty) {
+      for (final i in await (db.select(db.salesInvoiceItems)..where((t) => t.invoiceId.isIn(invoices.keys))).get()) {
+        final inv = invoices[i.invoiceId]!;
+        out.add((
+          productId: i.productId,
+          invoice: inv,
+          customerKey: inv.customerId ?? 0,
+          value: i.netTotal,
+          cost: i.costTotal,
+          qty: i.qty,
+        ));
+      }
+    }
+    final returns = {for (final r in await _returns(ReturnKind.sale, from, to)) r.id: r};
+    if (returns.isNotEmpty) {
+      final costs = <(int, int), int>{};
+      for (final m in await (db.select(db.stockMovements)
+            ..where((t) =>
+                t.type.equals(StockMovementType.saleReturn) &
+                t.refType.equals(RefType.returnDoc) &
+                t.refId.isIn(returns.keys)))
+          .get()) {
+        costs[(m.refId!, m.productId)] = (costs[(m.refId!, m.productId)] ?? 0) + lineAmount(m.qty, m.unitCost);
+      }
+      for (final i in await (db.select(db.returnItems)..where((t) => t.returnId.isIn(returns.keys))).get()) {
+        out.add((
+          productId: i.productId,
+          invoice: null,
+          customerKey: returns[i.returnId]!.partyId ?? 0,
+          value: -i.lineTotal,
+          cost: -(costs.remove((i.returnId, i.productId)) ?? 0),
+          qty: -i.qty,
+        ));
+      }
+    }
+    return out;
+  }
+
+  Future<ReportTable> monthlySales({DateTime? from, DateTime? to}) async {
+    final lines = await _soldLines(from, to);
+    final invoices = await _sales(from, to);
+    final returns = await _returns(ReturnKind.sale, from, to);
+    final m = <DateTime, List<int>>{}; // [invoices, sales, returns, cost]
+    List<int> at(DateTime d) => m.putIfAbsent(DateTime(d.year, d.month), () => [0, 0, 0, 0]);
+    for (final s in invoices) {
+      at(s.date)[0]++;
+      at(s.date)[1] += s.total;
+    }
+    for (final r in returns) {
+      at(r.date)[2] += r.total;
+    }
+    final returnDates = {for (final r in returns) r.id: r.date};
+    final soldDates = {for (final s in invoices) s.id: s.date};
+    for (final l in lines) {
+      final d = l.invoice != null ? soldDates[l.invoice!.id] : null;
+      if (d != null) at(d)[3] += l.cost;
+    }
+    // Returned cost: spread by the return's month.
+    for (final mv in returns.isEmpty
+        ? const <StockMovement>[]
+        : await (db.select(db.stockMovements)
+              ..where((t) =>
+                  t.type.equals(StockMovementType.saleReturn) &
+                  t.refType.equals(RefType.returnDoc) &
+                  t.refId.isIn(returns.map((r) => r.id))))
+            .get()) {
+      at(returnDates[mv.refId]!)[3] -= lineAmount(mv.qty, mv.unitCost);
+    }
+    final months = m.keys.toList()..sort();
+    return ReportTable(
+      title: ReportKind.monthlySales.title,
+      columns: const [
+        ReportColumn('الشهر', ColumnType.text),
+        ReportColumn('عدد الفواتير', ColumnType.count, sum: true),
+        ReportColumn('المبيعات', ColumnType.money, sum: true),
+        ReportColumn('المرتجعات', ColumnType.money, sum: true),
+        ReportColumn('الصافي', ColumnType.money, sum: true),
+        ReportColumn('مجمل الربح', ColumnType.money, sum: true),
+        ReportColumn('الهامش', ColumnType.text),
+      ],
+      rows: [
+        for (final d in months)
+          [
+            '${d.year}/${d.month.toString().padLeft(2, '0')}',
+            m[d]![0],
+            m[d]![1],
+            m[d]![2],
+            m[d]![1] - m[d]![2],
+            m[d]![1] - m[d]![2] - m[d]![3],
+            _pct(m[d]![1] - m[d]![2] - m[d]![3], m[d]![1] - m[d]![2]),
+          ],
+      ],
+    );
+  }
+
+  Future<ReportTable> _groupedProfit(
+    ReportKind kind,
+    String keyTitle,
+    DateTime? from,
+    DateTime? to,
+    String Function(({int productId, SalesInvoice? invoice, int customerKey, int value, int cost, int qty}) l) keyOf, {
+    bool withQty = false,
+    String? subtitle,
+  }) async {
+    final v = <String, List<int>>{}; // [qty, value, cost]
+    for (final l in await _soldLines(from, to)) {
+      final x = v.putIfAbsent(keyOf(l), () => [0, 0, 0]);
+      x[0] += l.qty;
+      x[1] += l.value;
+      x[2] += l.cost;
+    }
+    final rows = [
+      for (final e in v.entries)
+        [
+          e.key,
+          if (withQty) e.value[0],
+          e.value[1],
+          e.value[2],
+          e.value[1] - e.value[2],
+          _pct(e.value[1] - e.value[2], e.value[1]),
+        ],
+    ]..sort((a, b) => (b[withQty ? 2 : 1] as int).compareTo(a[withQty ? 2 : 1] as int));
+    return ReportTable(
+      title: kind.title,
+      subtitle: subtitle ?? 'الصافي بعد المرتجعات وبعد توزيع خصم الفاتورة؛ التكلفة الفعلية لما بيع',
+      columns: [
+        ReportColumn(keyTitle, ColumnType.text),
+        if (withQty) const ReportColumn('الكمية', ColumnType.qty),
+        const ReportColumn('صافي المبيعات', ColumnType.money, sum: true),
+        const ReportColumn('التكلفة', ColumnType.money, sum: true),
+        const ReportColumn('الربح', ColumnType.money, sum: true),
+        const ReportColumn('الهامش', ColumnType.text),
+      ],
+      rows: rows,
+    );
+  }
+
+  Future<ReportTable> salesByCategory({DateTime? from, DateTime? to}) async {
+    final products = {for (final p in await db.select(db.products).get()) p.id: p};
+    final cats = {for (final c in await db.select(db.categories).get()) c.id: c.nameAr};
+    return _groupedProfit(ReportKind.salesByCategory, 'التصنيف', from, to,
+        (l) => cats[products[l.productId]?.categoryId] ?? 'بدون تصنيف');
+  }
+
+  Future<ReportTable> salesByBrand({DateTime? from, DateTime? to}) async {
+    final products = {for (final p in await db.select(db.products).get()) p.id: p};
+    final brands = {for (final b in await db.select(db.brands).get()) b.id: b.name};
+    return _groupedProfit(ReportKind.salesByBrand, 'الماركة', from, to,
+        (l) => brands[products[l.productId]?.brandId] ?? 'بدون ماركة');
+  }
+
+  Future<ReportTable> profitByProduct({DateTime? from, DateTime? to}) async {
+    final products = {for (final p in await db.select(db.products).get()) p.id: p};
+    return _groupedProfit(ReportKind.profitByProduct, 'الصنف', from, to,
+        (l) => '${products[l.productId]?.code ?? ''} — ${products[l.productId]?.nameAr ?? ''}',
+        withQty: true);
+  }
+
+  Future<ReportTable> profitByCustomer({DateTime? from, DateTime? to}) async {
+    final names = {for (final c in await db.select(db.customers).get()) c.id: c.name};
+    return _groupedProfit(ReportKind.profitByCustomer, 'العميل', from, to,
+        (l) => l.customerKey == 0 ? 'نقدي' : names[l.customerKey] ?? '');
+  }
+
+  Future<ReportTable> salesByUser({DateTime? from, DateTime? to}) async {
+    final users = {for (final u in await db.select(db.users).get()) u.id: u.fullName};
+    final v = <String, List<int>>{}; // [count, total, paid at sale]
+    for (final s in await _sales(from, to)) {
+      final x = v.putIfAbsent(users[s.createdBy] ?? 'غير معروف', () => [0, 0, 0]);
+      x[0]++;
+      x[1] += s.total;
+      x[2] += s.paidAmount;
+    }
+    return ReportTable(
+      title: ReportKind.salesByUser.title,
+      columns: const [
+        ReportColumn('المستخدم', ColumnType.text),
+        ReportColumn('عدد الفواتير', ColumnType.count, sum: true),
+        ReportColumn('المبيعات', ColumnType.money, sum: true),
+        ReportColumn('المحصّل عند البيع', ColumnType.money, sum: true),
+        ReportColumn('متوسط الفاتورة', ColumnType.money),
+      ],
+      rows: [
+        for (final e in v.entries) [e.key, e.value[0], e.value[1], e.value[2], e.value[1] ~/ e.value[0]],
+      ]..sort((a, b) => (b[2] as int).compareTo(a[2] as int)),
+    );
+  }
+
+  Future<List<PurchaseInvoice>> _purchases(DateTime? from, DateTime? to) => db.customSelect(
+        "SELECT * FROM purchase_invoices WHERE status = '${DocStatus.active}' "
+        'AND (? IS NULL OR date >= ?) AND (? IS NULL OR date < ?) ORDER BY date, id',
+        variables: dateRangeVariables(from, to),
+      ).map((r) => db.purchaseInvoices.map(r.data)).get();
+
+  Future<ReportTable> purchasesBySupplier({DateTime? from, DateTime? to}) async {
+    final names = {for (final s in await db.select(db.suppliers).get()) s.id: s.name};
+    final v = <int, List<int>>{}; // [count, total, returns]
+    for (final p in await _purchases(from, to)) {
+      final x = v.putIfAbsent(p.supplierId, () => [0, 0, 0]);
+      x[0]++;
+      x[1] += p.total;
+    }
+    for (final r in await _returns(ReturnKind.purchase, from, to)) {
+      if (r.partyId != null) v.putIfAbsent(r.partyId!, () => [0, 0, 0])[2] += r.total;
+    }
+    return ReportTable(
+      title: ReportKind.purchasesBySupplier.title,
+      columns: const [
+        ReportColumn('المورد', ColumnType.text),
+        ReportColumn('عدد الفواتير', ColumnType.count, sum: true),
+        ReportColumn('المشتريات', ColumnType.money, sum: true),
+        ReportColumn('المرتجعات', ColumnType.money, sum: true),
+        ReportColumn('الصافي', ColumnType.money, sum: true),
+      ],
+      rows: [
+        for (final e in v.entries) [names[e.key] ?? '', e.value[0], e.value[1], e.value[2], e.value[1] - e.value[2]],
+      ]..sort((a, b) => (b[4] as int).compareTo(a[4] as int)),
+    );
+  }
+
+  Future<ReportTable> purchasesByProduct({DateTime? from, DateTime? to}) async {
+    final ids = [for (final p in await _purchases(from, to)) p.id];
+    final products = {for (final p in await db.select(db.products).get()) p.id: p};
+    final v = <int, List<int>>{}; // [qty, value]
+    if (ids.isNotEmpty) {
+      for (final i in await (db.select(db.purchaseInvoiceItems)..where((t) => t.invoiceId.isIn(ids))).get()) {
+        final x = v.putIfAbsent(i.productId, () => [0, 0]);
+        x[0] += i.qty;
+        x[1] += i.netTotal + i.extraCostShare;
+      }
+    }
+    return ReportTable(
+      title: ReportKind.purchasesByProduct.title,
+      subtitle: 'القيمة بعد الخصم وشاملة مصاريف الشراء الموزعة',
+      columns: const [
+        ReportColumn('الكود', ColumnType.text),
+        ReportColumn('الصنف', ColumnType.text),
+        ReportColumn('الكمية', ColumnType.qty),
+        ReportColumn('القيمة', ColumnType.money, sum: true),
+        ReportColumn('متوسط تكلفة الوحدة', ColumnType.money),
+      ],
+      rows: [
+        for (final e in v.entries)
+          [
+            products[e.key]?.code ?? '',
+            products[e.key]?.nameAr ?? '',
+            e.value[0],
+            e.value[1],
+            e.value[0] == 0 ? 0 : (e.value[1] * qtyScale / e.value[0]).round(),
+          ],
+      ]..sort((a, b) => (b[3] as int).compareTo(a[3] as int)),
+    );
+  }
+
+  /// Stock that has not sold for [days] days (or never): money sitting still.
+  Future<ReportTable> slowMoving({int days = 90}) async {
+    final lastSale = <int, DateTime>{};
+    for (final r in await db.customSelect(
+      'SELECT i.product_id AS p, MAX(s.date) AS d FROM sales_invoice_items i '
+      "JOIN sales_invoices s ON s.id = i.invoice_id WHERE s.status = 'active' GROUP BY i.product_id",
+    ).get()) {
+      lastSale[r.read<int>('p')] = DateTime.fromMillisecondsSinceEpoch(r.read<int>('d') * 1000);
+    }
+    final cutoff = DateTime.now().subtract(Duration(days: days));
+    final rows = <List<Object?>>[];
+    for (final s in await _stockRows()) {
+      if (s.stock <= 0) continue;
+      final last = lastSale[s.productId];
+      if (last != null && last.isAfter(cutoff)) continue;
+      rows.add([
+        s.code,
+        s.name,
+        s.stock,
+        lineAmount(s.stock, s.cost),
+        last,
+        last == null ? 'لم يُبع' : '${DateTime.now().difference(last).inDays} يوم',
+      ]);
+    }
+    rows.sort((a, b) => (b[3] as int).compareTo(a[3] as int));
+    return ReportTable(
+      title: ReportKind.slowMoving.title,
+      subtitle: 'أصناف لها رصيد ولم تُبع منذ $days يوماً أو أكثر — مرتبة بقيمة المخزون الراكد',
+      columns: const [
+        ReportColumn('الكود', ColumnType.text),
+        ReportColumn('الصنف', ColumnType.text),
+        ReportColumn('الرصيد', ColumnType.qty),
+        ReportColumn('القيمة بالتكلفة', ColumnType.money, sum: true),
+        ReportColumn('آخر بيع', ColumnType.date),
+        ReportColumn('منذ', ColumnType.text),
+      ],
+      rows: rows,
+    );
+  }
+
+  Future<ReportTable> projectsReport() async {
+    final service = ProjectService(db);
+    final rows = <List<Object?>>[];
+    for (final p in await service.list()) {
+      final m = p.money;
+      rows.add([
+        p.project.name,
+        p.customerName ?? '',
+        ProjectStatus.label(p.project.status),
+        p.project.contractValue,
+        m.invoiced,
+        m.collected,
+        m.open,
+        m.netProfit,
+        m.revenue == 0 ? '—' : _pct(m.netProfit, m.revenue),
+      ]);
+    }
+    return ReportTable(
+      title: ReportKind.projects.title,
+      columns: const [
+        ReportColumn('المشروع', ColumnType.text),
+        ReportColumn('العميل', ColumnType.text),
+        ReportColumn('الحالة', ColumnType.text),
+        ReportColumn('التعاقد', ColumnType.money, sum: true),
+        ReportColumn('مفوتر', ColumnType.money, sum: true),
+        ReportColumn('محصّل', ColumnType.money, sum: true),
+        ReportColumn('مستحق', ColumnType.money, sum: true),
+        ReportColumn('صافي الربح', ColumnType.money, sum: true),
+        ReportColumn('الهامش', ColumnType.text),
+      ],
+      rows: rows,
     );
   }
 

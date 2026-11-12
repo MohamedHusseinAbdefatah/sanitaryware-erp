@@ -47,7 +47,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final user = ref.watch(currentUserProvider);
-    final isAdmin = user?.isAdmin ?? false;
+    final isAdmin = user?.seesCost ?? false;
     final dues = isAdmin ? ref.watch(_supplierDuesProvider).valueOrNull ?? const <SupplierDue>[] : const <SupplierDue>[];
     final overdue = dues.where((x) => x.overdue).toList();
     return FutureBuilder<DashboardSummary>(

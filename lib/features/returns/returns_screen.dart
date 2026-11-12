@@ -28,7 +28,7 @@ class _ReturnsScreenState extends ConsumerState<ReturnsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isAdmin = ref.watch(currentUserProvider)?.isAdmin ?? false;
+    final isAdmin = ref.watch(currentUserProvider)?.can(Perm.purchase) ?? false;
     final rows = ref.watch(_returnsProvider(_kind));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -139,7 +139,7 @@ class _ReturnDialog extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isAdmin = ref.watch(currentUserProvider)?.isAdmin ?? false;
+    final isAdmin = ref.watch(currentUserProvider)?.can(Perm.cancel) ?? false;
     final doc = row.doc;
     return AlertDialog(
       title: Text('${doc.kind == ReturnKind.sale ? Strings.saleReturn : Strings.purchaseReturn} ${doc.number}'),

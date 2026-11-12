@@ -391,7 +391,7 @@ class PriceListImportService {
     required User user,
   }) {
     return db.transaction(() async {
-      if (!user.isAdmin) throw ValidationException('الاستيراد للمدير فقط');
+      if (!user.can(Perm.catalog)) throw ValidationException('الاستيراد لصلاحية الأصناف والأسعار');
       if (!preview.canImport) throw ValidationException('لا توجد صفوف للاستيراد');
       if (preview.brandId != header.brandId) throw ValidationException('الملف فُحص لماركة مختلفة؛ أعد اختيار الملف');
       // Check again: the products may have changed since the preview.
@@ -457,7 +457,7 @@ class PriceListImportService {
     required User user,
   }) {
     return db.transaction(() async {
-      if (!user.isAdmin) throw ValidationException('قوائم الأسعار للمدير فقط');
+      if (!user.can(Perm.purchase)) throw ValidationException('قوائم الأسعار لصلاحية المشتريات');
       if (entries.isEmpty) throw ValidationException('أضف صنفاً واحداً على الأقل');
       if ((listId == null) == (newVersion == null)) throw ArgumentError('Give a version or a new version');
       if (newVersion != null && newVersion.brandId != brandId) throw ArgumentError('brand mismatch');

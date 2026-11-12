@@ -143,6 +143,14 @@ class StockPriceService {
     };
   }
 
+  /// Each product's selling list price today (the newest version in force);
+  /// products in no list in force are left out.
+  Future<Map<int, int>> currentListPrices() async =>
+      {for (final e in (await _currentPrices()).entries) if (e.value.isNotEmpty) e.key: e.value.first.price};
+
+  Stream<Map<int, int>> watchCurrentListPrices() =>
+      db.select(db.priceLists).watch().asyncMap((_) => currentListPrices());
+
   Stream<Map<int, StockPriceSummary>> watchSummaries() =>
       db.select(db.costLayers).watch().asyncMap((_) => summaries());
 
@@ -170,7 +178,7 @@ class StockPriceService {
   /// opening stock bought before the list was entered.
   Future<void> assignUnknown(int productId, int priceListId, {required User user}) {
     return db.transaction(() async {
-      if (!user.isAdmin) throw ValidationException('تحديد القائمة للمدير فقط');
+      if (!user.can(Perm.purchase)) throw ValidationException('تحديد القائمة لصلاحية المشتريات');
       final quote = await PriceListService(db).quoteIn(priceListId, productId);
       if (quote == null) throw ValidationException('هذا الصنف غير موجود في القائمة المختارة');
       await (db.update(db.costLayers)
@@ -191,7 +199,7 @@ class StockPriceService {
   /// how many products changed.
   Future<int> assignAllUnknownFrom(int priceListId, {required User user}) {
     return db.transaction(() async {
-      if (!user.isAdmin) throw ValidationException('تحديد القائمة للمدير فقط');
+      if (!user.can(Perm.purchase)) throw ValidationException('تحديد القائمة لصلاحية المشتريات');
       final items = await (db.select(db.priceListItems)
             ..where((i) => i.priceListId.equals(priceListId) & i.status.equals(PriceRowStatus.ok)))
           .get();

@@ -44,7 +44,10 @@ class ProductPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(productProfileProvider(productId));
-    final isAdmin = ref.watch(currentUserProvider)?.isAdmin ?? false;
+    final user = ref.watch(currentUserProvider);
+    final isAdmin = user?.seesCost ?? false;
+    final canEdit = user?.can(Perm.catalog) ?? false;
+    final canStock = user?.can(Perm.stock) ?? false;
     final hasPhoto = ref.watch(productThumbsProvider).valueOrNull?.containsKey(productId) ?? false;
     void refresh() {
       ref.invalidate(productProfileProvider(productId));
@@ -79,7 +82,7 @@ class ProductPage extends ConsumerWidget {
             if (p.quotes.isEmpty) const StatusPill.warn('بدون سعر معتمد'),
           ],
           actions: [
-            if (isAdmin)
+            if (canEdit)
               FilledButton.icon(
                 onPressed: () async {
                   await showProductForm(context, existing: r);
@@ -88,7 +91,7 @@ class ProductPage extends ConsumerWidget {
                 icon: const Icon(Icons.edit_outlined),
                 label: const Text('تعديل والصورة'),
               ),
-            if (isAdmin)
+            if (canStock)
               OutlinedButton.icon(
                 onPressed: () async {
                   await showStockAdjust(context, r);

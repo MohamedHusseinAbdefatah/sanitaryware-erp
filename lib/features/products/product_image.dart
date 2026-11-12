@@ -97,22 +97,34 @@ class ProductImageBox extends ConsumerWidget {
 /// A small photo for lists; empty when the product has none. A click shows
 /// the full photo.
 class ProductThumb extends ConsumerWidget {
-  const ProductThumb({super.key, required this.productId, this.size = 36});
+  const ProductThumb({super.key, required this.productId, this.size = 36, this.zoom = true});
 
   final int productId;
   final double size;
 
+  /// Tapping opens the full photo (off where the tap means something else).
+  final bool zoom;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final thumb = ref.watch(productThumbsProvider).valueOrNull?[productId];
-    if (thumb == null) return SizedBox(width: size, height: size);
+    if (thumb == null) {
+      // No photo: an empty frame in lists, a soft placeholder on cards.
+      return SizedBox(
+        width: size,
+        height: size,
+        child: size >= 60 ? Icon(Icons.image_outlined, size: size * .45, color: Colors.black26) : null,
+      );
+    }
+    final image = ClipRRect(
+      borderRadius: BorderRadius.circular(4),
+      child: Image.memory(thumb, width: size, height: size, fit: BoxFit.cover, gaplessPlayback: true),
+    );
+    if (!zoom) return image;
     return InkWell(
       onTap: () => showProductImage(context, productId),
       borderRadius: BorderRadius.circular(4),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(4),
-        child: Image.memory(thumb, width: size, height: size, fit: BoxFit.cover, gaplessPlayback: true),
-      ),
+      child: image,
     );
   }
 }

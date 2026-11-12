@@ -91,7 +91,7 @@ void main() {
     await tester.tap(find.text(Strings.products));
     await settle(tester);
     expect(find.text('خلاط حوض'), findsOneWidget);
-    expect(find.text('5'), findsOneWidget);
+    expect(find.textContaining(RegExp(r'^5( |$)')), findsOneWidget);
     // Unmount so drift's stream queries close before the database does.
     await tester.pumpWidget(const SizedBox());
     await tester.pump(Duration.zero); // drift closes its streams on a zero timer
@@ -108,7 +108,7 @@ void main() {
     await settle(tester);
     expect(find.text('خلاط حوض'), findsOneWidget);
     expect(find.text('حوض غير مشترى'), findsNothing);
-    expect(find.textContaining('1 صنف في المخزون'), findsOneWidget);
+    expect(find.text('أصناف في المخزون'), findsOneWidget);
     // The catalogue still lists both.
     await tester.tap(find.text(Strings.products));
     await settle(tester);

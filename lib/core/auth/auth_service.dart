@@ -8,13 +8,90 @@ import '../services/expense_service.dart';
 import '../services/settings_service.dart';
 import 'password_hasher.dart';
 
+/// The roles of the blueprint (9.3). 'cashier' is the sales role (its old
+/// name is kept so existing users keep working).
 abstract final class UserRole {
   static const admin = 'admin';
   static const cashier = 'cashier';
+  static const accountant = 'accountant';
+  static const purchasing = 'purchasing';
+  static const warehouse = 'warehouse';
+  static const viewer = 'viewer';
+
+  static const all = [admin, accountant, purchasing, warehouse, cashier, viewer];
+
+  static String label(String role) => switch (role) {
+        admin => 'المالك / المدير',
+        accountant => 'محاسب',
+        purchasing => 'مشتريات',
+        warehouse => 'مخزن',
+        cashier => 'مبيعات / كاشير',
+        viewer => 'اطلاع فقط',
+        _ => role,
+      };
+
+  static String describe(String role) => switch (role) {
+        admin => 'كل الشاشات والصلاحيات والموافقات',
+        accountant => 'المحاسبة والمصروفات والمدفوعات والتقارير، ويرى التكلفة والربح',
+        purchasing => 'الموردون والمشتريات وقوائم الأسعار والأصناف، ويرى التكلفة',
+        warehouse => 'المخزون والأصناف والتحويل والجرد، بدون تكلفة أو أرباح',
+        cashier => 'البيع والتحصيل والعملاء والمرتجعات، بدون تكلفة أو أرباح',
+        viewer => 'يرى الشاشات والتقارير ولا يسجل أو يعدل شيئاً',
+        _ => '',
+      };
 }
+
+/// What a role may do. The owner may do everything.
+enum Perm {
+  /// Sell, take payments, sale returns.
+  sell,
+
+  /// Purchase invoices and orders, supplier advances, buying policies,
+  /// purchase returns.
+  purchase,
+
+  /// Products, photos, price lists.
+  catalog,
+
+  /// Stock adjustments, transfers, stock count.
+  stock,
+
+  /// Chart of accounts, manual entries, period closing.
+  accounts,
+
+  /// Expenses.
+  expenses,
+
+  /// Pay suppliers, cancel payments, set cheque states.
+  payOut,
+
+  /// Projects.
+  projects,
+
+  /// Cost, profit and margins.
+  seeCost,
+
+  /// Cancel invoices and returns.
+  cancel,
+}
+
+const _perms = <String, Set<Perm>>{
+  UserRole.accountant: {Perm.accounts, Perm.expenses, Perm.payOut, Perm.projects, Perm.seeCost, Perm.cancel, Perm.sell},
+  UserRole.purchasing: {Perm.purchase, Perm.catalog, Perm.projects, Perm.seeCost},
+  UserRole.warehouse: {Perm.stock, Perm.catalog},
+  UserRole.cashier: {Perm.sell},
+  UserRole.viewer: {},
+};
 
 extension UserRoleX on User {
   bool get isAdmin => role == UserRole.admin;
+
+  bool can(Perm p) => isAdmin || (_perms[role]?.contains(p) ?? false);
+
+  bool get seesCost => can(Perm.seeCost);
+
+  /// Sees screens but records nothing.
+  bool get readOnly => role == UserRole.viewer;
 }
 
 /// A login or account problem; [message] is shown as-is.
@@ -78,7 +155,7 @@ class AuthService {
     if (password.length < minPasswordLength) {
       throw AuthException('كلمة المرور يجب ألا تقل عن $minPasswordLength أحرف');
     }
-    if (role != UserRole.admin && role != UserRole.cashier) {
+    if (!UserRole.all.contains(role)) {
       throw ArgumentError.value(role, 'role');
     }
     final existing = await (db.select(db.users)
@@ -156,7 +233,7 @@ class AuthService {
     return db.transaction(() async {
       if (!by.isAdmin) throw AuthException('إدارة المستخدمين للمدير فقط');
       if (fullName.trim().isEmpty) throw AuthException('الاسم مطلوب');
-      if (role != UserRole.admin && role != UserRole.cashier) throw ArgumentError.value(role, 'role');
+      if (!UserRole.all.contains(role)) throw ArgumentError.value(role, 'role');
       final user = await (db.select(db.users)..where((t) => t.id.equals(userId))).getSingle();
       final losesAdmin = user.isAdmin && user.isActive && (role != UserRole.admin || !isActive);
       if (losesAdmin) {
@@ -204,4 +281,18 @@ class AuthService {
   }
 
   String _normalizeUsername(String username) => username.trim().toLowerCase();
+}
+
+/// Refuses when [userId] is a read-only user: they see, they never record.
+Future<void> refuseReadOnly(AppDatabase db, int? userId) async {
+  if (userId == null) return;
+  final u = await (db.select(db.users)..where((t) => t.id.equals(userId))).getSingleOrNull();
+  if (u != null && u.readOnly) throw ValidationException('هذا المستخدم للاطلاع فقط ولا يسجل عمليات');
+}
+
+/// Refuses unless [userId] may adjust and move stock.
+Future<void> requireStockRights(AppDatabase db, int? userId) async {
+  if (userId == null) return;
+  final u = await (db.select(db.users)..where((t) => t.id.equals(userId))).getSingleOrNull();
+  if (u != null && !u.can(Perm.stock)) throw ValidationException('تسويات المخزون لصلاحية المخزن أو المدير');
 }

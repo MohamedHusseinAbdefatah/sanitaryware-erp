@@ -131,6 +131,7 @@ class SalesOrderService {
     required User user,
   }) {
     return db.transaction(() async {
+      if (user.readOnly) throw ValidationException('هذا المستخدم للاطلاع فقط ولا يسجل عمليات');
       if (lines.isEmpty) throw ValidationException('أضف صنفاً واحداً على الأقل');
       if (!SaleChannel.all.contains(channel)) throw ArgumentError.value(channel, 'channel');
       final customer = await (db.select(db.customers)..where((t) => t.id.equals(customerId))).getSingleOrNull();

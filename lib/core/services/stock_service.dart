@@ -3,6 +3,7 @@ import 'package:drift/drift.dart';
 import '../db/database.dart';
 import 'fifo_service.dart';
 import '../quantity.dart';
+import '../auth/auth_service.dart';
 import 'audit_service.dart';
 import 'errors.dart';
 
@@ -113,6 +114,7 @@ class StockService {
     int? userId,
   }) {
     return db.transaction(() async {
+      await requireStockRights(db, userId);
       if (delta == 0) throw ValidationException('أدخل كمية التسوية');
       if (reason.trim().isEmpty) throw ValidationException('سبب التسوية مطلوب');
       final product = await (db.select(db.products)..where((t) => t.id.equals(productId)))
@@ -170,5 +172,32 @@ class StockService {
             (t) => OrderingTerm.desc(t.id),
           ]))
         .watch();
+  }
+
+  /// Posts a stock count at one place: for each product counted, the
+  /// difference from what the books say becomes an adjustment (with the
+  /// count's note as its reason). Products not in [counted] are left alone.
+  /// Returns how many products changed. One transaction: all or nothing.
+  Future<int> postCount({
+    required int locationId,
+    required Map<int, int> counted,
+    required String note,
+    int? userId,
+  }) {
+    return db.transaction(() async {
+      await requireStockRights(db, userId);
+      if (note.trim().isEmpty) throw ValidationException('اكتب بيان الجرد (مثال: جرد نهاية الشهر)');
+      if (counted.values.any((q) => q < 0)) throw ValidationException('الكمية المعدودة لا تكون سالبة');
+      final day = DateTime.now();
+      final reason = 'جرد ${day.year}/${day.month}/${day.day}: ${note.trim()}';
+      var changed = 0;
+      for (final e in counted.entries) {
+        final diff = e.value - await currentStock(e.key, locationId: locationId);
+        if (diff == 0) continue;
+        await adjust(productId: e.key, delta: diff, reason: reason, locationId: locationId, userId: userId);
+        changed++;
+      }
+      return changed;
+    });
   }
 }

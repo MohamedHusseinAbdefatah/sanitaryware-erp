@@ -70,7 +70,7 @@ class _SaleViewScreenState extends ConsumerState<SaleViewScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isAdmin = ref.watch(currentUserProvider)?.isAdmin ?? false;
+    final isAdmin = ref.watch(currentUserProvider)?.can(Perm.cancel) ?? false;
     final theme = Theme.of(context);
     return FutureBuilder<(SalesInvoiceDetail, List<Payment>)>(
       future: _detail,

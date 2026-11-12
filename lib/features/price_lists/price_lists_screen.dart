@@ -19,7 +19,10 @@ import '../../core/services/price_list_import_service.dart';
 import '../../core/services/price_list_service.dart';
 import '../../core/services/product_service.dart';
 import '../../core/services/selling_policy_service.dart';
+import '../../core/theme.dart';
+import '../../core/widgets/data_list.dart';
 import '../../core/widgets/feedback.dart';
+import '../../core/widgets/list_kit.dart';
 import '../../core/widgets/pickers.dart';
 import '../../core/widgets/report_view.dart';
 import 'list_type_field.dart';
@@ -39,12 +42,6 @@ int? _bp(String text) {
   return (v * 100).round();
 }
 
-String _statusLabel(String status) => switch (status) {
-      PriceListStatus.pendingReview => 'قيد المراجعة',
-      PriceListStatus.withdrawn => 'مسحوبة',
-      _ => 'معتمدة',
-    };
-
 final _summariesProvider = StreamProvider.autoDispose<List<PriceListSummary>>(
     (ref) => ref.watch(priceListServiceProvider).watchSummaries());
 
@@ -58,18 +55,30 @@ class PriceListsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    Tab tab(IconData icon, String label) => Tab(
+          child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(icon, size: 18), const SizedBox(width: 6), Text(label)]),
+        );
     return DefaultTabController(
       length: 4,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: const [
-          TabBar(tabs: [
-            Tab(text: 'قوائم الأسعار'),
-            Tab(text: 'قيد المراجعة'),
-            Tab(text: 'سياسات الشراء'),
-            Tab(text: 'خصومات البيع'),
-          ]),
-          Expanded(
+        children: [
+          const PageHeader(title: 'قوائم الأسعار والخصومات'),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: TabBar(
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
+              tabs: [
+                tab(Icons.price_change_outlined, 'قوائم الأسعار'),
+                tab(Icons.fact_check_outlined, 'قيد المراجعة'),
+                tab(Icons.shopping_cart_outlined, 'سياسات الشراء'),
+                tab(Icons.discount_outlined, 'خصومات البيع'),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          const Expanded(
             child: TabBarView(children: [
               _VersionsTab(),
               _ReviewTab(),
@@ -83,36 +92,54 @@ class PriceListsScreen extends StatelessWidget {
   }
 }
 
-class _VersionsTab extends ConsumerWidget {
+enum _ListShow { all, inForce, review, ended, withdrawn }
+
+/// Where a version stands today.
+(String, Color, Color) _stateOf(PriceList l) {
+  if (l.status == PriceListStatus.withdrawn) return ('مسحوبة', AppColors.bad, AppColors.badBg);
+  if (l.status == PriceListStatus.pendingReview) return ('قيد المراجعة', AppColors.warn, AppColors.warnBg);
+  if (PriceListService.inForce(l, DateTime.now())) return ('سارية', AppColors.good, AppColors.goodBg);
+  if (l.effectiveFrom.isAfter(DateTime.now())) return ('تبدأ لاحقاً', AppColors.info, AppColors.infoBg);
+  return ('منتهية', AppColors.muted, AppColors.canvas);
+}
+
+class _VersionsTab extends ConsumerStatefulWidget {
   const _VersionsTab();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_VersionsTab> createState() => _VersionsTabState();
+}
+
+class _VersionsTabState extends ConsumerState<_VersionsTab> {
+  _ListShow _show = _ListShow.all;
+  String _search = '';
+
+  bool _pass(PriceListSummary s, _ListShow f) {
+    final state = _stateOf(s.list).$1;
+    return switch (f) {
+      _ListShow.all => true,
+      _ListShow.inForce => state == 'سارية',
+      _ListShow.review => s.review > 0 || state == 'قيد المراجعة',
+      _ListShow.ended => state == 'منتهية',
+      _ListShow.withdrawn => state == 'مسحوبة',
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final lists = ref.watch(_summariesProvider);
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Wrap(
-            spacing: 12,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 14),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Wrap(
+            spacing: 10,
             runSpacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              OutlinedButton.icon(
-                onPressed: () => saveExcelFile(
-                  context,
-                  ref.read(priceListImportServiceProvider).template(),
-                  'نموذج قائمة أسعار',
-                ),
-                icon: const Icon(Icons.download_outlined),
-                label: const Text('تحميل النموذج'),
-              ),
-              OutlinedButton.icon(
-                onPressed: () => showDialog<void>(context: context, builder: (_) => const _EntryDialog()),
-                icon: const Icon(Icons.edit_note),
-                label: const Text('إدخال صنف أو مجموعة أصناف'),
-              ),
+              SearchBox(hint: 'بحث باسم القائمة أو الماركة', width: 240, onChanged: (v) => setState(() => _search = v)),
               FilledButton.icon(
                 onPressed: () => showDialog<void>(context: context, builder: (_) => const _ImportDialog()),
                 icon: const Icon(Icons.upload_file_outlined),
@@ -123,24 +150,77 @@ class _VersionsTab extends ConsumerWidget {
                 icon: const Icon(Icons.picture_as_pdf_outlined),
                 label: const Text('استيراد من PDF'),
               ),
+              OutlinedButton.icon(
+                onPressed: () => showDialog<void>(context: context, builder: (_) => const _EntryDialog()),
+                icon: const Icon(Icons.edit_note),
+                label: const Text('إدخال صنف أو مجموعة أصناف'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => saveExcelFile(
+                  context,
+                  ref.read(priceListImportServiceProvider).template(),
+                  'نموذج قائمة أسعار',
+                ),
+                icon: const Icon(Icons.download_outlined),
+                label: const Text('تحميل النموذج'),
+              ),
             ],
           ),
-          const SizedBox(height: 16),
-          Expanded(
-            child: lists.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('$e')),
-              data: (rows) => rows.isEmpty
-                  ? const Center(child: Text('لا توجد قوائم أسعار بعد. استورد قائمة كاملة أو أدخل صنفاً.'))
-                  : ListView.separated(
-                      itemCount: rows.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 8),
-                      itemBuilder: (context, i) => _VersionCard(summary: rows[i]),
-                    ),
-            ),
+        ),
+        const SizedBox(height: 14),
+        Expanded(
+          child: lists.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, _) => Center(child: Text('$e')),
+            data: (all) {
+              final q = _search.trim();
+              final base = all.where((s) => q.isEmpty || s.list.name.contains(q) || (s.brandName ?? '').contains(q));
+              final rows = base.where((s) => _pass(s, _show)).toList();
+              final live = all.where((s) => _stateOf(s.list).$1 == 'سارية');
+              return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                SummaryStrip(items: [
+                  SummaryItem('قوائم سارية', '${live.length}', icon: Icons.verified_outlined, tone: AppColors.good),
+                  SummaryItem('ماركات مغطاة', '${live.map((s) => s.list.brandId).toSet().length}', icon: Icons.sell_outlined),
+                  SummaryItem('أصناف بأسعار سارية', '${live.fold(0, (t, s) => t + s.matched)}',
+                      icon: Icons.inventory_2_outlined),
+                  SummaryItem('صفوف تنتظر المراجعة', '${all.fold(0, (t, s) => t + s.review)}',
+                      icon: Icons.fact_check_outlined, tone: all.any((s) => s.review > 0) ? AppColors.warn : null),
+                ]),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
+                  child: Wrap(spacing: 8, runSpacing: 6, children: [
+                    for (final (f, label) in const [
+                      (_ListShow.all, 'الكل'),
+                      (_ListShow.inForce, 'سارية'),
+                      (_ListShow.review, 'تحتاج مراجعة'),
+                      (_ListShow.ended, 'منتهية'),
+                      (_ListShow.withdrawn, 'مسحوبة'),
+                    ])
+                      ChoiceChip(
+                        showCheckmark: false,
+                        label: Text('$label  ${base.where((s) => _pass(s, f)).length}'),
+                        selected: _show == f,
+                        onSelected: (_) => setState(() => _show = f),
+                      ),
+                  ]),
+                ),
+                Expanded(
+                  child: rows.isEmpty
+                      ? const Center(
+                          child: Text('لا توجد قوائم أسعار هنا. استورد قائمة كاملة أو أدخل صنفاً.',
+                              style: TextStyle(color: AppColors.muted)))
+                      : ListView.separated(
+                          padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+                          itemCount: rows.length,
+                          separatorBuilder: (_, _) => const SizedBox(height: 10),
+                          itemBuilder: (context, i) => _VersionCard(summary: rows[i]),
+                        ),
+                ),
+              ]);
+            },
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -203,20 +283,52 @@ class _VersionCard extends ConsumerWidget {
         ? _sourcePdf(ref.read(databaseFileProvider), l.id)
         : null;
     final period = 'من ${_date(l.effectiveFrom)}${l.effectiveTo == null ? ' (مفتوحة)' : ' إلى ${_date(l.effectiveTo!)}'}';
-    return Card(
-      child: ListTile(
-        title: Text('PL-${l.id} · ${summary.brandName ?? 'بدون ماركة'} · ${l.listType} · V${l.versionNo} — ${l.name}'),
-        subtitle: Text(
-          '$period · ${l.currency} · استيراد ${_date(l.importDate)}'
-          '${l.sourceFile == null ? '' : ' · المصدر: ${l.sourceFile}'}'
-          '${l.sourcePages == null ? '' : ' صفحات ${l.sourcePages}'}\n'
-          'الصفوف ${l.rowCount} · معتمد ${summary.matched} · قيد المراجعة ${summary.review} · '
-          '${VatStatus.label(l.vatStatus)}${l.vatRateBp == null ? '' : ' ${_percent(l.vatRateBp!)}'} · '
-          '${_statusLabel(l.status)}',
+    final (stateText, stateColor, stateBg) = _stateOf(l);
+    final total = summary.matched + summary.review;
+    return TapCard(
+      onTap: () => showDialog<void>(context: context, builder: (_) => _ItemsDialog(summary: summary)),
+      child: Row(children: [
+        NameAvatar(summary.brandName ?? l.name, size: 46),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Wrap(spacing: 8, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+              Text(l.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+              StatusPill(stateText, color: stateColor, background: stateBg),
+              StatusPill('${summary.brandName ?? 'بدون ماركة'} · ${l.listType} · V${l.versionNo}'),
+              l.vatStatus == VatStatus.unverified || l.vatRateBp == null
+                  ? StatusPill.warn('الضريبة غير متحقق منها')
+                  : StatusPill.good('${VatStatus.label(l.vatStatus)} ${_percent(l.vatRateBp!)}'),
+            ]),
+            const SizedBox(height: 4),
+            Text(
+              'PL-${l.id} · $period · ${l.currency} · استيراد ${_date(l.importDate)}'
+              '${l.sourceFile == null ? '' : ' · المصدر: ${l.sourceFile}'}'
+              '${l.sourcePages == null ? '' : ' صفحات ${l.sourcePages}'}',
+              style: const TextStyle(fontSize: 12, color: AppColors.muted),
+            ),
+            const SizedBox(height: 8),
+            Row(children: [
+              SizedBox(
+                width: 220,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: total == 0 ? 0 : summary.matched / total,
+                    minHeight: 7,
+                    backgroundColor: AppColors.warnBg,
+                    color: AppColors.good,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text('${l.rowCount} صف · مربوط بأصناف ${summary.matched}'
+                  '${summary.review == 0 ? '' : ' · ينتظر المراجعة ${summary.review}'}',
+                  style: const TextStyle(fontSize: 12.5)),
+            ]),
+          ]),
         ),
-        isThreeLine: true,
-        onTap: () => showDialog<void>(context: context, builder: (_) => _ItemsDialog(summary: summary)),
-        trailing: PopupMenuButton<void Function()>(
+        PopupMenuButton<void Function()>(
           onSelected: (a) => a(),
           itemBuilder: (_) => [
             if (l.status == PriceListStatus.pendingReview)
@@ -232,7 +344,7 @@ class _VersionCard extends ConsumerWidget {
               PopupMenuItem(value: () => _withdraw(context, ref), child: const Text('سحب القائمة')),
           ],
         ),
-      ),
+      ]),
     );
   }
 }

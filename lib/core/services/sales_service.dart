@@ -204,6 +204,7 @@ class SalesService {
     String? approvalReason,
   }) {
     return db.transaction(() async {
+      await refuseReadOnly(db, userId);
       // 1. Validate the lines.
       if (input.lines.isEmpty) throw ValidationException('أضف صنفاً واحداً على الأقل');
       final products = <int, Product>{};
@@ -518,7 +519,7 @@ class SalesService {
   /// cancels the payment taken with it. Nothing is deleted.
   Future<void> cancel(int invoiceId, {required String reason, required User user}) {
     return db.transaction(() async {
-      if (!user.isAdmin) throw ValidationException('إلغاء الفواتير للمدير فقط');
+      if (!user.can(Perm.cancel)) throw ValidationException('إلغاء الفواتير للمدير أو المحاسب');
       if (reason.trim().isEmpty) throw ValidationException('سبب الإلغاء مطلوب');
       final invoice = await (db.select(db.salesInvoices)..where((t) => t.id.equals(invoiceId)))
           .getSingle();

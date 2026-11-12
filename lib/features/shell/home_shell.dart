@@ -34,7 +34,6 @@ class HomeShell extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(currentUserProvider);
-    final isAdmin = user?.isAdmin ?? false;
     final company = ref.watch(_companyNameProvider).valueOrNull ?? '';
 
     Widget entry(int i) {
@@ -119,7 +118,7 @@ class HomeShell extends ConsumerWidget {
                 children: [
                   for (final (label, paths) in _groups) ...[
                     if (label.isNotEmpty &&
-                        paths.any((p) => byPath[p] != null && (isAdmin || !appSections[byPath[p]!].adminOnly)))
+                        paths.any((p) => byPath[p] != null && user != null && appSections[byPath[p]!].allows(user)))
                       Padding(
                         padding: const EdgeInsets.fromLTRB(22, 8, 22, 2),
                         child: Text(
@@ -133,12 +132,12 @@ class HomeShell extends ConsumerWidget {
                         ),
                       ),
                     for (final p in paths)
-                      if (byPath[p] != null && (isAdmin || !appSections[byPath[p]!].adminOnly)) entry(byPath[p]!),
+                      if (byPath[p] != null && user != null && appSections[byPath[p]!].allows(user)) entry(byPath[p]!),
                   ],
                   // Any section not placed in a group still shows.
                   for (var i = 0; i < appSections.length; i++)
                     if (!_groups.any((g) => g.$2.contains(appSections[i].path)) &&
-                        (isAdmin || !appSections[i].adminOnly))
+                        (user != null && appSections[i].allows(user)))
                       entry(i),
                 ],
               ),
@@ -164,11 +163,15 @@ class HomeShell extends ConsumerWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(user.fullName,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
-                        Text(isAdmin ? Strings.roleAdmin : Strings.roleCashier,
-                            style: const TextStyle(color: AppColors.sideText, fontSize: 12)),
+                        Text(
+                          user.fullName,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                        ),
+                        Text(
+                          UserRole.label(user.role),
+                          style: const TextStyle(color: AppColors.sideText, fontSize: 12),
+                        ),
                       ],
                     ),
                   ),
@@ -196,23 +199,23 @@ class HomeShell extends ConsumerWidget {
         children: [
           const Icon(Icons.calendar_today_outlined, size: 16, color: AppColors.muted),
           const SizedBox(width: 8),
-          Text(
-            formatLongDate(now),
-            style: const TextStyle(color: AppColors.muted),
-          ),
+          Text(formatLongDate(now), style: const TextStyle(color: AppColors.muted)),
           const Spacer(),
-          FilledButton.tonalIcon(
-            onPressed: () => context.go('/sales/new'),
-            icon: const Icon(Icons.point_of_sale, size: 18),
-            label: const Text('بيع جديد (F9)'),
-          ),
+          if (user != null && user.can(Perm.sell))
+            FilledButton.tonalIcon(
+              onPressed: () => context.go('/sales/new'),
+              icon: const Icon(Icons.point_of_sale, size: 18),
+              label: const Text('بيع جديد (F9)'),
+            ),
         ],
       ),
     );
 
     return CallbackShortcuts(
       bindings: {
-        const SingleActivator(LogicalKeyboardKey.f9): () => context.go('/sales/new'),
+        const SingleActivator(LogicalKeyboardKey.f9): () {
+          if (user != null && user.can(Perm.sell)) context.go('/sales/new');
+        },
       },
       child: Scaffold(
         body: Row(

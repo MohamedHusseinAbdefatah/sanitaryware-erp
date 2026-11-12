@@ -73,7 +73,7 @@ class PaymentService {
 
   /// To a supplier. Admin only (enforced by the screen and here).
   Future<Payment> pay(PaymentInput input, {required User user}) async {
-    if (!user.isAdmin) throw ValidationException('الدفع للموردين للمدير فقط');
+    if (!user.can(Perm.payOut)) throw ValidationException('الدفع للموردين لصلاحية المحاسبة');
     return _post(
       input,
       direction: PaymentDirection.outbound,
@@ -91,6 +91,7 @@ class PaymentService {
     int? orderRefId,
   }) {
     return db.transaction(() async {
+      await refuseReadOnly(db, userId);
       if (input.amount <= 0) throw ValidationException('المبلغ يجب أن يكون أكبر من صفر');
       final partyName = await _partyName(partyType, input.partyId);
       if (partyName == null) throw ValidationException('اختر ${partyType == PartyType.customer ? 'العميل' : 'المورد'}');
@@ -181,7 +182,7 @@ class PaymentService {
     String? notes,
     required User user,
   }) async {
-    if (!user.isAdmin) throw ValidationException('الدفع للموردين للمدير فقط');
+    if (!user.can(Perm.payOut)) throw ValidationException('الدفع للموردين لصلاحية المحاسبة');
     final order =
         await (db.select(db.purchaseOrders)..where((t) => t.id.equals(purchaseOrderId))).getSingleOrNull();
     if (order == null) throw ValidationException('أمر الشراء غير موجود');
@@ -207,7 +208,7 @@ class PaymentService {
     String? notes,
     required User user,
   }) {
-    if (!user.isAdmin) throw ValidationException('الدفع للموردين للمدير فقط');
+    if (!user.can(Perm.payOut)) throw ValidationException('الدفع للموردين لصلاحية المحاسبة');
     return _post(
       PaymentInput(partyId: supplierId, amount: amount, method: method, cheque: cheque, date: date, notes: notes),
       direction: PaymentDirection.outbound,
@@ -303,7 +304,7 @@ class PaymentService {
   /// is cancelled too.
   Future<void> cancel(int paymentId, {required String reason, required User user}) {
     return db.transaction(() async {
-      if (!user.isAdmin) throw ValidationException('إلغاء المدفوعات للمدير فقط');
+      if (!user.can(Perm.payOut)) throw ValidationException('إلغاء المدفوعات لصلاحية المحاسبة');
       if (reason.trim().isEmpty) throw ValidationException('سبب الإلغاء مطلوب');
       final p = await (db.select(db.payments)..where((t) => t.id.equals(paymentId))).getSingle();
       if (p.status == DocStatus.cancelled) throw ValidationException('الدفعة ${p.number} ملغاة من قبل');
@@ -341,7 +342,7 @@ class PaymentService {
 
   Future<void> _setCheque(int chequeId, String status, {required User user, String? reason}) {
     return db.transaction(() async {
-      if (!user.isAdmin) throw ValidationException('تحديث حالة الشيكات للمدير فقط');
+      if (!user.can(Perm.payOut)) throw ValidationException('تحديث حالة الشيكات لصلاحية المحاسبة');
       final ch = await (db.select(db.cheques)..where((t) => t.id.equals(chequeId))).getSingle();
       if (ch.status != ChequeStatus.pending) {
         throw ValidationException('الشيك ${ch.chequeNo} ليس تحت التحصيل');

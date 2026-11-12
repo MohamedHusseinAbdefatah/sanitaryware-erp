@@ -37,7 +37,7 @@ class CustomerPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(customerProfileProvider(customerId));
-    final isAdmin = ref.watch(currentUserProvider)?.isAdmin ?? false;
+    final isAdmin = ref.watch(currentUserProvider)?.seesCost ?? false;
     void refresh() => ref.invalidate(customerProfileProvider(customerId));
     return async.when(
       loading: () => const Center(child: CircularProgressIndicator()),

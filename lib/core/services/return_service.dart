@@ -258,6 +258,7 @@ class ReturnService {
   /// Goods come back from a customer. Anyone may post a sale return.
   Future<ReturnDoc> postSaleReturn(ReturnInput input, {required User user}) {
     return db.transaction(() async {
+      await refuseReadOnly(db, user.id);
       int? customerId = input.partyId;
       Map<int, ReturnableLine>? returnable;
       if (input.originalInvoiceId != null) {
@@ -328,7 +329,7 @@ class ReturnService {
   /// Goods go back to a supplier. Admin only.
   Future<ReturnDoc> postPurchaseReturn(ReturnInput input, {required User user}) {
     return db.transaction(() async {
-      if (!user.isAdmin) throw ValidationException('مرتجع الشراء للمدير فقط');
+      if (!user.can(Perm.purchase)) throw ValidationException('مرتجع الشراء لصلاحية المشتريات');
       int? supplierId = input.partyId;
       Map<int, ReturnableLine>? returnable;
       if (input.originalInvoiceId != null) {
@@ -405,7 +406,7 @@ class ReturnService {
   /// Admin only. Reverses the stock and cancels the refund payment.
   Future<void> cancel(int returnId, {required String reason, required User user}) {
     return db.transaction(() async {
-      if (!user.isAdmin) throw ValidationException('إلغاء المرتجعات للمدير فقط');
+      if (!user.can(Perm.cancel)) throw ValidationException('إلغاء المرتجعات للمدير أو المحاسب');
       if (reason.trim().isEmpty) throw ValidationException('سبب الإلغاء مطلوب');
       final doc = await (db.select(db.returns)..where((t) => t.id.equals(returnId))).getSingle();
       if (doc.status == DocStatus.cancelled) throw ValidationException('المرتجع ${doc.number} ملغى من قبل');

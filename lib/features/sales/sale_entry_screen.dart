@@ -20,12 +20,14 @@ import '../../core/services/sales_service.dart';
 import '../../core/services/selling_policy_service.dart';
 import '../../core/services/stock_price_service.dart';
 import '../../core/services/stock_service.dart';
+import '../../core/theme.dart';
 import '../../core/widgets/amounts.dart';
 import '../../core/widgets/feedback.dart';
 import '../../core/widgets/number_fields.dart';
 import '../../core/widgets/pickers.dart';
 import '../parties/party_form_dialog.dart';
 import '../parties/parties_screen.dart';
+import 'product_browser.dart';
 import 'sale_preview_dialog.dart';
 
 /// One editable line. Text fields are parsed on every change; an invalid
@@ -177,7 +179,26 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
     }
   }
 
-  Future<void> _addProduct(ProductRow row) async {
+  /// From the product browser: one more of a product already on the
+  /// invoice, or a new line without moving the focus out of the browser.
+  Future<void> _pickFromBrowser(ProductRow row) async {
+    final existing = _lines.where((l) => l.product.id == row.product.id).firstOrNull;
+    if (existing != null) {
+      existing.qty.text = formatQty((existing.qtyValue ?? 0) + qtyScale);
+      setState(() {});
+      _changed();
+      return;
+    }
+    await _addProduct(row, focusQty: false);
+  }
+
+  Future<void> _browse() => showProductBrowser(
+        context,
+        onPick: _pickFromBrowser,
+        countOf: (id) => _qtyOnInvoice(id) ~/ qtyScale,
+      );
+
+  Future<void> _addProduct(ProductRow row, {bool focusQty = true}) async {
     final quotes = await ref.read(sellingPolicyServiceProvider).quotes(row.product.id, customer: _customer);
     final stock = StockService(ref.read(databaseProvider));
     final cost = await FifoService(ref.read(databaseProvider))
@@ -195,6 +216,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       _searchKey++;
     });
     _changed();
+    if (!focusQty) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       line.qtyFocus.requestFocus();
       line.qty.selection = TextSelection(baseOffset: 0, extentOffset: line.qty.text.length);
@@ -399,7 +421,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isAdmin = ref.watch(currentUserProvider)?.isAdmin ?? false;
+    final isAdmin = ref.watch(currentUserProvider)?.seesCost ?? false;
     final customers = ref.watch(activeCustomersProvider).valueOrNull ?? const <Customer>[];
 
     return CallbackShortcuts(
@@ -407,6 +429,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
         const SingleActivator(LogicalKeyboardKey.keyS, control: true): _save,
         const SingleActivator(LogicalKeyboardKey.keyP, control: true): () => _save(andPrint: true),
         const SingleActivator(LogicalKeyboardKey.f2): () => _productSearchFocus.requestFocus(),
+        const SingleActivator(LogicalKeyboardKey.f3): _browse,
       },
       child: Form(
         key: _form,
@@ -454,6 +477,18 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                               label: Text(categoryNameOf(
                                   _customer!, ref.watch(customerCategoriesProvider).valueOrNull ?? const []))),
                         ),
+                      if (_customer != null && _customerBalance != null)
+                        Padding(
+                          padding: const EdgeInsetsDirectional.only(start: 8),
+                          child: Tooltip(
+                            message: _customer!.creditLimit > 0 ? 'حد الائتمان ${formatMoney(_customer!.creditLimit)}' : 'بدون حد ائتمان',
+                            child: _customerBalance! > 0
+                                ? (_overCreditLimit
+                                    ? StatusPill.bad('عليه ${formatMoney(_customerBalance!)} — سيتجاوز الحد')
+                                    : StatusPill.warn('عليه ${formatMoney(_customerBalance!)}'))
+                                : StatusPill.good(_customerBalance! < 0 ? 'له ${formatMoney(-_customerBalance!)}' : 'لا رصيد عليه'),
+                          ),
+                        ),
                     ],
                   ),
                   if (_projects.isNotEmpty)
@@ -477,17 +512,27 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
             // Product search.
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: ProductSearchField(
-                key: ValueKey(_searchKey),
-                focusNode: _productSearchFocus,
-                onSelected: _addProduct,
-              ),
+              child: Row(children: [
+                Expanded(
+                  child: ProductSearchField(
+                    key: ValueKey(_searchKey),
+                    focusNode: _productSearchFocus,
+                    onSelected: _addProduct,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                FilledButton.tonalIcon(
+                  onPressed: _browse,
+                  icon: const Icon(Icons.grid_view_rounded),
+                  label: const Text('تصفح الأصناف (F3)'),
+                ),
+              ]),
             ),
             const SizedBox(height: 8),
             // Lines.
             Expanded(
               child: _lines.isEmpty
-                  ? const Center(child: Text(Strings.searchToAddHint))
+                  ? QuickAdd(onPick: (r) => _addProduct(r), onBrowse: _browse)
                   : ListView.separated(
                       padding: const EdgeInsets.symmetric(horizontal: 24),
                       itemCount: _lines.length + 1,

@@ -34,6 +34,7 @@ class _LedgerBuilderState<T> extends ConsumerState<LedgerBuilder<T>> {
   StreamSubscription<void>? _sub;
   Timer? _debounce;
   T? _last;
+  bool _loaded = false;
 
   @override
   void initState() {
@@ -62,7 +63,10 @@ class _LedgerBuilderState<T> extends ConsumerState<LedgerBuilder<T>> {
   }
 
   void _reload() {
-    _future = widget.load(ref.read(ledgerServiceProvider)).then((v) => _last = v);
+    _future = widget.load(ref.read(ledgerServiceProvider)).then((v) {
+      _loaded = true;
+      return _last = v;
+    });
   }
 
   @override
@@ -85,9 +89,11 @@ class _LedgerBuilderState<T> extends ConsumerState<LedgerBuilder<T>> {
       future: _future,
       builder: (context, snap) {
         if (snap.hasError) return Center(child: SelectableText('${snap.error}'));
-        final value = snap.hasData ? snap.data as T : _last;
-        if (value == null) return const Center(child: CircularProgressIndicator());
-        return widget.builder(context, value);
+        // A finished load counts even when its value is null (no closed
+        // period, say); only "nothing loaded yet" shows the spinner.
+        if (snap.connectionState == ConnectionState.done) return widget.builder(context, snap.data as T);
+        if (!_loaded) return const Center(child: CircularProgressIndicator());
+        return widget.builder(context, _last as T);
       },
     );
   }

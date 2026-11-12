@@ -155,7 +155,7 @@ class PurchaseService {
 
   Future<PurchaseInvoice> post(PurchaseInput input, {required User user}) {
     return db.transaction(() async {
-      if (!user.isAdmin) throw ValidationException('فواتير الشراء للمدير فقط');
+      if (!user.can(Perm.purchase)) throw ValidationException('فواتير الشراء لصلاحية المشتريات');
       if (input.lines.isEmpty) throw ValidationException('أضف صنفاً واحداً على الأقل');
       final supplier = await (db.select(db.suppliers)..where((t) => t.id.equals(input.supplierId)))
           .getSingleOrNull();
@@ -335,7 +335,7 @@ class PurchaseService {
   /// the payments linked to it.
   Future<void> cancel(int invoiceId, {required String reason, required User user}) {
     return db.transaction(() async {
-      if (!user.isAdmin) throw ValidationException('إلغاء الفواتير للمدير فقط');
+      if (!user.can(Perm.cancel)) throw ValidationException('إلغاء الفواتير للمدير أو المحاسب');
       if (reason.trim().isEmpty) throw ValidationException('سبب الإلغاء مطلوب');
       final invoice = await (db.select(db.purchaseInvoices)..where((t) => t.id.equals(invoiceId)))
           .getSingle();

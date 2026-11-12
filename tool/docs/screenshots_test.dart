@@ -520,6 +520,31 @@ void main() {
     await tester.tap(find.text('الربحية'));
     await settle(tester);
     await shot(tester, '38_project_profit');
+
+    // Cards, the product browser, report charts.
+    await go(tester, '/customers');
+    await tester.tap(find.byIcon(Icons.grid_view_outlined));
+    await settle(tester);
+    await shot(tester, '39_customers_cards');
+    await go(tester, '/suppliers');
+    await shot(tester, '40_suppliers');
+    await go(tester, '/products');
+    await tester.tap(find.byIcon(Icons.grid_view_outlined));
+    await settle(tester);
+    await shot(tester, '41_products_cards');
+    await go(tester, '/sales/new');
+    await shot(tester, '42_sale_quick_add');
+    await tester.tap(find.text('تصفح الأصناف (F3)'));
+    await settle(tester);
+    await shot(tester, '43_product_browser');
+    await tester.tap(find.text('تم'));
+    await settle(tester);
+    await go(tester, '/reports');
+    await tester.tap(find.text('المبيعات حسب الصنف'));
+    await settle(tester);
+    await tester.tap(find.text('رسم'));
+    await settle(tester);
+    await shot(tester, '44_report_chart');
     await unmount(tester);
   });
 }

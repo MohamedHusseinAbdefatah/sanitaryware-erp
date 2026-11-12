@@ -71,7 +71,7 @@ class ExpenseService {
 
   Future<Expense> add(ExpenseInput input, {required User user}) {
     return db.transaction(() async {
-      if (!user.isAdmin) throw ValidationException('المصروفات للمدير فقط');
+      if (!user.can(Perm.expenses)) throw ValidationException('المصروفات لصلاحية المحاسبة');
       if (input.amount <= 0) throw ValidationException('المبلغ يجب أن يكون أكبر من صفر');
       if (input.method != PaymentMethod.cash && input.method != PaymentMethod.bank) {
         throw ArgumentError.value(input.method, 'method');
@@ -102,7 +102,7 @@ class ExpenseService {
   /// Admin only; the expense stays on record as cancelled.
   Future<void> cancel(int expenseId, {required String reason, required User user}) {
     return db.transaction(() async {
-      if (!user.isAdmin) throw ValidationException('إلغاء المصروفات للمدير فقط');
+      if (!user.can(Perm.expenses)) throw ValidationException('إلغاء المصروفات لصلاحية المحاسبة');
       if (reason.trim().isEmpty) throw ValidationException('سبب الإلغاء مطلوب');
       final e = await (db.select(db.expenses)..where((t) => t.id.equals(expenseId))).getSingle();
       if (e.status == DocStatus.cancelled) throw ValidationException('المصروف ملغى من قبل');

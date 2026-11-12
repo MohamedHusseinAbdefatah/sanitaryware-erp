@@ -138,7 +138,7 @@ class PriceListService {
   final AppDatabase db;
 
   void _admin(User user) {
-    if (!user.isAdmin) throw ValidationException('قوائم الأسعار للمدير فقط');
+    if (!user.can(Perm.purchase)) throw ValidationException('قوائم الأسعار لصلاحية المشتريات');
   }
 
   void _checkHeader(PriceListHeader h) {

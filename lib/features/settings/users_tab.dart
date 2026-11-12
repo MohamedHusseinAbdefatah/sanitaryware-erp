@@ -45,7 +45,7 @@ class UsersTab extends ConsumerWidget {
               columns: [
                 DataListColumn(Strings.fullName, flex: 3, (u) => Text(u.id == me?.id ? '${u.fullName} (${Strings.you})' : u.fullName)),
                 DataListColumn(Strings.username, flex: 2, (u) => Text(u.username, textDirection: TextDirection.ltr)),
-                DataListColumn(Strings.role, numeric: true, (u) => Text(u.isAdmin ? Strings.roleAdmin : Strings.roleCashier)),
+                DataListColumn(Strings.role, numeric: true, (u) => Text(UserRole.label(u.role))),
                 DataListColumn(Strings.status, numeric: true, (u) => Text(u.isActive ? Strings.active : Strings.inactive)),
               ],
             ),
@@ -135,19 +135,16 @@ class _UserDialogState extends ConsumerState<_UserDialog> {
                 ),
               ],
               const SizedBox(height: 12),
-              SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(value: UserRole.cashier, label: Text(Strings.roleCashier)),
-                  ButtonSegment(value: UserRole.admin, label: Text(Strings.roleAdmin)),
+              DropdownButtonFormField<String>(
+                initialValue: UserRole.all.contains(_role) ? _role : UserRole.cashier,
+                decoration: const InputDecoration(labelText: Strings.role),
+                items: [
+                  for (final r in UserRole.all) DropdownMenuItem(value: r, child: Text(UserRole.label(r))),
                 ],
-                selected: {_role},
-                onSelectionChanged: (s) => setState(() => _role = s.single),
+                onChanged: (v) => setState(() => _role = v ?? _role),
               ),
               const SizedBox(height: 4),
-              Text(
-                _role == UserRole.admin ? Strings.adminRights : Strings.cashierRights,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
+              Text(UserRole.describe(_role), style: Theme.of(context).textTheme.bodySmall),
               if (!isNew)
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
