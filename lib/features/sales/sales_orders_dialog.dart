@@ -25,6 +25,7 @@ String soStatusLabel(String s) => switch (s) {
       SoStatus.partlyDelivered => 'تسليم جزئي',
       SoStatus.delivered => 'تم التسليم',
       SoStatus.cancelled => 'ملغي',
+      SoStatus.revised => 'استُبدل بمراجعة',
       _ => s,
     };
 
@@ -114,6 +115,7 @@ class _NewSoDialogState extends ConsumerState<_NewSoDialog> {
   final _external = TextEditingController();
   final _reason = TextEditingController();
   bool _quotation = false;
+  DateTime _validUntil = DateTime.now().add(const Duration(days: defaultQuoteValidityDays));
 
   @override
   void dispose() {
@@ -166,6 +168,7 @@ class _NewSoDialogState extends ConsumerState<_NewSoDialog> {
               notes: _notes.text,
               externalId: _external.text,
               asQuotation: _quotation,
+              validUntil: _quotation ? _validUntil : null,
               approvalReason: _reason.text,
               user: user,
             ));
@@ -266,6 +269,19 @@ class _NewSoDialogState extends ConsumerState<_NewSoDialog> {
                 value: _quotation,
                 onChanged: (v) => setState(() => _quotation = v ?? false),
               ),
+              if (_quotation)
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      final d = await showDatePicker(
+                          context: context, firstDate: DateTime.now(), lastDate: DateTime(2100), initialDate: _validUntil);
+                      if (d != null) setState(() => _validUntil = d);
+                    },
+                    icon: const Icon(Icons.event_available),
+                    label: Text('العرض صالح حتى ${formatDate(_validUntil)}'),
+                  ),
+                ),
               const Text('السعر وخصم العميل يُثبَّتان عند التأكيد.', style: TextStyle(fontSize: 12)),
             ],
           ),
@@ -520,6 +536,20 @@ class _SoDetailDialogState extends ConsumerState<_SoDetailDialog> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text('تاريخ الأمر: ${formatDateTime(d.order.orderDate)}  •  ${SaleChannel.label(d.order.channel)}'),
+              if (d.order.revision > 0 || d.order.validUntil != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Wrap(spacing: 8, children: [
+                    if (d.order.revision > 0) Chip(label: Text('المراجعة رقم ${d.order.revision}')),
+                    if (d.order.validUntil != null)
+                      Chip(
+                        backgroundColor: SalesOrderService.isExpired(d.order) ? Colors.red.shade50 : null,
+                        label: Text(SalesOrderService.isExpired(d.order)
+                            ? 'انتهت صلاحيته ${formatDate(d.order.validUntil!)}'
+                            : 'صالح حتى ${formatDate(d.order.validUntil!)}'),
+                      ),
+                  ]),
+                ),
               if (d.order.notes != null) Text(d.order.notes!),
               const SizedBox(height: 8),
               Table(
@@ -659,6 +689,27 @@ class _SoDetailDialogState extends ConsumerState<_SoDetailDialog> {
         ),
       ),
       actions: [
+        if (status == SoStatus.quotation)
+          TextButton(
+            onPressed: () async {
+              final day = await showDatePicker(
+                  context: context, firstDate: DateTime(2000), lastDate: DateTime(2100), initialDate: d.order.validUntil ?? DateTime.now());
+              if (day != null) await _act((u) => svc.setValidUntil(widget.orderId, day, user: u));
+            },
+            child: const Text('تغيير الصلاحية'),
+          ),
+        if (status == SoStatus.quotation || status == SoStatus.draft)
+          OutlinedButton.icon(
+            onPressed: () async {
+              final newId = await runGuarded(context, () => svc.revise(widget.orderId, user: ref.read(currentUserProvider)!));
+              if (newId != null && context.mounted) {
+                Navigator.pop(context);
+                await showSalesOrder(context, newId);
+              }
+            },
+            icon: const Icon(Icons.copy_all_outlined),
+            label: const Text('مراجعة جديدة'),
+          ),
         if (status == SoStatus.draft || status == SoStatus.quotation)
           FilledButton(
             onPressed: _confirm,

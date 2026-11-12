@@ -92,6 +92,7 @@ class PaymentService {
   }) {
     return db.transaction(() async {
       await refuseReadOnly(db, userId);
+      await refuseSoftClosed(db, input.date ?? DateTime.now(), userId);
       if (input.amount <= 0) throw ValidationException('المبلغ يجب أن يكون أكبر من صفر');
       final partyName = await _partyName(partyType, input.partyId);
       if (partyName == null) throw ValidationException('اختر ${partyType == PartyType.customer ? 'العميل' : 'المورد'}');

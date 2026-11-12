@@ -197,6 +197,10 @@ class ReturnService {
   }
 
   Future<List<ReturnableLine>> returnableForPurchase(int invoiceId) async {
+    final inv = await (db.select(db.purchaseInvoices)..where((t) => t.id.equals(invoiceId))).getSingleOrNull();
+    if (inv != null && inv.isDirect) {
+      throw ValidationException('فاتورة توريد مباشر للعميل: لا مخزون يُرتجع منها؛ المرتجع يكون من فاتورة البيع');
+    }
     final rows = await (db.select(db.purchaseInvoiceItems).join([
       innerJoin(db.products, db.products.id.equalsExp(db.purchaseInvoiceItems.productId)),
       leftOuterJoin(db.units, db.units.id.equalsExp(db.products.unitId)),
@@ -259,6 +263,7 @@ class ReturnService {
   Future<ReturnDoc> postSaleReturn(ReturnInput input, {required User user}) {
     return db.transaction(() async {
       await refuseReadOnly(db, user.id);
+      await refuseSoftClosed(db, input.date ?? DateTime.now(), user.id);
       int? customerId = input.partyId;
       Map<int, ReturnableLine>? returnable;
       if (input.originalInvoiceId != null) {
@@ -330,6 +335,7 @@ class ReturnService {
   Future<ReturnDoc> postPurchaseReturn(ReturnInput input, {required User user}) {
     return db.transaction(() async {
       if (!user.can(Perm.purchase)) throw ValidationException('مرتجع الشراء لصلاحية المشتريات');
+      await refuseSoftClosed(db, input.date ?? DateTime.now(), user.id);
       int? supplierId = input.partyId;
       Map<int, ReturnableLine>? returnable;
       if (input.originalInvoiceId != null) {

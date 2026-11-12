@@ -137,11 +137,11 @@ class SalePreviewService {
       final netForProfit = vat?.netOfVat ?? net;
 
       // The same product on two lines: the second line's cost starts after the first's.
-      final before = wanted[line.productId] ?? 0;
-      wanted[line.productId] = before + line.qty;
-      int? cost;
+      final before = line.isDirect ? 0 : wanted[line.productId] ?? 0;
+      if (!line.isDirect) wanted[line.productId] = before + line.qty;
+      int? cost = line.isDirect ? lineAmount(line.qty, line.directUnitCost) : null;
       final places = line.locationId == null ? sellable : [line.locationId!];
-      final upTo = await fifo.peek(line.productId, before + line.qty, locationIds: places);
+      final upTo = line.isDirect ? null : await fifo.peek(line.productId, before + line.qty, locationIds: places);
       if (upTo != null) {
         if (before == 0) {
           cost = upTo.totalCost;

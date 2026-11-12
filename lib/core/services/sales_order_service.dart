@@ -22,7 +22,13 @@ abstract final class SoStatus {
   static const partlyDelivered = 'partly_delivered';
   static const delivered = 'delivered';
   static const cancelled = 'cancelled';
+
+  /// A quotation replaced by a newer revision.
+  static const revised = 'revised';
 }
+
+/// Days a quotation stays valid when no date is given.
+const defaultQuoteValidityDays = 14;
 
 abstract final class SaleChannel {
   static const showroom = 'showroom';
@@ -127,6 +133,7 @@ class SalesOrderService {
     String? externalId,
     bool asQuotation = false,
     String? approvalReason,
+    DateTime? validUntil,
     int? projectId,
     required User user,
   }) {
@@ -164,6 +171,9 @@ class SalesOrderService {
             externalId: Value(ext.isEmpty ? null : ext),
             createdBy: Value(user.id),
             projectId: Value(projectId),
+            validUntil: Value(asQuotation
+                ? (validUntil ?? (orderDate ?? DateTime.now()).add(const Duration(days: defaultQuoteValidityDays)))
+                : null),
           ));
       for (final l in lines) {
         await db.into(db.salesOrderLines).insert(SalesOrderLinesCompanion.insert(
@@ -227,6 +237,9 @@ class SalesOrderService {
       final order = await _order(id);
       if (order.status != SoStatus.draft && order.status != SoStatus.quotation) {
         throw ValidationException('يمكن تأكيد المسودة أو عرض السعر فقط');
+      }
+      if (order.status == SoStatus.quotation && isExpired(order) && !user.isAdmin) {
+        throw ValidationException('انتهت صلاحية عرض السعر ${order.number}؛ اعمل له مراجعة جديدة أو يؤكده المدير');
       }
       final customer = await (db.select(db.customers)..where((t) => t.id.equals(order.customerId))).getSingle();
       final lines = await (db.select(db.salesOrderLines)..where((t) => t.orderId.equals(id))).get();
@@ -449,6 +462,67 @@ class SalesOrderService {
           orderId: id, invoiceId: invoice.id, deliveredAt: DateTime.now()));
       return invoice;
     });
+  }
+
+  /// A quotation past its last valid day.
+  static bool isExpired(SalesOrder o, {DateTime? now}) {
+    if (o.status != SoStatus.quotation || o.validUntil == null) return false;
+    final d = o.validUntil!;
+    return (now ?? DateTime.now()).isAfter(DateTime(d.year, d.month, d.day, 23, 59, 59));
+  }
+
+  /// A new revision of a quotation (or draft): a copy with the next revision
+  /// number and a fresh validity; the old one is kept, marked "revised".
+  Future<int> revise(int id, {DateTime? validUntil, required User user}) {
+    return db.transaction(() async {
+      if (user.readOnly) throw ValidationException('هذا المستخدم للاطلاع فقط ولا يسجل عمليات');
+      final old = await _order(id);
+      if (old.status != SoStatus.quotation && old.status != SoStatus.draft) {
+        throw ValidationException('المراجعة لعرض سعر أو مسودة فقط');
+      }
+      final now = DateTime.now();
+      final newId = await db.into(db.salesOrders).insert(SalesOrdersCompanion.insert(
+            number: await NumberingService(db).next('sales_order'),
+            customerId: old.customerId,
+            channel: Value(old.channel),
+            status: Value(old.status),
+            orderDate: now,
+            notes: Value(old.notes),
+            createdBy: Value(user.id),
+            projectId: Value(old.projectId),
+            revision: Value(old.revision + 1),
+            revisedFromId: Value(old.id),
+            validUntil: Value(old.status == SoStatus.quotation
+                ? (validUntil ?? now.add(const Duration(days: defaultQuoteValidityDays)))
+                : null),
+          ));
+      for (final l in await (db.select(db.salesOrderLines)..where((t) => t.orderId.equals(id))).get()) {
+        await db.into(db.salesOrderLines).insert(SalesOrderLinesCompanion.insert(
+              orderId: newId,
+              productId: l.productId,
+              qty: l.qty,
+              extraDiscountBp: Value(l.extraDiscountBp),
+              priceListId: Value(l.priceListId),
+            ));
+      }
+      await (db.update(db.salesOrders)..where((t) => t.id.equals(id)))
+          .write(SalesOrdersCompanion(status: const Value(SoStatus.revised), updatedAt: Value(now)));
+      await AuditService(db).log(
+          action: AuditAction.update, entity: 'sales_order', entityId: id, userId: user.id, details: 'مراجعة جديدة $newId');
+      return newId;
+    });
+  }
+
+  /// Changes how long a quotation stays valid.
+  Future<void> setValidUntil(int id, DateTime day, {required User user}) async {
+    if (user.readOnly) throw ValidationException('هذا المستخدم للاطلاع فقط ولا يسجل عمليات');
+    final o = await _order(id);
+    if (o.status != SoStatus.quotation) throw ValidationException('الصلاحية لعروض الأسعار فقط');
+    await (db.update(db.salesOrders)..where((t) => t.id.equals(id)))
+        .write(SalesOrdersCompanion(validUntil: Value(day), updatedAt: Value(DateTime.now())));
+    await AuditService(db).log(
+        action: AuditAction.update, entity: 'sales_order', entityId: id, userId: user.id,
+        details: 'صالح حتى ${day.year}/${day.month}/${day.day}');
   }
 
   /// A draft or a confirmed order with nothing delivered can be cancelled.

@@ -97,6 +97,11 @@ class _SaleViewScreenState extends ConsumerState<SaleViewScreen> {
           facts: [
             (Strings.date, formatDateTime(inv.date)),
             if (d.createdByName != null) (Strings.createdBy, d.createdByName!),
+            if (inv.deliveryMethod != null)
+              ('التسليم', '${DeliveryMethod.label(inv.deliveryMethod)} — ${DeliveryStatus.label(inv.deliveryStatus)}'),
+            if (inv.deliveryAddress != null) ('العنوان', inv.deliveryAddress!),
+            if (inv.carrier != null) ('الناقل', inv.carrier!),
+            if (inv.deliveryProof != null) ('إثبات التسليم', inv.deliveryProof!),
           ],
           columns: const [
             DocColumn('#'),
@@ -117,6 +122,8 @@ class _SaleViewScreenState extends ConsumerState<SaleViewScreen> {
                     children: [
                       Text(d.lines[i].productName, style: const TextStyle(fontWeight: FontWeight.w600)),
                       Text(d.lines[i].productCode, style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+                      if (d.lines[i].item.directSupplierId != null)
+                        const Text('توريد مباشر من المورد', style: TextStyle(color: AppColors.warn, fontSize: 12)),
                     ],
                   ),
                 ),
@@ -129,6 +136,7 @@ class _SaleViewScreenState extends ConsumerState<SaleViewScreen> {
           totals: [
             (Strings.subtotal, inv.subtotal, false),
             if (inv.discount != 0) (Strings.invoiceDiscount, inv.discount, false),
+            if (inv.deliveryFee != 0) ('رسوم التوصيل', inv.deliveryFee, false),
             (Strings.total, inv.total, true),
             (Strings.paid, d.paid, false),
             (Strings.remaining, cancelled ? 0 : remaining, true),

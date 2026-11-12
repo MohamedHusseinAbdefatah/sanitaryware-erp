@@ -2,6 +2,38 @@
 
 Versions follow `version:` in `pubspec.yaml` and `lib/core/version.dart`.
 
+## 2.2.0
+
+The remaining blueprint items, except the Shopify connection. Database
+schema 18 (new tables and columns; nothing removed).
+
+- Quotations (6.2): a last valid day (14 days by default, changeable);
+  an expired quotation is confirmed only by the owner; "new revision" copies
+  it with the next revision number and keeps the old one as "revised".
+- Receiving (4.2): accepted and rejected quantities with the reason and
+  inspection note; rejected goods never enter stock or the supplier's
+  account, and the order line stays open for them; a record of rejections.
+- Direct supply from the supplier (5.3): on a sale line, choose the
+  supplier and their cost; no stock is used, a direct purchase invoice owes
+  the supplier, and the cost goes to the cost of that sale. The same product
+  can be on two lines, one from stock and one direct. Cancelling the sale
+  cancels the direct purchase.
+- Input VAT on purchase invoices: owed to the supplier, kept out of the
+  goods' cost, posted to input VAT and shown in the VAT report.
+- Delivery (6.4): pickup, delivery or direct; address, carrier and a fee
+  charged to the customer (on the invoice, as delivery income); a deliveries
+  screen with preparing / shipped / delivered and proof of delivery; shown
+  and printed on the invoice.
+- Leads (6.1): possible customers with source, interest, expected value,
+  stage, next follow-up and a lost reason; conversion to a customer.
+- Expense plans (9.1): recurring expenses as reminders, recorded once when
+  paid; Excel import of past expenses with a preview, their original dates,
+  date and amount checks and duplicate detection.
+- Soft close (9.3): while a month is reviewed only the owner and the
+  accountant can record or cancel in it; then the final close.
+- A delivery-income account is added to the chart; existing charts get it
+  on first start.
+
 ## 2.1.0
 
 Finishing round: new screens, roles, stock count and a full reports page.

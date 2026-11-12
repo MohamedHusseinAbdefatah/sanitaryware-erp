@@ -140,6 +140,7 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
   final _supplierInvoiceNo = TextEditingController();
   final _discount = TextEditingController();
   final _extraCosts = TextEditingController();
+  final _vat = TextEditingController();
   final _extraCostsNote = TextEditingController();
   final _paid = TextEditingController();
   final _notes = TextEditingController();
@@ -164,7 +165,8 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
   int get _subtotal => _lines.fold(0, (s, l) => s + (l.total ?? 0));
   int get _discountValue => discountAmount(_discount.text, percent: _discountPercent, subtotal: _subtotal) ?? 0;
   int get _extraValue => moneyOrZero(_extraCosts);
-  int get _total => _subtotal - _discountValue + (_extraOnSupplier ? _extraValue : 0);
+  int get _vatValue => moneyOrZero(_vat);
+  int get _total => _subtotal - _discountValue + (_extraOnSupplier ? _extraValue : 0) + _vatValue;
   int get _remaining => _advance != null ? 0 : _total - moneyOrZero(_paid);
 
   @override
@@ -176,6 +178,7 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
       _supplierInvoiceNo,
       _discount,
       _extraCosts,
+      _vat,
       _extraCostsNote,
       _paid,
       _notes,
@@ -421,6 +424,7 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
           extraCostsNote: _extraCostsNote.text,
           dueDate: _dueDate,
           notes: _notes.text,
+          vatAmount: _vatValue,
           allowDuplicateSupplierNo: allowDuplicate,
           extraLines: free,
           user: user,
@@ -438,6 +442,7 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
               extraCostsOnSupplier: _extraOnSupplier,
               extraCostsNote: _extraCostsNote.text,
               dueDate: _dueDate,
+              vatAmount: _vatValue,
               paidAmount: _advance == null ? moneyOrZero(_paid) : 0,
               paymentMethod: _method,
               cheque: _advance == null ? cheque : null,
@@ -848,6 +853,13 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                     ),
                   ),
               ],
+              SizedBox(
+                width: 170,
+                child: Tooltip(
+                  message: 'ضريبة القيمة المضافة على فاتورة المورد الضريبية، القابلة للخصم. لا تدخل في تكلفة الأصناف.',
+                  child: MoneyField(controller: _vat, label: 'ضريبة مدخلات (إن وُجدت)', onChanged: (_) => setState(() {})),
+                ),
+              ),
               AmountLabel(Strings.total, _total, big: true),
             ],
           ),

@@ -72,6 +72,7 @@ class ExpenseService {
   Future<Expense> add(ExpenseInput input, {required User user}) {
     return db.transaction(() async {
       if (!user.can(Perm.expenses)) throw ValidationException('المصروفات لصلاحية المحاسبة');
+      await refuseSoftClosed(db, input.date ?? DateTime.now(), user.id);
       if (input.amount <= 0) throw ValidationException('المبلغ يجب أن يكون أكبر من صفر');
       if (input.method != PaymentMethod.cash && input.method != PaymentMethod.bank) {
         throw ArgumentError.value(input.method, 'method');

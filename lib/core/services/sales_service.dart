@@ -12,6 +12,7 @@ import 'doc_types.dart';
 import 'errors.dart';
 import 'fifo_service.dart';
 import 'numbering_service.dart';
+import 'purchase_service.dart';
 import 'query_helpers.dart';
 import 'reservation_service.dart';
 import 'selling_policy_service.dart';
@@ -22,6 +23,8 @@ export 'doc_types.dart';
 
 class SaleLineInput {
   const SaleLineInput({
+    this.directSupplierId,
+    this.directUnitCost = 0,
     required this.productId,
     required this.qty,
     required this.unitPrice,
@@ -30,6 +33,14 @@ class SaleLineInput {
     this.locked,
     this.locationId,
   });
+
+  /// Delivered straight from this supplier to the customer (blueprint
+  /// 5.3): no stock is used; [directUnitCost] is what the supplier charges
+  /// per unit, owed to them on a direct purchase invoice.
+  final int? directSupplierId;
+  final int directUnitCost;
+
+  bool get isDirect => directSupplierId != null;
 
   final int productId;
 
@@ -59,6 +70,10 @@ class SaleLineInput {
 
 class SaleInput {
   const SaleInput({
+    this.deliveryMethod,
+    this.deliveryAddress,
+    this.carrier,
+    this.deliveryFee = 0,
     required this.lines,
     this.customerId,
     this.date,
@@ -85,7 +100,15 @@ class SaleInput {
   final String? notes;
 
   int get subtotal => lines.fold(0, (sum, l) => sum + l.total);
-  int get total => subtotal - discount;
+
+  /// How it reaches the customer (see [DeliveryMethod]) and the fee
+  /// charged for it, which is part of the total.
+  final String? deliveryMethod;
+  final String? deliveryAddress;
+  final String? carrier;
+  final int deliveryFee;
+
+  int get total => subtotal - discount + deliveryFee;
 }
 
 /// One stock problem per product when a sale would take stock below zero.
@@ -98,8 +121,10 @@ class StockShortage {
 
 class InsufficientStockException extends ValidationException {
   InsufficientStockException(this.shortages)
-      : super('الكمية غير متاحة في المخزن:\n${shortages.map((s) => '• ${s.productName}: '
-            'المتاح ${formatQty(s.available)} والمطلوب ${formatQty(s.needed)}').join('\n')}');
+    : super(
+        'الكمية غير متاحة في المخزن:\n${shortages.map((s) => '• ${s.productName}: '
+            'المتاح ${formatQty(s.available)} والمطلوب ${formatQty(s.needed)}').join('\n')}',
+      );
 
   final List<StockShortage> shortages;
 }
@@ -108,8 +133,10 @@ class InsufficientStockException extends ValidationException {
 /// can post it anyway (with `allowOverCreditLimit`).
 class CreditLimitException extends ValidationException {
   CreditLimitException({required this.limit, required this.balanceAfter})
-      : super('هذه الفاتورة تتجاوز حد الائتمان للعميل.\n'
-            'حد الائتمان ${formatMoney(limit)} والرصيد بعد الفاتورة ${formatMoney(balanceAfter)}');
+    : super(
+        'هذه الفاتورة تتجاوز حد الائتمان للعميل.\n'
+        'حد الائتمان ${formatMoney(limit)} والرصيد بعد الفاتورة ${formatMoney(balanceAfter)}',
+      );
 
   final int limit;
   final int balanceAfter;
@@ -118,8 +145,10 @@ class CreditLimitException extends ValidationException {
 /// Stock exists but part of it is held for other customers.
 class ReservedStockException extends ValidationException {
   ReservedStockException(this.shortages)
-      : super('الكمية المتاحة محجوزة لعملاء آخرين:\n${shortages.map((s) => '• ${s.productName}: '
-            'المتاح للبيع ${formatQty(s.available)} والمطلوب ${formatQty(s.needed)}').join('\n')}');
+    : super(
+        'الكمية المتاحة محجوزة لعملاء آخرين:\n${shortages.map((s) => '• ${s.productName}: '
+            'المتاح للبيع ${formatQty(s.available)} والمطلوب ${formatQty(s.needed)}').join('\n')}',
+      );
 
   final List<StockShortage> shortages;
 }
@@ -128,9 +157,11 @@ class ReservedStockException extends ValidationException {
 /// can, after writing why ([needsReason] is true for the admin).
 class BelowCostException extends ValidationException {
   BelowCostException({required this.needsReason, required this.productNames})
-      : super(needsReason
+    : super(
+        needsReason
             ? 'السعر أقل من التكلفة — اكتب سبب البيع\n${productNames.map((n) => '• $n').join('\n')}'
-            : 'السعر أقل من التكلفة — يلزم موافقة المدير\n${productNames.map((n) => '• $n').join('\n')}');
+            : 'السعر أقل من التكلفة — يلزم موافقة المدير\n${productNames.map((n) => '• $n').join('\n')}',
+      );
 
   /// True when the person is an admin and only the reason is missing.
   final bool needsReason;
@@ -141,8 +172,7 @@ class BelowCostException extends ValidationException {
 /// discount past the limit, or a margin under the minimum. An admin posting
 /// the sale is the approval, and it is logged.
 class ApprovalRequiredException extends ValidationException {
-  ApprovalRequiredException(this.problems)
-      : super('يلزم موافقة المدير:\n${problems.map((p) => '• $p').join('\n')}');
+  ApprovalRequiredException(this.problems) : super('يلزم موافقة المدير:\n${problems.map((p) => '• $p').join('\n')}');
 
   final List<String> problems;
 }
@@ -205,14 +235,15 @@ class SalesService {
   }) {
     return db.transaction(() async {
       await refuseReadOnly(db, userId);
+      await refuseSoftClosed(db, input.date ?? DateTime.now(), userId);
       // 1. Validate the lines.
       if (input.lines.isEmpty) throw ValidationException('أضف صنفاً واحداً على الأقل');
       final products = <int, Product>{};
       final units = {for (final u in await db.select(db.units).get()) u.id: u};
       for (final line in input.lines) {
-        final p = products[line.productId] ??= await (db.select(db.products)
-              ..where((t) => t.id.equals(line.productId)))
-            .getSingle();
+        final p = products[line.productId] ??= await (db.select(
+          db.products,
+        )..where((t) => t.id.equals(line.productId))).getSingle();
         if (!p.isActive) throw ValidationException('الصنف "${p.nameAr}" موقوف');
         if (line.qty <= 0) throw ValidationException('الكمية يجب أن تكون أكبر من صفر (${p.nameAr})');
         if (!(units[p.unitId]?.allowDecimal ?? false) && !isWholeQty(line.qty)) {
@@ -221,6 +252,33 @@ class SalesService {
         if (line.unitPrice < 0) throw ValidationException('السعر لا يمكن أن يكون سالباً (${p.nameAr})');
         if (line.discount < 0 || line.discount > lineAmount(line.qty, line.unitPrice)) {
           throw ValidationException('خصم الصنف "${p.nameAr}" أكبر من قيمته');
+        }
+        if (line.isDirect && line.directUnitCost < 0) {
+          throw ValidationException('تكلفة التوريد المباشر لا تكون سالبة (${p.nameAr})');
+        }
+      }
+
+      if (input.deliveryFee < 0) throw ValidationException('رسوم التوصيل لا تكون سالبة');
+      if (input.deliveryMethod != null && !DeliveryMethod.all.contains(input.deliveryMethod)) {
+        throw ArgumentError.value(input.deliveryMethod, 'deliveryMethod');
+      }
+      // Lines delivered by a supplier use no stock; posting them makes a
+      // direct purchase, so it needs the right to buy.
+      final stockLines = [
+        for (final l in input.lines)
+          if (!l.isDirect) l,
+      ];
+      User? directBy;
+      if (stockLines.length != input.lines.length) {
+        directBy = userId == null
+            ? null
+            : await (db.select(db.users)..where((t) => t.id.equals(userId))).getSingleOrNull();
+        if (directBy == null || !directBy.can(Perm.purchase)) {
+          throw ValidationException('التوريد المباشر من المورد يسجله المدير أو المشتريات');
+        }
+        for (final l in input.lines.where((l) => l.isDirect)) {
+          final s = await (db.select(db.suppliers)..where((t) => t.id.equals(l.directSupplierId!))).getSingleOrNull();
+          if (s == null || !s.isActive) throw ValidationException('مورد التوريد المباشر غير موجود أو موقوف');
         }
       }
 
@@ -241,12 +299,10 @@ class SalesService {
           throw ValidationException('البيع النقدي بدون عميل يجب أن يُدفع بالكامل؛ اختر عميلاً للبيع الآجل');
         }
       } else {
-        customer = await (db.select(db.customers)..where((t) => t.id.equals(input.customerId!)))
-            .getSingle();
+        customer = await (db.select(db.customers)..where((t) => t.id.equals(input.customerId!))).getSingle();
         if (!customer.isActive) throw ValidationException('العميل "${customer.name}" موقوف');
         if (customer.creditLimit > 0) {
-          final balanceAfter =
-              await BalanceService(db).customerBalance(customer.id) + total - input.paidAmount;
+          final balanceAfter = await BalanceService(db).customerBalance(customer.id) + total - input.paidAmount;
           if (balanceAfter > customer.creditLimit) {
             final user = userId == null
                 ? null
@@ -254,7 +310,8 @@ class SalesService {
             if (!allowOverCreditLimit || !(user?.isAdmin ?? false)) {
               throw CreditLimitException(limit: customer.creditLimit, balanceAfter: balanceAfter);
             }
-            creditOverride = 'تجاوز حد الائتمان: الحد ${formatMoney(customer.creditLimit)} '
+            creditOverride =
+                'تجاوز حد الائتمان: الحد ${formatMoney(customer.creditLimit)} '
                 'والرصيد بعد الفاتورة ${formatMoney(balanceAfter)}';
           }
         }
@@ -270,7 +327,7 @@ class SalesService {
       final stock = StockService(db);
       if (!await SettingsService(db).getBool(SettingKey.allowNegativeStock)) {
         final needed = <int, int>{};
-        for (final line in input.lines) {
+        for (final line in stockLines) {
           needed[line.productId] = (needed[line.productId] ?? 0) + line.qty;
         }
         final shortages = <StockShortage>[];
@@ -287,7 +344,7 @@ class SalesService {
       final sellable = await stock.sellableLocationIds();
       final allowNegative = await SettingsService(db).getBool(SettingKey.allowNegativeStock);
       final fromPlace = <(int, int), int>{};
-      for (final line in input.lines) {
+      for (final line in stockLines) {
         if (line.locationId == null) continue;
         if (!sellable.contains(line.locationId)) {
           throw ValidationException('المكان المختار للصنف "${products[line.productId]!.nameAr}" للعرض فقط أو موقوف');
@@ -307,7 +364,7 @@ class SalesService {
       // 3b. Stock held for other customers cannot be sold from under them.
       final reservations = ReservationService(db);
       final soldQty = <int, int>{};
-      for (final line in input.lines) {
+      for (final line in stockLines) {
         soldQty[line.productId] = (soldQty[line.productId] ?? 0) + line.qty;
       }
       final held = <StockShortage>[];
@@ -324,18 +381,31 @@ class SalesService {
       // 4. Number, invoice and items, keeping the version each line used.
       final numbering = NumberingService(db);
       final date = input.date ?? DateTime.now();
-      final invoiceId = await db.into(db.salesInvoices).insert(SalesInvoicesCompanion.insert(
-            number: await numbering.next('sales'),
-            date: date,
-            customerId: Value(input.customerId),
-            subtotal: subtotal,
-            discount: Value(input.discount),
-            total: total,
-            paidAmount: Value(input.paidAmount),
-            notes: Value(_blankToNull(input.notes)),
-            projectId: Value(input.projectId),
-            createdBy: Value(userId),
-          ));
+      final invoiceId = await db
+          .into(db.salesInvoices)
+          .insert(
+            SalesInvoicesCompanion.insert(
+              number: await numbering.next('sales'),
+              date: date,
+              customerId: Value(input.customerId),
+              subtotal: subtotal,
+              discount: Value(input.discount),
+              total: total,
+              paidAmount: Value(input.paidAmount),
+              notes: Value(_blankToNull(input.notes)),
+              projectId: Value(input.projectId),
+              createdBy: Value(userId),
+              deliveryMethod: Value(input.deliveryMethod),
+              deliveryAddress: Value(_blankToNull(input.deliveryAddress)),
+              carrier: Value(_blankToNull(input.carrier)),
+              deliveryFee: Value(input.deliveryFee),
+              deliveryStatus: Value(
+                input.deliveryMethod == null || input.deliveryMethod == DeliveryMethod.pickup
+                    ? null
+                    : DeliveryStatus.preparing,
+              ),
+            ),
+          );
       final fifo = FifoService(db);
       final policies = SellingPolicyService(db);
       final belowCostNames = <String>[];
@@ -361,16 +431,20 @@ class SalesService {
         if (check.overDiscountLimit) overLimitNames.add(name);
         // Real cost: the oldest layers first. Anything without a layer
         // (negative stock) is priced at the last known cost.
-        final parts = await fifo.consumeAcross(
-          productId: line.productId,
-          qty: line.qty,
-          locationIds: line.locationId == null ? sellable : [line.locationId!],
-          refType: RefType.salesInvoice,
-          refId: invoiceId,
-          date: date,
-          fallbackCost: await fifo.lastKnownCost(line.productId) ?? 0,
-        );
-        final costValue = parts.fold<int>(0, (s, p) => s + p.take.totalCost);
+        final parts = line.isDirect
+            ? const <LocationTake>[]
+            : await fifo.consumeAcross(
+                productId: line.productId,
+                qty: line.qty,
+                locationIds: line.locationId == null ? sellable : [line.locationId!],
+                refType: RefType.salesInvoice,
+                refId: invoiceId,
+                date: date,
+                fallbackCost: await fifo.lastKnownCost(line.productId) ?? 0,
+              );
+        final costValue = line.isDirect
+            ? lineAmount(line.qty, line.directUnitCost)
+            : parts.fold<int>(0, (s, p) => s + p.take.totalCost);
         final cost = (costValue * qtyScale / line.qty).round();
         final snap = check.snapshot;
         final vat = vatOf(net, snap.vatStatus, snap.vatRateBp);
@@ -381,28 +455,33 @@ class SalesService {
         if (check.minMarginBp != null && margin != null && margin < check.minMarginBp!) {
           lowMarginNames.add(name);
         }
-        await db.into(db.salesInvoiceItems).insert(SalesInvoiceItemsCompanion.insert(
-              invoiceId: invoiceId,
-              productId: line.productId,
-              qty: line.qty,
-              unitPrice: line.unitPrice,
-              unitCost: Value(cost),
-              costTotal: Value(costValue),
-              discount: Value(line.discount),
-              lineTotal: line.total,
-              priceListId: Value(snap.priceListId),
-              listPrice: Value(snap.listPrice),
-              pricingType: Value(snap.pricingType),
-              sellingPolicyId: Value(snap.sellingPolicyId),
-              policyDiscountBp: Value(snap.policyBp),
-              customerDiscountBp: Value(snap.customerBp),
-              extraDiscountBp: Value(snap.extraBp),
-              invoiceDiscountShare: Value(shares[n]),
-              netTotal: Value(net),
-              vatStatus: Value(snap.vatStatus),
-              vatRateBp: Value(snap.vatRateBp),
-              vatAmount: Value(vat?.vat),
-            ));
+        await db
+            .into(db.salesInvoiceItems)
+            .insert(
+              SalesInvoiceItemsCompanion.insert(
+                invoiceId: invoiceId,
+                productId: line.productId,
+                qty: line.qty,
+                unitPrice: line.unitPrice,
+                unitCost: Value(cost),
+                costTotal: Value(costValue),
+                discount: Value(line.discount),
+                lineTotal: line.total,
+                priceListId: Value(snap.priceListId),
+                listPrice: Value(snap.listPrice),
+                pricingType: Value(snap.pricingType),
+                sellingPolicyId: Value(snap.sellingPolicyId),
+                policyDiscountBp: Value(snap.policyBp),
+                customerDiscountBp: Value(snap.customerBp),
+                extraDiscountBp: Value(snap.extraBp),
+                invoiceDiscountShare: Value(shares[n]),
+                netTotal: Value(net),
+                vatStatus: Value(snap.vatStatus),
+                vatRateBp: Value(snap.vatRateBp),
+                vatAmount: Value(vat?.vat),
+                directSupplierId: Value(line.directSupplierId),
+              ),
+            );
         // 5. One stock movement for each place the line took from.
         for (final part in parts) {
           await stock.record(
@@ -461,25 +540,51 @@ class SalesService {
         }
       }
 
+      // 5d. What suppliers delivered straight to the customer: one direct
+      // purchase invoice per supplier, owed to them, with no stock.
+      final bySupplier = <int, List<PurchaseLineInput>>{};
+      for (final l in input.lines.where((l) => l.isDirect)) {
+        (bySupplier[l.directSupplierId!] ??= []).add(
+          PurchaseLineInput(productId: l.productId, qty: l.qty, unitCost: l.directUnitCost),
+        );
+      }
+      for (final e in bySupplier.entries) {
+        await PurchaseService(db).post(
+          PurchaseInput(
+            supplierId: e.key,
+            lines: e.value,
+            date: date,
+            isDirect: true,
+            salesInvoiceId: invoiceId,
+            projectId: input.projectId,
+            notes: 'توريد مباشر للعميل ${customer?.name ?? ''}',
+          ),
+          user: directBy!,
+        );
+      }
+
       // 6. The payment made at the counter.
       if (input.paidAmount > 0) {
-        await db.into(db.payments).insert(PaymentsCompanion.insert(
-              number: await numbering.next('payment'),
-              date: date,
-              direction: PaymentDirection.inbound,
-              partyType: PartyType.customer,
-              partyId: input.customerId ?? walkInCustomerId,
-              amount: input.paidAmount,
-              method: input.paymentMethod,
-              invoiceRefType: const Value(RefType.salesInvoice),
-              invoiceRefId: Value(invoiceId),
-              createdBy: Value(userId),
-            ));
+        await db
+            .into(db.payments)
+            .insert(
+              PaymentsCompanion.insert(
+                number: await numbering.next('payment'),
+                date: date,
+                direction: PaymentDirection.inbound,
+                partyType: PartyType.customer,
+                partyId: input.customerId ?? walkInCustomerId,
+                amount: input.paidAmount,
+                method: input.paymentMethod,
+                invoiceRefType: const Value(RefType.salesInvoice),
+                invoiceRefId: Value(invoiceId),
+                createdBy: Value(userId),
+              ),
+            );
       }
 
       // 7. Audit.
-      final invoice = await (db.select(db.salesInvoices)..where((t) => t.id.equals(invoiceId)))
-          .getSingle();
+      final invoice = await (db.select(db.salesInvoices)..where((t) => t.id.equals(invoiceId))).getSingle();
       if (belowCostApproved) {
         await ApprovalService(db).record(
           kind: ApprovalKind.belowCost,
@@ -515,23 +620,69 @@ class SalesService {
     });
   }
 
+  /// Moves a delivery along: preparing, shipped, delivered (with the proof:
+  /// who received it, a signature or photo reference).
+  Future<void> setDeliveryStatus(int invoiceId, String status, {String? proof, String? carrier, required User user}) {
+    return db.transaction(() async {
+      if (user.readOnly) throw ValidationException('هذا المستخدم للاطلاع فقط ولا يسجل عمليات');
+      if (!DeliveryStatus.all.contains(status)) throw ArgumentError.value(status, 'status');
+      final inv = await (db.select(db.salesInvoices)..where((t) => t.id.equals(invoiceId))).getSingle();
+      if (inv.status != DocStatus.active) throw ValidationException('الفاتورة ملغاة');
+      if (inv.deliveryMethod == null || inv.deliveryMethod == DeliveryMethod.pickup) {
+        throw ValidationException('هذه الفاتورة استلام من المعرض');
+      }
+      if (status == DeliveryStatus.delivered && (proof ?? '').trim().isEmpty) {
+        throw ValidationException('اكتب إثبات التسليم: اسم المستلم أو رقم الإيصال');
+      }
+      await (db.update(db.salesInvoices)..where((t) => t.id.equals(invoiceId))).write(SalesInvoicesCompanion(
+            deliveryStatus: Value(status),
+            deliveredAt: Value(status == DeliveryStatus.delivered ? DateTime.now() : null),
+            deliveryProof: Value(status == DeliveryStatus.delivered ? proof!.trim() : inv.deliveryProof),
+            carrier: Value(_blankToNull(carrier) ?? inv.carrier),
+            updatedAt: Value(DateTime.now()),
+          ));
+      await AuditService(db).log(
+        action: AuditAction.update,
+        entity: 'sales_invoice',
+        entityId: invoiceId,
+        userId: user.id,
+        details: 'التسليم: ${DeliveryStatus.label(status)}${(proof ?? '').trim().isEmpty ? '' : ' — ${proof!.trim()}'}',
+      );
+    });
+  }
+
+  /// Invoices going out by delivery or direct from a supplier, newest first.
+  Stream<List<(SalesInvoice, String?)>> watchDeliveries() {
+    final q = db.select(db.salesInvoices).join([
+      leftOuterJoin(db.customers, db.customers.id.equalsExp(db.salesInvoices.customerId)),
+    ])
+      ..where(db.salesInvoices.deliveryMethod.isIn([DeliveryMethod.delivery, DeliveryMethod.direct]) &
+          db.salesInvoices.status.equals(DocStatus.active))
+      ..orderBy([OrderingTerm.desc(db.salesInvoices.id)]);
+    return q.watch().map((rows) => [
+          for (final r in rows) (r.readTable(db.salesInvoices), r.readTableOrNull(db.customers)?.name),
+        ]);
+  }
+
   /// Admin only. Marks the invoice cancelled, puts the stock back and
   /// cancels the payment taken with it. Nothing is deleted.
   Future<void> cancel(int invoiceId, {required String reason, required User user}) {
     return db.transaction(() async {
       if (!user.can(Perm.cancel)) throw ValidationException('إلغاء الفواتير للمدير أو المحاسب');
       if (reason.trim().isEmpty) throw ValidationException('سبب الإلغاء مطلوب');
-      final invoice = await (db.select(db.salesInvoices)..where((t) => t.id.equals(invoiceId)))
-          .getSingle();
+      final invoice = await (db.select(db.salesInvoices)..where((t) => t.id.equals(invoiceId))).getSingle();
       if (invoice.status == DocStatus.cancelled) {
         throw ValidationException('الفاتورة ${invoice.number} ملغاة من قبل');
       }
-      final returns = await (db.select(db.returns)
-            ..where((t) =>
-                t.kind.equals(ReturnKind.sale) &
-                t.originalInvoiceId.equals(invoiceId) &
-                t.status.equals(DocStatus.active)))
-          .get();
+      await refuseSoftClosed(db, invoice.date, user.id);
+      final returns =
+          await (db.select(db.returns)..where(
+                (t) =>
+                    t.kind.equals(ReturnKind.sale) &
+                    t.originalInvoiceId.equals(invoiceId) &
+                    t.status.equals(DocStatus.active),
+              ))
+              .get();
       if (returns.isNotEmpty) {
         throw ValidationException('لا يمكن إلغاء فاتورة عليها مرتجع؛ ألغِ المرتجع أولاً');
       }
@@ -547,13 +698,14 @@ class SalesService {
 
       final stock = StockService(db);
       final fifo = FifoService(db);
-      final items = await (db.select(db.salesInvoiceItems)
-            ..where((t) => t.invoiceId.equals(invoiceId)))
-          .get();
+      final items = await (db.select(db.salesInvoiceItems)..where((t) => t.invoiceId.equals(invoiceId))).get();
+      // What a supplier delivered directly is no longer owed to them.
+      await (db.update(db.purchaseInvoices)..where((p) => p.salesInvoiceId.equals(invoiceId) & p.isDirect.equals(true)))
+          .write(PurchaseInvoicesCompanion(status: const Value(DocStatus.cancelled), updatedAt: Value(DateTime.now())));
       // Put back into the layers what the sale took.
       final restored = await fifo.reverseAll(RefType.salesInvoice, invoiceId);
       final leftBack = <int, int>{};
-      for (final item in items) {
+      for (final item in items.where((i) => i.directSupplierId == null)) {
         leftBack[item.productId] = (leftBack[item.productId] ?? 0) + item.qty;
       }
       for (final e in leftBack.entries) {
@@ -561,13 +713,16 @@ class SalesService {
         if (missing > 0) {
           // Sold before layers existed, or with no layer: restore at the sale's cost.
           final item = items.firstWhere((i) => i.productId == e.key);
-          final where = await (db.select(db.stockMovements)
-                ..where((m) =>
-                    m.productId.equals(e.key) &
-                    m.refType.equals(RefType.salesInvoice) &
-                    m.refId.equals(invoiceId))
-                ..limit(1))
-              .getSingleOrNull();
+          final where =
+              await (db.select(db.stockMovements)
+                    ..where(
+                      (m) =>
+                          m.productId.equals(e.key) &
+                          m.refType.equals(RefType.salesInvoice) &
+                          m.refId.equals(invoiceId),
+                    )
+                    ..limit(1))
+                  .getSingleOrNull();
           await fifo.addLayer(
             locationId: where?.locationId ?? mainLocationId,
             productId: e.key,
@@ -579,12 +734,14 @@ class SalesService {
         }
       }
       // Each place gets back exactly what it gave.
-      final sold = await (db.select(db.stockMovements)
-            ..where((m) =>
-                m.refType.equals(RefType.salesInvoice) &
-                m.refId.equals(invoiceId) &
-                m.type.equals(StockMovementType.sale)))
-          .get();
+      final sold =
+          await (db.select(db.stockMovements)..where(
+                (m) =>
+                    m.refType.equals(RefType.salesInvoice) &
+                    m.refId.equals(invoiceId) &
+                    m.type.equals(StockMovementType.sale),
+              ))
+              .get();
       for (final m in sold) {
         await stock.record(
           productId: m.productId,
@@ -599,15 +756,13 @@ class SalesService {
         );
       }
 
-      await (db.update(db.payments)
-            ..where((t) =>
+      await (db.update(db.payments)..where(
+            (t) =>
                 t.invoiceRefType.equals(RefType.salesInvoice) &
                 t.invoiceRefId.equals(invoiceId) &
-                t.status.equals(DocStatus.active)))
-          .write(PaymentsCompanion(
-        status: const Value(DocStatus.cancelled),
-        updatedAt: Value(DateTime.now()),
-      ));
+                t.status.equals(DocStatus.active),
+          ))
+          .write(PaymentsCompanion(status: const Value(DocStatus.cancelled), updatedAt: Value(DateTime.now())));
 
       await AuditService(db).log(
         action: AuditAction.cancel,
@@ -624,8 +779,9 @@ class SalesService {
   /// Updates when invoices or payments change.
   Stream<List<SalesInvoiceRow>> watchList({DateTime? from, DateTime? to}) async* {
     final pending = await SettingsService(db).getBool(SettingKey.countPendingCheques);
-    yield* db.customSelect(
-      '''
+    yield* db
+        .customSelect(
+          '''
       SELECT s.*, c.name AS customer_name,
              COALESCE((SELECT SUM(p.amount) FROM payments p
                        WHERE p.invoice_ref_type = '${RefType.salesInvoice}' AND p.invoice_ref_id = s.id
@@ -635,39 +791,38 @@ class SalesService {
       WHERE (? IS NULL OR s.date >= ?) AND (? IS NULL OR s.date < ?)
       ORDER BY s.id DESC
       ''',
-      variables: [
-        Variable.withBool(pending),
-        ...dateRangeVariables(from, to),
-      ],
-      readsFrom: {db.salesInvoices, db.customers, db.payments, db.cheques},
-    ).watch().map((rows) => [
-          for (final r in rows)
-            SalesInvoiceRow(
-              db.salesInvoices.map(r.data),
-              r.readNullable<String>('customer_name'),
-              r.read<int>('paid'),
-            ),
-        ]);
+          variables: [Variable.withBool(pending), ...dateRangeVariables(from, to)],
+          readsFrom: {db.salesInvoices, db.customers, db.payments, db.cheques},
+        )
+        .watch()
+        .map(
+          (rows) => [
+            for (final r in rows)
+              SalesInvoiceRow(
+                db.salesInvoices.map(r.data),
+                r.readNullable<String>('customer_name'),
+                r.read<int>('paid'),
+              ),
+          ],
+        );
   }
 
   Future<SalesInvoiceDetail> detail(int invoiceId) async {
-    final invoice = await (db.select(db.salesInvoices)..where((t) => t.id.equals(invoiceId)))
-        .getSingle();
+    final invoice = await (db.select(db.salesInvoices)..where((t) => t.id.equals(invoiceId))).getSingle();
     final customer = invoice.customerId == null
         ? null
-        : await (db.select(db.customers)..where((t) => t.id.equals(invoice.customerId!)))
-            .getSingle();
-    final rows = await (db.select(db.salesInvoiceItems).join([
-      innerJoin(db.products, db.products.id.equalsExp(db.salesInvoiceItems.productId)),
-      leftOuterJoin(db.units, db.units.id.equalsExp(db.products.unitId)),
-    ])
-          ..where(db.salesInvoiceItems.invoiceId.equals(invoiceId))
-          ..orderBy([OrderingTerm(expression: db.salesInvoiceItems.id)]))
-        .get();
+        : await (db.select(db.customers)..where((t) => t.id.equals(invoice.customerId!))).getSingle();
+    final rows =
+        await (db.select(db.salesInvoiceItems).join([
+                innerJoin(db.products, db.products.id.equalsExp(db.salesInvoiceItems.productId)),
+                leftOuterJoin(db.units, db.units.id.equalsExp(db.products.unitId)),
+              ])
+              ..where(db.salesInvoiceItems.invoiceId.equals(invoiceId))
+              ..orderBy([OrderingTerm(expression: db.salesInvoiceItems.id)]))
+            .get();
     final createdBy = invoice.createdBy == null
         ? null
-        : await (db.select(db.users)..where((t) => t.id.equals(invoice.createdBy!)))
-            .getSingleOrNull();
+        : await (db.select(db.users)..where((t) => t.id.equals(invoice.createdBy!))).getSingleOrNull();
     final balances = BalanceService(db);
     return SalesInvoiceDetail(
       invoice: invoice,
@@ -687,6 +842,34 @@ class SalesService {
     );
   }
 
-  static String? _blankToNull(String? s) =>
-      (s == null || s.trim().isEmpty) ? null : s.trim();
+  static String? _blankToNull(String? s) => (s == null || s.trim().isEmpty) ? null : s.trim();
+}
+
+/// How a sale reaches the customer (blueprint 6.4).
+abstract final class DeliveryMethod {
+  static const pickup = 'pickup';
+  static const delivery = 'delivery';
+  static const direct = 'direct';
+  static const all = [pickup, delivery, direct];
+
+  static String label(String? m) => switch (m) {
+    delivery => 'توصيل للعميل',
+    direct => 'توريد مباشر من المورد',
+    _ => 'استلام من المعرض',
+  };
+}
+
+/// Where a delivery stands.
+abstract final class DeliveryStatus {
+  static const preparing = 'preparing';
+  static const shipped = 'shipped';
+  static const delivered = 'delivered';
+  static const all = [preparing, shipped, delivered];
+
+  static String label(String? s) => switch (s) {
+    preparing => 'قيد التجهيز',
+    shipped => 'خرج للتوصيل',
+    delivered => 'تم التسليم',
+    _ => '—',
+  };
 }

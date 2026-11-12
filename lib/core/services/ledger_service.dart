@@ -373,11 +373,15 @@ class LedgerService {
         final vat = items
             .where((i) => i.vatStatus == VatStatus.inclusive)
             .fold(0, (s, i) => s + (i.vatAmount ?? 0));
-        final cost = items.fold(0, (s, i) => s + i.costTotal);
+        // Lines a supplier delivered directly cost through their direct
+        // purchase invoice, not out of stock.
+        final cost = items.where((i) => i.directSupplierId == null).fold(0, (s, i) => s + i.costTotal);
+        final fee = inv.deliveryFee;
         final party = inv.customerId;
         return (inv.date, inv.number, 'فاتورة بيع ${inv.number}', inv.projectId, [
           PostLine('ar', debit: inv.total, partyType: party == null ? null : PartyType.customer, partyId: party),
-          PostLine('sales', credit: inv.total - vat),
+          PostLine('sales', credit: inv.total - vat - fee),
+          PostLine('delivery_income', credit: fee),
           PostLine('vat_out', credit: vat),
           PostLine('cogs', debit: cost),
           PostLine('inventory', credit: cost),
@@ -389,9 +393,11 @@ class LedgerService {
         final stock = items.fold(0, (s, i) => s + i.netTotal + i.extraCostShare);
         const sup = PartyType.supplier;
         return (inv.date, inv.number, 'فاتورة شراء ${inv.number}', inv.projectId, [
-          PostLine('inventory', debit: stock),
+          // Delivered straight to a customer: the cost of that sale, not stock.
+          PostLine(inv.isDirect ? 'cogs' : 'inventory', debit: stock),
+          PostLine('vat_in', debit: inv.vatAmount),
           PostLine('ap', credit: inv.total, partyType: sup, partyId: inv.supplierId),
-          PostLine('purchase_costs', credit: stock - inv.total),
+          PostLine('purchase_costs', credit: stock + inv.vatAmount - inv.total),
           // Taken against a supplier advance: the advance settles the debt.
           PostLine('ap', debit: inv.advanceUsed, partyType: sup, partyId: inv.supplierId, memo: 'من الدفعة المقدمة'),
           PostLine('supplier_advances', credit: inv.advanceUsed),
@@ -631,6 +637,24 @@ class LedgerService {
     await AuditService(db).log(
         action: AuditAction.update, entity: 'period', entityId: 0, userId: user.id,
         details: 'إقفال حتى ${end.year}/${end.month}/${end.day}');
+  }
+
+  /// The last soft-closed day, if any.
+  Future<DateTime?> softClosedUntil() async {
+    final n = int.tryParse(await SettingsService(db).get(booksSoftClosedUntilKey) ?? '');
+    return n == null || n < 0 ? null : DateTime.fromMillisecondsSinceEpoch(n * 1000);
+  }
+
+  /// Soft close (blueprint 9.3): up to the end of [day] only the owner and
+  /// the accountant may add or cancel documents while they review the month;
+  /// [day] null opens it again.
+  Future<void> softClose(DateTime? day, {required User user}) async {
+    if (!user.can(Perm.accounts)) throw ValidationException('الإقفال المبدئي لصلاحية المحاسبة');
+    final v = day == null ? -1 : DateTime(day.year, day.month, day.day, 23, 59, 59).millisecondsSinceEpoch ~/ 1000;
+    await SettingsService(db).set(booksSoftClosedUntilKey, '$v');
+    await AuditService(db).log(
+        action: AuditAction.update, entity: 'period', entityId: 0, userId: user.id,
+        details: day == null ? 'إلغاء الإقفال المبدئي' : 'إقفال مبدئي حتى ${day.year}/${day.month}/${day.day}');
   }
 
   /// Opens the books again from [day] on, with a reason. Admin only.

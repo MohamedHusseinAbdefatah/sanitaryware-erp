@@ -296,3 +296,18 @@ Future<void> requireStockRights(AppDatabase db, int? userId) async {
   final u = await (db.select(db.users)..where((t) => t.id.equals(userId))).getSingleOrNull();
   if (u != null && !u.can(Perm.stock)) throw ValidationException('تسويات المخزون لصلاحية المخزن أو المدير');
 }
+
+/// The setting holding the last soft-closed day (seconds since 1970).
+const booksSoftClosedUntilKey = 'books_soft_closed_until';
+
+/// A soft-closed period (blueprint 9.3) takes new or cancelled documents
+/// only from the owner and the accountant, who are reviewing it.
+Future<void> refuseSoftClosed(AppDatabase db, DateTime date, int? userId) async {
+  final row = await (db.select(db.appSettings)..where((t) => t.keyName.equals(booksSoftClosedUntilKey))).getSingleOrNull();
+  final until = int.tryParse(row?.val ?? '');
+  if (until == null || until < 0) return;
+  if (date.millisecondsSinceEpoch ~/ 1000 > until) return;
+  final u = userId == null ? null : await (db.select(db.users)..where((t) => t.id.equals(userId))).getSingleOrNull();
+  if (u != null && u.can(Perm.accounts)) return;
+  throw ValidationException('هذا التاريخ داخل فترة مقفلة مبدئياً للمراجعة؛ يسجل فيها المحاسب أو المدير فقط');
+}

@@ -442,6 +442,8 @@ class PurchaseOrderLines extends Table {
   // Schema 15: ordered for this customer order line; received goods are
   // reserved for that customer.
   IntColumn get salesOrderLineId => integer().nullable()();
+  // Schema 18: refused at receiving (never in stock).
+  IntColumn get qtyRejected => integer().withDefault(const Constant(0))();
 }
 
 class PurchaseOrderReceipts extends Table {
@@ -470,6 +472,10 @@ class SalesOrders extends Table with Timestamps {
   IntColumn get createdBy => integer().nullable().references(Users, #id)();
   // Schema 17: for this project.
   IntColumn get projectId => integer().nullable()();
+  // Schema 18: a quotation's last valid day and its revision chain.
+  DateTimeColumn get validUntil => dateTime().nullable()();
+  IntColumn get revision => integer().withDefault(const Constant(0))();
+  IntColumn get revisedFromId => integer().nullable()();
 }
 
 @TableIndex(name: 'idx_so_lines_order', columns: {#orderId})
@@ -578,6 +584,16 @@ class SalesInvoices extends Table with Timestamps {
   IntColumn get createdBy => integer().nullable().references(Users, #id)();
   // Schema 17: sold for this project.
   IntColumn get projectId => integer().nullable()();
+  // Schema 18: how it reaches the customer. 'pickup', 'delivery' or
+  // 'direct' (from the supplier); the fee charged is inside total.
+  TextColumn get deliveryMethod => text().nullable()();
+  TextColumn get deliveryAddress => text().nullable()();
+  TextColumn get carrier => text().nullable()();
+  IntColumn get deliveryFee => integer().withDefault(const Constant(0))();
+  // 'preparing', 'shipped', 'delivered'
+  TextColumn get deliveryStatus => text().nullable()();
+  DateTimeColumn get deliveredAt => dateTime().nullable()();
+  TextColumn get deliveryProof => text().nullable()();
 }
 
 class SalesInvoiceItems extends Table {
@@ -609,6 +625,8 @@ class SalesInvoiceItems extends Table {
   IntColumn get vatAmount => integer().nullable()();
   // The exact FIFO cost of this line. unitCost is a rounded average of it.
   IntColumn get costTotal => integer().withDefault(const Constant(0))();
+  // Schema 18: supplied straight from this supplier, not from stock.
+  IntColumn get directSupplierId => integer().nullable()();
 }
 
 @TableIndex(name: 'idx_purchase_invoices_supplier_date', columns: {#supplierId, #date})
@@ -639,6 +657,11 @@ class PurchaseInvoices extends Table with Timestamps {
   IntColumn get advanceUsed => integer().withDefault(const Constant(0))();
   // Schema 17: bought for this project.
   IntColumn get projectId => integer().nullable()();
+  // Schema 18: recoverable input VAT on the supplier's invoice (in total);
+  // a direct delivery to a customer (no stock) and the sale it serves.
+  IntColumn get vatAmount => integer().withDefault(const Constant(0))();
+  BoolColumn get isDirect => boolean().withDefault(const Constant(false))();
+  IntColumn get salesInvoiceId => integer().nullable()();
 }
 
 class PurchaseInvoiceItems extends Table {
@@ -752,4 +775,52 @@ class AuditLogs extends Table {
   IntColumn get entityId => integer().nullable()();
   TextColumn get details => text().nullable()();
   DateTimeColumn get at => dateTime().withDefault(currentDateAndTime)();
+}
+
+/// Goods refused when a purchase order was received (schema 18): they never
+/// enter stock; the order line stays open for them.
+class PurchaseRejections extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get orderId => integer().references(PurchaseOrders, #id)();
+  IntColumn get lineId => integer().references(PurchaseOrderLines, #id)();
+  IntColumn get productId => integer().references(Products, #id)();
+  // Thousandths.
+  IntColumn get qty => integer()();
+  TextColumn get reason => text()();
+  IntColumn get invoiceId => integer().nullable()();
+  IntColumn get userId => integer().nullable()();
+  DateTimeColumn get date => dateTime()();
+}
+
+/// A possible customer before there is a customer (schema 18).
+class Leads extends Table with Timestamps {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get name => text()();
+  TextColumn get phone => text().nullable()();
+  // 'showroom', 'whatsapp', 'social', 'website', 'referral', 'other'
+  TextColumn get source => text().withDefault(const Constant('showroom'))();
+  TextColumn get interest => text().nullable()();
+  IntColumn get expectedValue => integer().withDefault(const Constant(0))();
+  // 'new', 'contacted', 'quoted', 'won', 'lost'
+  TextColumn get stage => text().withDefault(const Constant('new'))();
+  DateTimeColumn get nextFollowUp => dateTime().nullable()();
+  IntColumn get assignedTo => integer().nullable()();
+  TextColumn get notes => text().nullable()();
+  TextColumn get lostReason => text().nullable()();
+  IntColumn get customerId => integer().nullable()();
+}
+
+/// A recurring expense expected (rent, salaries...): a reminder, never an
+/// expense by itself (schema 18).
+class ExpensePlans extends Table with Timestamps {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get categoryId => integer().references(ExpenseCategories, #id)();
+  IntColumn get amount => integer()();
+  TextColumn get method => text().withDefault(const Constant('cash'))();
+  TextColumn get description => text().nullable()();
+  // 'monthly', 'quarterly', 'yearly'
+  TextColumn get frequency => text().withDefault(const Constant('monthly'))();
+  DateTimeColumn get nextDue => dateTime()();
+  DateTimeColumn get endDate => dateTime().nullable()();
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
 }

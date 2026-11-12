@@ -53,6 +53,11 @@ class _SalesListScreenState extends ConsumerState<SalesListScreen> {
               icon: const Icon(Icons.assignment_outlined),
               label: const Text('أوامر البيع'),
             ),
+            OutlinedButton.icon(
+              onPressed: () => context.go('/sales/deliveries'),
+              icon: const Icon(Icons.local_shipping_outlined),
+              label: const Text('التوصيلات'),
+            ),
             FilledButton.icon(
               onPressed: () => context.go('/sales/new'),
               icon: const Icon(Icons.add),

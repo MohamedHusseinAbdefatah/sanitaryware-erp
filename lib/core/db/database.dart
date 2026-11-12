@@ -53,6 +53,9 @@ part 'database.g.dart';
   LedgerQueue,
   Projects,
   ProjectBoqLines,
+  PurchaseRejections,
+  Leads,
+  ExpensePlans,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
@@ -60,7 +63,7 @@ class AppDatabase extends _$AppDatabase {
   @override
   int get schemaVersion => latestSchemaVersion;
 
-  static const latestSchemaVersion = 17;
+  static const latestSchemaVersion = 18;
 
   /// The categories every shop starts with. The first three are the old
   /// price levels; discounts start at 0 until the owner sets them.
@@ -420,6 +423,26 @@ class AppDatabase extends _$AppDatabase {
   /// Schema 17: the double-entry ledger and projects. The chart of accounts
   /// is seeded, the triggers installed, and every existing document queued so
   /// the ledger is built from the shop's history the first time it is opened.
+  Future<void> _upgradeToV18(Migrator m) async {
+    for (final TableInfo t in [purchaseRejections, leads, expensePlans]) {
+      if (!await _tableExists(t.actualTableName)) await m.createTable(t);
+    }
+    await _addColumns(m, salesOrders, [salesOrders.validUntil, salesOrders.revision, salesOrders.revisedFromId]);
+    await _addColumns(m, salesInvoices, [
+      salesInvoices.deliveryMethod,
+      salesInvoices.deliveryAddress,
+      salesInvoices.carrier,
+      salesInvoices.deliveryFee,
+      salesInvoices.deliveryStatus,
+      salesInvoices.deliveredAt,
+      salesInvoices.deliveryProof,
+    ]);
+    await _addColumns(m, salesInvoiceItems, [salesInvoiceItems.directSupplierId]);
+    await _addColumns(m, purchaseInvoices, [purchaseInvoices.vatAmount, purchaseInvoices.isDirect, purchaseInvoices.salesInvoiceId]);
+    await _addColumns(m, purchaseOrderLines, [purchaseOrderLines.qtyRejected]);
+    await seedChart(this);
+  }
+
   Future<void> _upgradeToV17(Migrator m) async {
     for (final TableInfo t in [accounts, journalEntries, journalLines, ledgerQueue, projects, projectBoqLines]) {
       if (!await _tableExists(t.actualTableName)) await m.createTable(t);
@@ -549,13 +572,17 @@ class AppDatabase extends _$AppDatabase {
             if (!await _tableExists('product_images')) await m.createTable(productImages);
           }
           if (from < 17) await _upgradeToV17(m);
+          if (from < 18) await _upgradeToV18(m);
         },
         beforeOpen: (details) async {
           // Make SQLite enforce references between tables.
           await customStatement('PRAGMA foreign_keys = ON');
           // The ledger's triggers are always there (they are only created if
           // missing).
-          if (await _tableExists('ledger_queue')) await installLedgerTriggers(this);
+          if (await _tableExists('ledger_queue')) {
+            await installLedgerTriggers(this);
+            await seedChart(this);
+          }
         },
       );
 }

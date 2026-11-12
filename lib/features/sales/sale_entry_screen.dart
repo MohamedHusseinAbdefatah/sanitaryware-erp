@@ -52,6 +52,11 @@ class _Line {
 
   /// The place chosen on this line. Null = the sellable places in order.
   int? locationId;
+
+  /// Delivered straight from this supplier (no stock), at this unit cost.
+  int? directSupplierId;
+  String? directSupplierName;
+  int directUnitCost = 0;
   final TextEditingController qty;
   final TextEditingController price;
   final TextEditingController discount;
@@ -127,7 +132,13 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
   bool _discountPercent = false;
   int get _discount =>
       discountAmount(_invoiceDiscount.text, percent: _discountPercent, subtotal: _subtotal) ?? 0;
-  int get _total => _subtotal - _discount;
+  int get _total => _subtotal - _discount + _deliveryFee;
+
+  // How the goods reach the customer, and the fee charged for it.
+  String? _deliveryMethod;
+  String? _deliveryAddress;
+  String? _carrier;
+  int _deliveryFee = 0;
   int get _paidValue => moneyOrZero(_paid);
 
   @override
@@ -269,6 +280,55 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
     _setCustomer(await ref.read(partyServiceProvider).customer(id));
   }
 
+  Future<void> _editDelivery() async {
+    var method = _deliveryMethod ?? DeliveryMethod.pickup;
+    final address = TextEditingController(text: _deliveryAddress ?? _customer?.address ?? '');
+    final carrier = TextEditingController(text: _carrier ?? '');
+    final fee = TextEditingController(text: _deliveryFee == 0 ? '' : _plain(_deliveryFee));
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('طريقة التسليم'),
+          content: SizedBox(
+            width: 460,
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              DropdownButtonFormField<String>(
+                initialValue: method,
+                decoration: const InputDecoration(labelText: 'الطريقة'),
+                items: [for (final m in DeliveryMethod.all) DropdownMenuItem(value: m, child: Text(DeliveryMethod.label(m)))],
+                onChanged: (v) => setLocal(() => method = v ?? method),
+              ),
+              if (method != DeliveryMethod.pickup) ...[
+                const SizedBox(height: 8),
+                TextField(controller: address, decoration: const InputDecoration(labelText: 'عنوان التسليم')),
+                const SizedBox(height: 8),
+                TextField(controller: carrier, decoration: const InputDecoration(labelText: 'الناقل / السائق')),
+                const SizedBox(height: 8),
+                MoneyField(controller: fee, label: 'رسوم توصيل على العميل (تضاف للفاتورة)'),
+                const SizedBox(height: 6),
+                const Text('تكلفة النقل الفعلية التي تدفعها أنت تُسجل مصروفاً منفصلاً.',
+                    style: TextStyle(fontSize: 12, color: AppColors.muted)),
+              ],
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('تم')),
+          ],
+        ),
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() {
+      _deliveryMethod = method == DeliveryMethod.pickup ? null : method;
+      _deliveryAddress = method == DeliveryMethod.pickup ? null : address.text;
+      _carrier = method == DeliveryMethod.pickup ? null : carrier.text;
+      _deliveryFee = method == DeliveryMethod.pickup ? 0 : (parseMoney(fee.text) ?? 0);
+    });
+    _changed();
+  }
+
   /// Total quantity of [product] across all lines (it may be on several).
   int _qtyOnInvoice(int productId) => _lines
       .where((l) => l.product.id == productId)
@@ -294,7 +354,9 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
             unitPrice: l.priceValue!,
             discount: l.discountValue,
             priceListId: l.quote?.quote.priceListId,
-            locationId: l.locationId,
+            locationId: l.directSupplierId == null ? l.locationId : null,
+            directSupplierId: l.directSupplierId,
+            directUnitCost: l.directUnitCost,
           ),
       ],
       discount: _discount,
@@ -302,6 +364,10 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       paymentMethod: _method,
       notes: _notes.text,
       projectId: _projectId,
+      deliveryMethod: _deliveryMethod,
+      deliveryAddress: _deliveryAddress,
+      carrier: _carrier,
+      deliveryFee: _deliveryFee,
     );
     final user = ref.read(currentUserProvider);
     // Blueprint 3.4: everything is shown before approval.
@@ -491,6 +557,15 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                         ),
                     ],
                   ),
+                  OutlinedButton.icon(
+                    onPressed: _editDelivery,
+                    icon: Icon(_deliveryMethod == null || _deliveryMethod == DeliveryMethod.pickup
+                        ? Icons.storefront_outlined
+                        : Icons.local_shipping_outlined),
+                    label: Text(_deliveryMethod == null
+                        ? 'التسليم: من المعرض'
+                        : '${DeliveryMethod.label(_deliveryMethod)}${_deliveryFee > 0 ? ' + ${formatMoney(_deliveryFee)}' : ''}'),
+                  ),
                   if (_projects.isNotEmpty)
                     SizedBox(
                       width: 280,
@@ -669,7 +744,7 @@ class _LineHeader extends StatelessWidget {
                 style: const TextStyle(fontWeight: FontWeight.bold),
               ),
             ),
-          const SizedBox(width: 96),
+          const SizedBox(width: 136),
         ],
       ),
     );
@@ -813,7 +888,11 @@ class _LineRow extends StatelessWidget {
           ),
           SizedBox(
             width: 48,
-            child: _PlaceButton(line: line),
+            child: line.directSupplierId == null ? _PlaceButton(line: line) : const SizedBox(),
+          ),
+          SizedBox(
+            width: 40,
+            child: _SourceButton(line: line, onChanged: onChanged),
           ),
           SizedBox(
             width: 48,
@@ -853,6 +932,91 @@ class _PlaceButton extends ConsumerWidget {
           ],
         );
       },
+    );
+  }
+}
+
+/// Where a line comes from: stock (the default) or straight from a supplier
+/// to the customer, at the supplier's price.
+class _SourceButton extends ConsumerWidget {
+  const _SourceButton({required this.line, required this.onChanged});
+
+  final _Line line;
+  final VoidCallback onChanged;
+
+  Future<void> _pick(BuildContext context, WidgetRef ref) async {
+    final db = ref.read(databaseProvider);
+    final suppliers = await (db.select(db.suppliers)..where((s) => s.isActive.equals(true))).get();
+    if (!context.mounted) return;
+    int? supplierId = line.directSupplierId;
+    final cost = TextEditingController(text: line.directUnitCost == 0 ? '' : _plain(line.directUnitCost));
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: Text('مصدر "${line.product.nameAr}"'),
+          content: SizedBox(
+            width: 420,
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              SegmentedButton<bool>(
+                showSelectedIcon: false,
+                segments: const [
+                  ButtonSegment(value: false, icon: Icon(Icons.warehouse_outlined), label: Text('من المخزون')),
+                  ButtonSegment(value: true, icon: Icon(Icons.local_shipping_outlined), label: Text('توريد مباشر من المورد')),
+                ],
+                selected: {supplierId != null},
+                onSelectionChanged: (s) =>
+                    setLocal(() => supplierId = s.first ? (suppliers.isEmpty ? null : suppliers.first.id) : null),
+              ),
+              const SizedBox(height: 6),
+              const Text('التوريد المباشر لا يخرج من المخزون، ويُسجل على المورد بفاتورة توريد مباشر مرتبطة بهذه الفاتورة.',
+                  style: TextStyle(fontSize: 12, color: AppColors.muted)),
+              const SizedBox(height: 8),
+              if (supplierId != null) ...[
+                DropdownButtonFormField<int>(
+                  initialValue: supplierId,
+                  decoration: const InputDecoration(labelText: 'المورد'),
+                  items: [for (final s in suppliers) DropdownMenuItem(value: s.id, child: Text(s.name))],
+                  onChanged: (v) => setLocal(() => supplierId = v),
+                ),
+                const SizedBox(height: 8),
+                MoneyField(controller: cost, label: 'تكلفة الوحدة من المورد', required: true),
+              ],
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('تم')),
+          ],
+        ),
+      ),
+    );
+    if (ok != true) return;
+    if (supplierId == null) {
+      line.directSupplierId = null;
+      line.directSupplierName = null;
+      line.directUnitCost = 0;
+    } else {
+      final c = parseMoney(cost.text);
+      if (c == null) {
+        if (context.mounted) await showMessage(context, 'اكتب تكلفة الوحدة من المورد');
+        return;
+      }
+      line.directSupplierId = supplierId;
+      line.directSupplierName = suppliers.firstWhere((s) => s.id == supplierId).name;
+      line.directUnitCost = c;
+    }
+    onChanged();
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final direct = line.directSupplierId != null;
+    return IconButton(
+      tooltip: direct ? 'توريد مباشر من ${line.directSupplierName}' : 'المصدر: المخزون — اضغط للتوريد المباشر من مورد',
+      icon: Icon(direct ? Icons.local_shipping : Icons.local_shipping_outlined,
+          color: direct ? AppColors.warn : null),
+      onPressed: () => _pick(context, ref),
     );
   }
 }

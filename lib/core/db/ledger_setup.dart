@@ -53,6 +53,7 @@ const starterChart = <(String, String, String, String?, bool, String?)>[
   ('4102', 'مرتجعات ومسموحات المبيعات', 'income', '4', false, 'sales_returns'),
   ('4201', 'إيرادات أخرى', 'income', '4', false, 'other_income'),
   ('4202', 'أرباح تسوية المخزون', 'income', '4', false, 'stock_gain'),
+  ('4203', 'إيرادات التوصيل', 'income', '4', false, 'delivery_income'),
   ('5', 'التكاليف والمصروفات', 'expense', null, true, null),
   ('51', 'تكلفة المبيعات', 'expense', '5', true, null),
   ('5101', 'تكلفة البضاعة المباعة', 'expense', '51', false, 'cogs'),
@@ -66,11 +67,18 @@ const starterChart = <(String, String, String, String?, bool, String?)>[
 ];
 
 Future<void> seedChart(AppDatabase db) async {
-  final row = await db.customSelect('SELECT COUNT(*) AS c FROM accounts').getSingle();
-  if (row.read<int>('c') > 0) return;
+  // Adds what is missing (a new version may bring new accounts); never
+  // changes an account that is there.
   final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-  final ids = <String, int>{};
+  final ids = <String, int>{
+    for (final r in await db.customSelect('SELECT id, code FROM accounts').get()) r.read<String>('code'): r.read<int>('id'),
+  };
   for (final (code, name, kind, parent, group, key) in starterChart) {
+    if (ids.containsKey(code)) continue;
+    if (key != null) {
+      final taken = await db.customSelect('SELECT 1 FROM accounts WHERE system_key = ?', variables: [Variable.withString(key)]).get();
+      if (taken.isNotEmpty) continue;
+    }
     final id = await db.customInsert(
       'INSERT INTO accounts (code, name_ar, kind, parent_id, is_group, system_key, is_active, created_at, updated_at) '
       'VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)',

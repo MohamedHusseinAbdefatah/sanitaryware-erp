@@ -209,6 +209,9 @@ class _OrderDetailDialog extends ConsumerStatefulWidget {
 class _OrderDetailDialogState extends ConsumerState<_OrderDetailDialog> {
   PoDetail? _detail;
   final _receive = <int, TextEditingController>{};
+  final _reject = <int, TextEditingController>{};
+  final _rejectReason = TextEditingController();
+  List<PurchaseRejection> _rejections = const [];
   final _invoiceNo = TextEditingController();
   int _locationId = mainLocationId;
   final _paid = TextEditingController();
@@ -235,13 +238,17 @@ class _OrderDetailDialogState extends ConsumerState<_OrderDetailDialog> {
   Future<void> _load() async {
     final d = await ref.read(purchaseOrderServiceProvider).detail(widget.orderId);
     final adv = await ref.read(paymentServiceProvider).advancesOn(RefType.purchaseOrder, widget.orderId);
+    final rejections = await ref.read(purchaseOrderServiceProvider).rejections(widget.orderId);
     if (!mounted) return;
     setState(() {
       _detail = d;
       _advance = adv;
+      _rejections = rejections;
       for (final l in d.lines) {
         _receive.putIfAbsent(l.line.id, () => TextEditingController());
         _receive[l.line.id]!.clear();
+        _reject.putIfAbsent(l.line.id, () => TextEditingController());
+        _reject[l.line.id]!.clear();
       }
     });
   }
@@ -280,19 +287,48 @@ class _OrderDetailDialogState extends ConsumerState<_OrderDetailDialog> {
       }
       if (q > 0) qtys[l.line.id] = q;
     }
+    final rejected = <int, int>{};
+    for (final l in d.lines) {
+      final text = _reject[l.line.id]?.text.trim() ?? '';
+      if (text.isEmpty) continue;
+      final q = parseQty(text);
+      if (q == null || q < 0) {
+        await showMessage(context, 'كمية مرفوضة غير صحيحة: ${l.productName}');
+        return;
+      }
+      if (q > 0) rejected[l.line.id] = q;
+    }
+    if (rejected.isNotEmpty && _rejectReason.text.trim().isEmpty) {
+      await showMessage(context, 'اكتب سبب الرفض');
+      return;
+    }
+    if (qtys.isEmpty && rejected.isNotEmpty) {
+      await _act((user) => ref.read(purchaseOrderServiceProvider)
+          .reject(widget.orderId, qtyByLine: rejected, reason: _rejectReason.text, user: user));
+      _rejectReason.clear();
+      return;
+    }
     final paid = _paid.text.trim().isEmpty ? 0 : parseMoney(_paid.text);
     if (paid == null) {
       await showMessage(context, 'المبلغ المدفوع غير صحيح');
       return;
     }
-    await _act((user) => ref.read(purchaseOrderServiceProvider).receive(
-          widget.orderId,
-          qtyByLine: qtys,
-          supplierInvoiceNo: _invoiceNo.text,
-          locationId: _locationId,
-          paidAmount: paid,
-          user: user,
-        ));
+    await _act((user) async {
+      final svc = ref.read(purchaseOrderServiceProvider);
+      final invoice = await svc.receive(
+        widget.orderId,
+        qtyByLine: qtys,
+        supplierInvoiceNo: _invoiceNo.text,
+        locationId: _locationId,
+        paidAmount: paid,
+        user: user,
+      );
+      if (rejected.isNotEmpty) {
+        await svc.reject(widget.orderId, qtyByLine: rejected, reason: _rejectReason.text, invoiceId: invoice.id, user: user);
+      }
+      return invoice;
+    });
+    _rejectReason.clear();
     _invoiceNo.clear();
     _paid.clear();
   }
@@ -376,6 +412,15 @@ class _OrderDetailDialogState extends ConsumerState<_OrderDetailDialog> {
                           decoration: const InputDecoration(labelText: 'الكمية المستلمة'),
                         ),
                       ),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        width: 110,
+                        child: TextField(
+                          controller: _reject[l.line.id],
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: const InputDecoration(labelText: 'مرفوض (لا يدخل)'),
+                        ),
+                      ),
                     ],
                   ),
                 Row(
@@ -403,6 +448,10 @@ class _OrderDetailDialogState extends ConsumerState<_OrderDetailDialog> {
                     ),
                   ],
                 ),
+                TextField(
+                  controller: _rejectReason,
+                  decoration: const InputDecoration(labelText: 'سبب الرفض وحالة الفحص (عند وجود مرفوض)'),
+                ),
                 const SizedBox(height: 8),
                 Align(
                   alignment: AlignmentDirectional.centerStart,
@@ -412,6 +461,13 @@ class _OrderDetailDialogState extends ConsumerState<_OrderDetailDialog> {
                     label: const Text('استلام'),
                   ),
                 ),
+              ],
+              if (_rejections.isNotEmpty) ...[
+                const Divider(height: 24),
+                Text('المرفوض عند الاستلام', style: Theme.of(context).textTheme.titleSmall),
+                for (final r in _rejections)
+                  Text('${formatDate(r.date)} — ${d.lines.where((l) => l.line.id == r.lineId).firstOrNull?.productName ?? ''}: '
+                      '${formatQty(r.qty)} — ${r.reason}'),
               ],
             ],
           ),

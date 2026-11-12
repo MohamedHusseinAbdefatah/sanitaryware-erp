@@ -9,6 +9,7 @@ import '../dashboard/dashboard_screen.dart';
 import '../inventory/inventory_screen.dart';
 import '../expenses/expenses_screen.dart';
 import '../parties/customer_page.dart';
+import '../parties/leads_screen.dart';
 import '../parties/parties_screen.dart';
 import '../parties/supplier_page.dart';
 import '../products/product_page.dart';
@@ -21,6 +22,7 @@ import '../purchases/purchase_list_screen.dart';
 import '../purchases/purchase_view_screen.dart';
 import '../returns/return_entry_screen.dart';
 import '../returns/returns_screen.dart';
+import '../sales/deliveries_screen.dart';
 import '../sales/orders_screens.dart';
 import '../sales/sale_entry_screen.dart';
 import '../sales/sale_view_screen.dart';
@@ -94,6 +96,7 @@ final appSections = <AppSection>[
     icon: Icons.people_outline,
     builder: (_) => const CustomersScreen(),
     routes: [
+      GoRoute(path: 'leads', builder: (_, _) => const LeadsScreen()),
       GoRoute(
         path: ':id',
         builder: (_, state) {
@@ -139,6 +142,7 @@ final appSections = <AppSection>[
         ),
       ),
       GoRoute(path: 'orders', builder: (_, _) => const SalesOrdersScreen()),
+      GoRoute(path: 'deliveries', builder: (_, _) => const DeliveriesScreen()),
       GoRoute(
         path: ':id',
         builder: (_, state) {

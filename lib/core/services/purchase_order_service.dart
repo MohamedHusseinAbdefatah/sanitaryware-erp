@@ -186,6 +186,7 @@ class PurchaseOrderService {
     String? extraCostsNote,
     DateTime? dueDate,
     String? notes,
+    int vatAmount = 0,
     bool allowDuplicateSupplierNo = false,
     // Products on the same supplier invoice that were not on the order.
     List<PurchaseLineInput> extraLines = const [],
@@ -235,6 +236,7 @@ class PurchaseOrderService {
           extraCostsOnSupplier: extraCostsOnSupplier,
           extraCostsNote: extraCostsNote,
           dueDate: dueDate,
+          vatAmount: vatAmount,
           allowDuplicateSupplierNo: allowDuplicateSupplierNo,
           notes: (notes ?? '').trim().isEmpty ? 'أمر شراء ${order.number}' : 'أمر شراء ${order.number}\n${notes!.trim()}',
           locationId: locationId,
@@ -278,6 +280,58 @@ class PurchaseOrderService {
       return invoice;
     });
   }
+
+  /// Goods that arrived but failed inspection (blueprint 4.2): recorded with
+  /// the reason, never in stock and never on the supplier's account; the
+  /// order line stays open so the supplier can send them again.
+  Future<void> reject(
+    int id, {
+    required Map<int, int> qtyByLine,
+    required String reason,
+    int? invoiceId,
+    required User user,
+  }) {
+    return db.transaction(() async {
+      _admin(user);
+      if (reason.trim().isEmpty) throw ValidationException('اكتب سبب الرفض (كسر، مخالف للمواصفات...)');
+      final order = await _order(id);
+      if (order.status != PoStatus.approved && order.status != PoStatus.partlyReceived) {
+        throw ValidationException('أمر الشراء غير جاهز للاستلام');
+      }
+      final lines = {
+        for (final l in await (db.select(db.purchaseOrderLines)..where((t) => t.orderId.equals(id))).get()) l.id: l,
+      };
+      var any = false;
+      for (final e in qtyByLine.entries) {
+        if (e.value == 0) continue;
+        final l = lines[e.key];
+        if (l == null) throw ValidationException('سطر غير موجود في أمر الشراء');
+        if (e.value < 0) throw ValidationException('الكمية لا يمكن أن تكون سالبة');
+        if (e.value > l.qty - l.qtyReceived) throw ValidationException('الكمية المرفوضة أكبر من المتبقي في الأمر');
+        await db.into(db.purchaseRejections).insert(PurchaseRejectionsCompanion.insert(
+              orderId: id,
+              lineId: l.id,
+              productId: l.productId,
+              qty: e.value,
+              reason: reason.trim(),
+              invoiceId: Value(invoiceId),
+              userId: Value(user.id),
+              date: DateTime.now(),
+            ));
+        await (db.update(db.purchaseOrderLines)..where((t) => t.id.equals(l.id)))
+            .write(PurchaseOrderLinesCompanion(qtyRejected: Value(l.qtyRejected + e.value)));
+        any = true;
+      }
+      if (!any) throw ValidationException('أدخل كمية مرفوضة لصنف واحد على الأقل');
+      await AuditService(db).log(
+          action: AuditAction.update, entity: 'purchase_order', entityId: id, userId: user.id, details: 'رفض عند الاستلام: ${reason.trim()}');
+    });
+  }
+
+  Future<List<PurchaseRejection>> rejections(int orderId) => (db.select(db.purchaseRejections)
+        ..where((r) => r.orderId.equals(orderId))
+        ..orderBy([(r) => OrderingTerm.desc(r.id)]))
+      .get();
 
   /// A draft or an approved order with nothing received can be cancelled.
   Future<void> cancel(int id, {required User user}) {

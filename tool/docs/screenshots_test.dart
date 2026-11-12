@@ -42,6 +42,7 @@ import 'package:sanitaryware_erp/core/services/selling_policy_service.dart';
 import 'package:sanitaryware_erp/core/services/supplier_advance_service.dart';
 import 'package:sanitaryware_erp/core/services/settings_service.dart';
 import 'package:sanitaryware_erp/core/services/expense_service.dart';
+import 'package:sanitaryware_erp/core/services/lead_service.dart';
 import 'package:sanitaryware_erp/core/services/ledger_service.dart';
 import 'package:sanitaryware_erp/core/services/project_service.dart';
 
@@ -267,6 +268,29 @@ Future<(Shop, SalesInvoice)> _shopWithData() async {
     lines: [ManualLine(accountId: acc('cash'), debit: 5000000), ManualLine(accountId: acc('capital'), credit: 5000000)],
     user: shop.admin,
   );
+  // A delivery, a direct supply from the supplier, and two leads.
+  await SalesService(db).post(
+    SaleInput(
+      customerId: contractor,
+      lines: [
+        SaleLineInput(productId: shop.mixer.id, qty: qtyOf(1), unitPrice: 110000),
+        SaleLineInput(productId: basin.id, qty: qtyOf(4), unitPrice: 120000, directSupplierId: supplier, directUnitCost: 85000),
+      ],
+      deliveryMethod: DeliveryMethod.delivery,
+      deliveryAddress: 'المنصورة الجديدة — موقع كمبوند الياسمين',
+      carrier: 'عربة المعرض',
+      deliveryFee: 25000,
+    ),
+    userId: shop.admin.id,
+  );
+  final leads = LeadService(db);
+  await leads.save(
+      LeadInput(name: 'م. سامي عبد الحميد', phone: '01001112223', source: 'whatsapp', interest: 'حمامات فيلا — 3 حمامات',
+          expectedValue: 18000000, nextFollowUp: DateTime.now()),
+      user: shop.admin);
+  await leads.save(
+      const LeadInput(name: 'شركة البناء الحديث', phone: '0502223334', source: 'referral', interest: 'مواسير وخلاطات لعمارة', expectedValue: 45000000),
+      user: shop.admin);
   return (shop, credit);
 }
 
@@ -545,6 +569,10 @@ void main() {
     await tester.tap(find.text('رسم'));
     await settle(tester);
     await shot(tester, '44_report_chart');
+    await go(tester, '/sales/deliveries');
+    await shot(tester, '45_deliveries');
+    await go(tester, '/customers/leads');
+    await shot(tester, '46_leads');
     await unmount(tester);
   });
 }

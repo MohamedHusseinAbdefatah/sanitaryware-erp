@@ -109,6 +109,7 @@ Future<Uint8List> salesInvoicePdf(SalesInvoiceDetail d, PrintCompany company, Pd
       _totals([
         ('المجموع', inv.subtotal, false),
         if (inv.discount != 0) ('خصم الفاتورة', inv.discount, false),
+        if (inv.deliveryFee != 0) ('رسوم التوصيل', inv.deliveryFee, false),
         ('الإجمالي', inv.total, true),
         ('المدفوع', d.paid, false),
         ('المتبقي', inv.total - d.paid, true),
@@ -165,6 +166,7 @@ Future<Uint8List> purchaseInvoicePdf(PurchaseInvoiceDetail d, PrintCompany compa
       _totals([
         ('المجموع', inv.subtotal, false),
         if (inv.discount != 0) ('خصم الفاتورة', inv.discount, false),
+        if (inv.vatAmount != 0) ('ضريبة القيمة المضافة', inv.vatAmount, false),
         ('الإجمالي', inv.total, true),
         ('المدفوع', d.paid, false),
         ('المتبقي', inv.total - d.paid, true),

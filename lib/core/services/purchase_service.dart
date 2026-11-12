@@ -49,6 +49,9 @@ class PurchaseLineInput {
 
 class PurchaseInput {
   const PurchaseInput({
+    this.vatAmount = 0,
+    this.isDirect = false,
+    this.salesInvoiceId,
     required this.supplierId,
     required this.lines,
     this.supplierInvoiceNo,
@@ -103,10 +106,19 @@ class PurchaseInput {
   final String paymentMethod;
   final String? notes;
 
+  /// Recoverable input VAT on the supplier's tax invoice (owed to the
+  /// supplier, not part of the goods' cost).
+  final int vatAmount;
+
+  /// Delivered by the supplier straight to a customer: no stock, the cost
+  /// is the cost of that sale ([salesInvoiceId]).
+  final bool isDirect;
+  final int? salesInvoiceId;
+
   int get subtotal => lines.fold(0, (s, l) => s + l.total);
 
   /// What is owed to the supplier.
-  int get total => subtotal - discount + (extraCostsOnSupplier ? extraCosts : 0);
+  int get total => subtotal - discount + (extraCostsOnSupplier ? extraCosts : 0) + vatAmount;
 }
 
 /// Thrown when the supplier's invoice number is already on another of this
@@ -156,6 +168,7 @@ class PurchaseService {
   Future<PurchaseInvoice> post(PurchaseInput input, {required User user}) {
     return db.transaction(() async {
       if (!user.can(Perm.purchase)) throw ValidationException('فواتير الشراء لصلاحية المشتريات');
+      await refuseSoftClosed(db, input.date ?? DateTime.now(), user.id);
       if (input.lines.isEmpty) throw ValidationException('أضف صنفاً واحداً على الأقل');
       final supplier = await (db.select(db.suppliers)..where((t) => t.id.equals(input.supplierId)))
           .getSingleOrNull();
@@ -178,6 +191,7 @@ class PurchaseService {
         throw ValidationException('خصم الفاتورة أكبر من قيمتها');
       }
       if (input.extraCosts < 0) throw ValidationException('المصاريف الإضافية لا يمكن أن تكون سالبة');
+      if (input.vatAmount < 0) throw ValidationException('الضريبة لا تكون سالبة');
       final total = input.total;
       if (input.paidAmount < 0 || input.paidAmount > total) {
         throw ValidationException('المبلغ المدفوع يجب أن يكون بين صفر وإجمالي الفاتورة');
@@ -229,10 +243,13 @@ class PurchaseService {
                 : dayOf(input.dueDate!)),
             advanceId: Value(input.advanceId),
             advanceUsed: Value(input.advanceId == null ? 0 : total),
+            vatAmount: Value(input.vatAmount),
+            isDirect: Value(input.isDirect),
+            salesInvoiceId: Value(input.salesInvoiceId),
           ));
 
       final place = await (db.select(db.locations)..where((l) => l.id.equals(input.locationId))).getSingleOrNull();
-      if (place == null || !place.isActive) throw ValidationException('مكان الاستلام غير موجود أو موقوف');
+      if (!input.isDirect && (place == null || !place.isActive)) throw ValidationException('مكان الاستلام غير موجود أو موقوف');
       final stock = StockService(db);
       final fifo = FifoService(db);
       // The invoice discount lowers the real cost of the goods, line by line.
@@ -260,6 +277,8 @@ class PurchaseService {
               extraCostShare: Value(extraShares[n]),
             ));
         final p = products[line.productId]!;
+        // Delivered straight to the customer: never in stock.
+        if (input.isDirect) continue;
         await fifo.addLayer(
           productId: p.id,
           qty: line.qty,
@@ -341,6 +360,10 @@ class PurchaseService {
           .getSingle();
       if (invoice.status == DocStatus.cancelled) {
         throw ValidationException('الفاتورة ${invoice.number} ملغاة من قبل');
+      }
+      await refuseSoftClosed(db, invoice.date, user.id);
+      if (invoice.isDirect) {
+        throw ValidationException('هذه فاتورة توريد مباشر لعميل؛ تُلغى بإلغاء فاتورة البيع المرتبطة بها');
       }
       final returns = await (db.select(db.returns)
             ..where((t) =>

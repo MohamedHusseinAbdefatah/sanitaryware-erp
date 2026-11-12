@@ -17,6 +17,7 @@ import '../../core/widgets/list_kit.dart';
 import '../../core/widgets/feedback.dart';
 import '../../core/widgets/number_fields.dart';
 import '../payments/payments_screen.dart';
+import 'expense_plans_dialog.dart';
 
 /// Admin only (the section is).
 class ExpensesScreen extends ConsumerStatefulWidget {
@@ -54,6 +55,20 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
         PageHeader(
           title: Strings.expenses,
           actions: [
+            Badge(
+              isLabelVisible: ref.watch(duePlansProvider) > 0,
+              label: Text('${ref.watch(duePlansProvider)}'),
+              child: OutlinedButton.icon(
+                onPressed: () => showExpensePlans(context),
+                icon: const Icon(Icons.event_repeat),
+                label: const Text('المصروفات المتكررة'),
+              ),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => showExpenseImport(context),
+              icon: const Icon(Icons.upload_file_outlined),
+              label: const Text('استيراد من Excel'),
+            ),
             OutlinedButton.icon(
               onPressed: () => showDialog<void>(context: context, builder: (_) => const _CategoriesDialog()),
               icon: const Icon(Icons.list_alt),

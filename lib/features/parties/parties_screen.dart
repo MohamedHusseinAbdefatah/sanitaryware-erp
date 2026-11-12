@@ -111,6 +111,11 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       PageHeader(title: Strings.customers, actions: [
         SearchBox(hint: 'بحث بالاسم أو التليفون أو العنوان', onChanged: (v) => setState(() => _search = v)),
+        OutlinedButton.icon(
+          onPressed: () => context.go('/customers/leads'),
+          icon: const Icon(Icons.person_search_outlined),
+          label: const Text('الفرص'),
+        ),
         ViewToggle(cards: _cards, onChanged: (v) => setState(() => _cards = v)),
         FilledButton.icon(
           onPressed: () => showCustomerForm(context),
