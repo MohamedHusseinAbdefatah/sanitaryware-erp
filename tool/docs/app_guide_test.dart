@@ -209,6 +209,18 @@ final _content = <_B>[
       'locked price. An order approved on V1 keeps V1 after V2 starts. Advances received on an order move to the '
       'invoice. An outside order number can be used once per channel.'),
   const _Page(),
+  const _H('Record pages and document views', level: 2),
+  const _L([
+    'Clicking a supplier, customer or product in any list opens its page: a header with its actions (a new invoice '
+        'for that party, a payment, the statement, editing), key figures, and tabs with every invoice, payment, '
+        'order, advance, return, reservation, movement and price linked to it.',
+    'Sales, purchases, payments, returns and expenses lists show the period\'s figures on top and filter chips with '
+        'how many invoices are paid, partly paid, unpaid, overdue or cancelled.',
+    'A posted invoice opens as a document: a status bar, the party as a link to its page, the lines, the totals and '
+        'the payments made on it. Sales and purchase orders have screens of their own, with what is still to deliver '
+        'or receive.',
+  ]),
+  const _S('21_supplier_page', 'A supplier\'s page'),
   const _H('7. Buying'),
   const _L([
     'Purchase invoice (admin): supplier, their invoice number, receiving place, lines, invoice discount, transport, '

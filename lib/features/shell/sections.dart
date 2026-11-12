@@ -6,7 +6,10 @@ import '../../core/services/doc_types.dart';
 import '../dashboard/dashboard_screen.dart';
 import '../inventory/inventory_screen.dart';
 import '../expenses/expenses_screen.dart';
+import '../parties/customer_page.dart';
 import '../parties/parties_screen.dart';
+import '../parties/supplier_page.dart';
+import '../products/product_page.dart';
 import '../payments/payments_screen.dart';
 import '../price_lists/price_lists_screen.dart';
 import '../products/products_screen.dart';
@@ -16,6 +19,7 @@ import '../purchases/purchase_list_screen.dart';
 import '../purchases/purchase_view_screen.dart';
 import '../returns/return_entry_screen.dart';
 import '../returns/returns_screen.dart';
+import '../sales/orders_screens.dart';
 import '../sales/sale_entry_screen.dart';
 import '../sales/sale_view_screen.dart';
 import '../sales/sales_list_screen.dart';
@@ -61,12 +65,34 @@ final appSections = <AppSection>[
     title: Strings.products,
     icon: Icons.inventory_2_outlined,
     builder: (_) => const ProductsScreen(),
+    routes: [
+      GoRoute(
+        path: ':id',
+        builder: (_, state) {
+          final id = int.tryParse(state.pathParameters['id'] ?? '');
+          return id == null
+              ? const ComingSoonPage(title: Strings.products)
+              : ProductPage(key: ValueKey(id), productId: id);
+        },
+      ),
+    ],
   ),
   AppSection(
     path: '/customers',
     title: Strings.customers,
     icon: Icons.people_outline,
     builder: (_) => const CustomersScreen(),
+    routes: [
+      GoRoute(
+        path: ':id',
+        builder: (_, state) {
+          final id = int.tryParse(state.pathParameters['id'] ?? '');
+          return id == null
+              ? const ComingSoonPage(title: Strings.customers)
+              : CustomerPage(key: ValueKey(id), customerId: id);
+        },
+      ),
+    ],
   ),
   AppSection(
     path: '/suppliers',
@@ -74,6 +100,17 @@ final appSections = <AppSection>[
     icon: Icons.local_shipping_outlined,
     adminOnly: true,
     builder: (_) => const SuppliersScreen(),
+    routes: [
+      GoRoute(
+        path: ':id',
+        builder: (_, state) {
+          final id = int.tryParse(state.pathParameters['id'] ?? '');
+          return id == null
+              ? const ComingSoonPage(title: Strings.suppliers)
+              : SupplierPage(key: ValueKey(id), supplierId: id);
+        },
+      ),
+    ],
   ),
   AppSection(
     path: '/sales',
@@ -81,7 +118,14 @@ final appSections = <AppSection>[
     icon: Icons.receipt_long_outlined,
     builder: (_) => const SalesListScreen(),
     routes: [
-      GoRoute(path: 'new', builder: (_, _) => const SaleEntryScreen()),
+      GoRoute(
+        path: 'new',
+        builder: (_, state) => SaleEntryScreen(
+          key: ValueKey(state.uri.query),
+          customerId: int.tryParse(state.uri.queryParameters['customer'] ?? ''),
+        ),
+      ),
+      GoRoute(path: 'orders', builder: (_, _) => const SalesOrdersScreen()),
       GoRoute(
         path: ':id',
         builder: (_, state) {
@@ -100,7 +144,14 @@ final appSections = <AppSection>[
     adminOnly: true,
     builder: (_) => const PurchaseListScreen(),
     routes: [
-      GoRoute(path: 'new', builder: (_, _) => const PurchaseEntryScreen()),
+      GoRoute(
+        path: 'new',
+        builder: (_, state) => PurchaseEntryScreen(
+          key: ValueKey(state.uri.query),
+          supplierId: int.tryParse(state.uri.queryParameters['supplier'] ?? ''),
+        ),
+      ),
+      GoRoute(path: 'orders', builder: (_, _) => const PurchaseOrdersScreen()),
       GoRoute(
         path: ':id',
         builder: (_, state) {

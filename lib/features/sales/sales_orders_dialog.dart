@@ -279,6 +279,14 @@ class _NewSoDialogState extends ConsumerState<_NewSoDialog> {
   }
 }
 
+/// The form for a new sales order or quotation.
+Future<void> showNewSalesOrder(BuildContext context) =>
+    showDialog<void>(context: context, builder: (_) => const _NewSoDialog());
+
+/// Opens one sales order (from a customer's page, say).
+Future<void> showSalesOrder(BuildContext context, int orderId) =>
+    showDialog<void>(context: context, builder: (_) => _SoDetailDialog(orderId: orderId));
+
 class _SoDetailDialog extends ConsumerStatefulWidget {
   const _SoDetailDialog({required this.orderId});
 

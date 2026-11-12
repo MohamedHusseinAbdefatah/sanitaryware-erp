@@ -218,6 +218,12 @@ class PaymentService {
     );
   }
 
+  /// Every payment linked to one invoice (cancelled ones too), oldest first.
+  Future<List<Payment>> onInvoice(String refType, int invoiceId) => (db.select(db.payments)
+        ..where((t) => t.invoiceRefType.equals(refType) & t.invoiceRefId.equals(invoiceId))
+        ..orderBy([(t) => OrderingTerm.asc(t.date), (t) => OrderingTerm.asc(t.id)]))
+      .get();
+
   /// Advances paid so far against an order (counted payments only).
   Future<int> advancesOn(String orderRefType, int orderId) =>
       BalanceService(db).paidOnInvoice(orderRefType, orderId);

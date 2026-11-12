@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/auth/auth_service.dart';
 import '../../core/auth/session.dart';
@@ -132,7 +133,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               emptyText: _f.search.isEmpty && _f.categoryId == null && _f.brandId == null && !_f.low
                   ? 'لا يوجد مخزون بعد. يدخل المخزون من فواتير الشراء أو رصيد أول المدة، وليس من قوائم الأسعار.'
                   : 'لا توجد أصناف بهذا البحث في المخزون',
-              onTap: (r) => showStockCard(context, r.item),
+              onTap: (r) => context.go('/products/${r.product.id}'),
               rowColor: (r) => r.stock == 0 ? scheme.surfaceContainerHighest : null,
               trailing: (r) => _InventoryMenu(row: r, isAdmin: isAdmin),
               columns: [

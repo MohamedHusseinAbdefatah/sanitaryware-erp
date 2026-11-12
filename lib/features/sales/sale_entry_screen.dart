@@ -84,7 +84,10 @@ class _Line {
 String _plain(int piastres) => formatMoney(piastres).replaceAll(',', '');
 
 class SaleEntryScreen extends ConsumerStatefulWidget {
-  const SaleEntryScreen({super.key});
+  const SaleEntryScreen({super.key, this.customerId});
+
+  /// Starts the invoice for this customer (from the customer's page).
+  final int? customerId;
 
   @override
   ConsumerState<SaleEntryScreen> createState() => _SaleEntryScreenState();
@@ -110,6 +113,18 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       discountAmount(_invoiceDiscount.text, percent: _discountPercent, subtotal: _subtotal) ?? 0;
   int get _total => _subtotal - _discount;
   int get _paidValue => moneyOrZero(_paid);
+
+  @override
+  void initState() {
+    super.initState();
+    final id = widget.customerId;
+    if (id != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        final c = await ref.read(partyServiceProvider).customer(id);
+        if (mounted) await _setCustomer(c);
+      });
+    }
+  }
 
   @override
   void dispose() {

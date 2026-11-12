@@ -11,8 +11,10 @@ import '../../core/providers.dart';
 import '../../core/quantity.dart';
 import '../../core/services/doc_types.dart';
 import '../../core/services/return_service.dart';
+import '../../core/theme.dart';
 import '../../core/widgets/data_list.dart';
 import '../../core/widgets/feedback.dart';
+import '../../core/widgets/list_kit.dart';
 
 class ReturnsScreen extends ConsumerStatefulWidget {
   const ReturnsScreen({super.key});
@@ -28,7 +30,6 @@ class _ReturnsScreenState extends ConsumerState<ReturnsScreen> {
   Widget build(BuildContext context) {
     final isAdmin = ref.watch(currentUserProvider)?.isAdmin ?? false;
     final rows = ref.watch(_returnsProvider(_kind));
-    final scheme = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -61,28 +62,58 @@ class _ReturnsScreenState extends ConsumerState<ReturnsScreen> {
           child: rows.when(
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (e, _) => Center(child: Text('$e')),
-            data: (list) => DataList<ReturnRow>(
-              rows: list,
-              emptyText: Strings.noReturns,
-              onTap: (r) => showDialog<void>(context: context, builder: (_) => _ReturnDialog(row: r)),
-              rowColor: (r) => r.doc.status == DocStatus.cancelled
-                  ? scheme.errorContainer.withValues(alpha: 0.3)
-                  : null,
-              columns: [
-                DataListColumn(Strings.number, (r) => Text(r.doc.number)),
-                DataListColumn(Strings.date, flex: 2, (r) => Text(formatDateTime(r.doc.date))),
-                DataListColumn(Strings.kind, numeric: true,
-                    (r) => Text(r.doc.kind == ReturnKind.sale ? Strings.saleReturn : Strings.purchaseReturn)),
-                DataListColumn(Strings.party, flex: 3, (r) => Text(r.partyName ?? Strings.cashCustomer)),
-                DataListColumn(Strings.originalInvoice, (r) => Text(r.invoiceNumber ?? '—')),
-                DataListColumn(Strings.total, numeric: true, (r) => Text(formatMoney(r.doc.total))),
-                DataListColumn(Strings.refunded, numeric: true, (r) => Text(formatMoney(r.doc.refundAmount))),
-                DataListColumn(Strings.status, numeric: true, (r) => Text(
-                      r.doc.status == DocStatus.cancelled ? Strings.cancelled : '',
-                      style: TextStyle(color: scheme.error),
-                    )),
-              ],
-            ),
+            data: (list) {
+              final active = list.where((r) => r.doc.status == DocStatus.active);
+              int sum(Iterable<ReturnRow> rs) => rs.fold(0, (s, r) => s + r.doc.total);
+              final now = DateTime.now();
+              final month = active.where((r) => r.doc.date.year == now.year && r.doc.date.month == now.month);
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SummaryStrip(items: [
+                    SummaryItem('مرتجعات البيع (الشهر)', formatMoney(sum(month.where((r) => r.doc.kind == ReturnKind.sale))),
+                        icon: Icons.assignment_return_outlined, tone: AppColors.warn),
+                    if (isAdmin)
+                      SummaryItem('مرتجعات الشراء (الشهر)',
+                          formatMoney(sum(month.where((r) => r.doc.kind == ReturnKind.purchase))),
+                          icon: Icons.local_shipping_outlined),
+                    SummaryItem('المردود نقداً (الشهر)', formatMoney(month.fold(0, (s, r) => s + r.doc.refundAmount)),
+                        icon: Icons.payments_outlined),
+                    SummaryItem('عدد المرتجعات', '${active.length}', icon: Icons.numbers),
+                  ]),
+                  Expanded(
+                    child: DataList<ReturnRow>(
+                      rows: list,
+                      emptyText: Strings.noReturns,
+                      onTap: (r) => showDialog<void>(context: context, builder: (_) => _ReturnDialog(row: r)),
+                      rowColor: (r) => r.doc.status == DocStatus.cancelled ? AppColors.canvas : null,
+                      columns: [
+                        DataListColumn(Strings.number, (r) => Text(r.doc.number, style: const TextStyle(fontWeight: FontWeight.w700))),
+                        DataListColumn(Strings.date, flex: 2, (r) => Text(formatDateTime(r.doc.date))),
+                        DataListColumn(Strings.kind, numeric: true, (r) => r.doc.kind == ReturnKind.sale
+                            ? const StatusPill.warn(Strings.saleReturn)
+                            : const StatusPill(Strings.purchaseReturn)),
+                        DataListColumn(Strings.party, flex: 3, (r) => Text(r.partyName ?? Strings.cashCustomer)),
+                        DataListColumn(Strings.originalInvoice, (r) => r.doc.originalInvoiceId == null
+                            ? const Text('—')
+                            : InkWell(
+                                onTap: () => context.go(
+                                    '/${r.doc.kind == ReturnKind.sale ? 'sales' : 'purchases'}/${r.doc.originalInvoiceId}'),
+                                child: Text(r.invoiceNumber ?? '',
+                                    style: const TextStyle(color: AppColors.brand, fontWeight: FontWeight.w600)),
+                              )),
+                        DataListColumn(Strings.total, numeric: true,
+                            (r) => Text(formatMoney(r.doc.total), style: const TextStyle(fontWeight: FontWeight.w700))),
+                        DataListColumn(Strings.refunded, numeric: true, (r) => Text(formatMoney(r.doc.refundAmount))),
+                        DataListColumn(Strings.status, numeric: true, (r) => r.doc.status == DocStatus.cancelled
+                            ? const StatusPill.bad(Strings.cancelled)
+                            : const StatusPill.good('ساري')),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
         ),
       ],

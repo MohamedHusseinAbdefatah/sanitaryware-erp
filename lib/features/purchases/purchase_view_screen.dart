@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/auth/session.dart';
 import '../../core/dates.dart';
+import '../../core/db/database.dart';
 import '../../core/l10n/strings.dart';
 import '../../core/money.dart';
 import '../../core/printing/print_actions.dart';
@@ -11,9 +12,11 @@ import '../../core/providers.dart';
 import '../../core/quantity.dart';
 import '../../core/services/doc_types.dart';
 import '../../core/services/purchase_service.dart';
-import '../../core/widgets/amounts.dart';
+import '../../core/theme.dart';
+import '../../core/widgets/document_view.dart';
 import '../../core/widgets/feedback.dart';
 import '../payments/payment_dialog.dart';
+import '../payments/payments_screen.dart';
 
 /// "20%" or "20% + 2%".
 String _pct(int base, int extra) {
@@ -21,6 +24,8 @@ String _pct(int base, int extra) {
   return extra == 0 ? p(base) : '${p(base)} + ${p(extra)}';
 }
 
+/// A posted purchase invoice as a document: supplier, lines with list price,
+/// discount and cost in stock, totals, and the payments made on it.
 class PurchaseViewScreen extends ConsumerStatefulWidget {
   const PurchaseViewScreen({super.key, required this.invoiceId});
 
@@ -31,9 +36,12 @@ class PurchaseViewScreen extends ConsumerStatefulWidget {
 }
 
 class _PurchaseViewScreenState extends ConsumerState<PurchaseViewScreen> {
-  late Future<PurchaseInvoiceDetail> _detail = _load();
+  late Future<(PurchaseInvoiceDetail, List<Payment>)> _detail = _load();
 
-  Future<PurchaseInvoiceDetail> _load() => ref.read(purchaseServiceProvider).detail(widget.invoiceId);
+  Future<(PurchaseInvoiceDetail, List<Payment>)> _load() async => (
+        await ref.read(purchaseServiceProvider).detail(widget.invoiceId),
+        await ref.read(paymentServiceProvider).onInvoice(RefType.purchaseInvoice, widget.invoiceId),
+      );
 
   void _reload() => setState(() {
         _detail = _load();
@@ -43,9 +51,7 @@ class _PurchaseViewScreenState extends ConsumerState<PurchaseViewScreen> {
     final reason = await askReason(context, title: '${Strings.cancelInvoice} ${d.invoice.number}');
     if (reason == null || !mounted) return;
     final ok = await runGuarded(context, () async {
-      await ref
-          .read(purchaseServiceProvider)
-          .cancel(d.invoice.id, reason: reason, user: ref.read(currentUserProvider)!);
+      await ref.read(purchaseServiceProvider).cancel(d.invoice.id, reason: reason, user: ref.read(currentUserProvider)!);
       return true;
     });
     if (ok == true && mounted) {
@@ -67,130 +73,109 @@ class _PurchaseViewScreenState extends ConsumerState<PurchaseViewScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return FutureBuilder<PurchaseInvoiceDetail>(
+    return FutureBuilder<(PurchaseInvoiceDetail, List<Payment>)>(
       future: _detail,
       builder: (context, snap) {
         if (snap.hasError) return Center(child: Text('${snap.error}'));
-        final d = snap.data;
-        if (d == null) return const Center(child: CircularProgressIndicator());
+        final data = snap.data;
+        if (data == null) return const Center(child: CircularProgressIndicator());
+        final (d, payments) = data;
         final inv = d.invoice;
         final cancelled = inv.status == DocStatus.cancelled;
-        return ListView(
-          padding: const EdgeInsets.all(24),
-          children: [
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                IconButton(
-                  tooltip: Strings.back,
-                  icon: const Icon(Icons.arrow_forward),
-                  onPressed: () => context.go('/purchases'),
+        final remaining = inv.total - d.paid;
+        final overdue = !cancelled && remaining > 0 && inv.dueDate != null && inv.dueDate!.isBefore(DateTime.now());
+        return DocumentView(
+          backLabel: Strings.purchases,
+          backPath: '/purchases',
+          kind: Strings.purchaseInvoice,
+          number: inv.number,
+          cancelled: cancelled,
+          steps: [overdue ? 'متأخرة' : 'مستلمة', 'مدفوعة جزئياً', 'مدفوعة'],
+          step: remaining <= 0 ? 2 : (d.paid > 0 ? 1 : 0),
+          partyLabel: Strings.supplier,
+          partyName: d.supplier.name,
+          partyPath: '/suppliers/${d.supplier.id}',
+          partyDetail: d.supplier.phone,
+          facts: [
+            (Strings.date, formatDateTime(inv.date)),
+            if (inv.supplierInvoiceNo != null) (Strings.supplierInvoiceNo, inv.supplierInvoiceNo!),
+            if (inv.dueDate != null) ('يستحق الباقي', formatDate(inv.dueDate!)),
+          ],
+          columns: const [
+            DocColumn('#'),
+            DocColumn(Strings.productName, flex: 5),
+            DocColumn(Strings.qty, flex: 2, numeric: true),
+            DocColumn('سعر القائمة', flex: 2, numeric: true),
+            DocColumn('الخصم', flex: 2, numeric: true),
+            DocColumn(Strings.unitCost, flex: 2, numeric: true),
+            DocColumn(Strings.lineTotal, flex: 2, numeric: true),
+            DocColumn('التكلفة في المخزون', flex: 2, numeric: true),
+          ],
+          rows: [
+            for (var i = 0; i < d.lines.length; i++)
+              [
+                Text('${i + 1}', style: const TextStyle(color: AppColors.muted)),
+                InkWell(
+                  onTap: () => context.go('/products/${d.lines[i].item.productId}'),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(d.lines[i].productName, style: const TextStyle(fontWeight: FontWeight.w600)),
+                      Text(d.lines[i].productCode, style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+                    ],
+                  ),
                 ),
-                Text('${Strings.purchaseInvoice} ${inv.number}', style: theme.textTheme.headlineSmall),
-                if (cancelled)
-                  Chip(label: const Text(Strings.cancelled), backgroundColor: theme.colorScheme.errorContainer),
-                const SizedBox(width: 24),
-                if (!cancelled && inv.total > d.paid)
-                  OutlinedButton.icon(
-                    onPressed: () => _pay(d),
-                    icon: const Icon(Icons.payments_outlined),
-                    label: const Text(Strings.payToSupplier),
-                  ),
-                if (!cancelled)
-                  OutlinedButton.icon(
-                    onPressed: () => context.go('/returns/new?kind=purchase&invoice=${inv.id}'),
-                    icon: const Icon(Icons.assignment_return_outlined),
-                    label: const Text(Strings.purchaseReturn),
-                  ),
-                FilledButton.tonalIcon(
-                  onPressed: () => printPurchaseInvoice(context, ref, inv.id),
-                  icon: const Icon(Icons.print_outlined),
-                  label: const Text(Strings.print),
-                ),
-                if (!cancelled)
-                  OutlinedButton.icon(
-                    onPressed: () => _cancel(d),
-                    icon: const Icon(Icons.block),
-                    label: const Text(Strings.cancelInvoice),
-                    style: OutlinedButton.styleFrom(foregroundColor: theme.colorScheme.error),
-                  ),
+                Text('${formatQty(d.lines[i].item.qty)} ${d.lines[i].unitName ?? ''}'),
+                Text(d.lines[i].item.listPrice == null ? '—' : formatMoney(d.lines[i].item.listPrice!)),
+                Text(d.lines[i].item.listPrice == null
+                    ? '—'
+                    : _pct(d.lines[i].item.baseDiscountBp, d.lines[i].item.extraDiscountBp)),
+                Text(formatMoney(d.lines[i].item.unitCost)),
+                Text(formatMoney(d.lines[i].item.lineTotal), style: const TextStyle(fontWeight: FontWeight.w700)),
+                // Net of the invoice discount, plus its share of the transport.
+                Text(formatMoney(
+                    ((d.lines[i].item.netTotal + d.lines[i].item.extraCostShare) * qtyScale / d.lines[i].item.qty)
+                        .round())),
               ],
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 32,
-              runSpacing: 8,
-              children: [
-                Text('${Strings.date}: ${formatDateTime(inv.date)}'),
-                Text('${Strings.supplier}: ${d.supplier.name}'),
-                if (inv.supplierInvoiceNo != null) Text('${Strings.supplierInvoiceNo}: ${inv.supplierInvoiceNo}'),
-                if (inv.dueDate != null) Text('يستحق الباقي: ${formatDate(inv.dueDate!)}'),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Card(
-              clipBehavior: Clip.antiAlias,
-              child: DataTable(
-                columns: const [
-                  DataColumn(label: Text('#')),
-                  DataColumn(label: Text(Strings.code)),
-                  DataColumn(label: Text(Strings.productName)),
-                  DataColumn(label: Text(Strings.qty), numeric: true),
-                  DataColumn(label: Text(Strings.unit)),
-                  DataColumn(label: Text('سعر القائمة'), numeric: true),
-                  DataColumn(label: Text('الخصم'), numeric: true),
-                  DataColumn(label: Text(Strings.unitCost), numeric: true),
-                  DataColumn(label: Text(Strings.lineTotal), numeric: true),
-                  DataColumn(label: Text('التكلفة في المخزون'), numeric: true),
-                ],
-                rows: [
-                  for (var i = 0; i < d.lines.length; i++)
-                    DataRow(cells: [
-                      DataCell(Text('${i + 1}')),
-                      DataCell(Text(d.lines[i].productCode)),
-                      DataCell(Text(d.lines[i].productName)),
-                      DataCell(Text(formatQty(d.lines[i].item.qty))),
-                      DataCell(Text(d.lines[i].unitName ?? '')),
-                      DataCell(Text(d.lines[i].item.listPrice == null ? '—' : formatMoney(d.lines[i].item.listPrice!))),
-                      DataCell(Text(d.lines[i].item.listPrice == null
-                          ? '—'
-                          : _pct(d.lines[i].item.baseDiscountBp, d.lines[i].item.extraDiscountBp))),
-                      DataCell(Text(formatMoney(d.lines[i].item.unitCost))),
-                      DataCell(Text(formatMoney(d.lines[i].item.lineTotal))),
-                      // Net of the invoice discount, plus its share of the transport.
-                      DataCell(Text(formatMoney(
-                          ((d.lines[i].item.netTotal + d.lines[i].item.extraCostShare) * qtyScale / d.lines[i].item.qty)
-                              .round()))),
-                    ]),
-                ],
+          ],
+          totals: [
+            (Strings.subtotal, inv.subtotal, false),
+            if (inv.discount != 0) (Strings.invoiceDiscount, inv.discount, false),
+            if (inv.extraCosts != 0)
+              (inv.extraCostsOnSupplier ? 'نقل وتحميل (على المورد)' : 'نقل وتحميل (لجهة أخرى، خارج الإجمالي)',
+                  inv.extraCosts, false),
+            (Strings.total, inv.total, true),
+            if (inv.advanceUsed != 0) ('منها من دفعة مقدمة بسعر مثبت', inv.advanceUsed, false),
+            (Strings.paid, d.paid, false),
+            (Strings.remaining, cancelled ? 0 : remaining, true),
+          ],
+          notes: inv.notes,
+          payments: [for (final p in payments) PaymentLine.of(p, paymentMethodLabel(p.method))],
+          actions: [
+            if (!cancelled && remaining > 0)
+              FilledButton.icon(
+                onPressed: () => _pay(d),
+                icon: const Icon(Icons.payments_outlined),
+                label: const Text(Strings.payToSupplier),
               ),
-            ),
-            const SizedBox(height: 16),
-            Align(
-              alignment: AlignmentDirectional.centerEnd,
-              child: SizedBox(
-                width: 320,
-                child: Column(
-                  children: [
-                    TotalRow(Strings.subtotal, inv.subtotal),
-                    if (inv.discount != 0) TotalRow(Strings.invoiceDiscount, inv.discount),
-                    if (inv.extraCosts != 0)
-                      TotalRow(inv.extraCostsOnSupplier ? 'نقل وتحميل (على المورد)' : 'نقل وتحميل (دُفع لجهة أخرى، خارج الإجمالي)',
-                          inv.extraCosts),
-                    TotalRow(Strings.total, inv.total, bold: true),
-                    if (inv.advanceUsed != 0) TotalRow('منها من دفعة مقدمة بسعر مثبت', inv.advanceUsed),
-                    TotalRow(Strings.paid, d.paid),
-                    TotalRow(Strings.remaining, inv.total - d.paid, bold: true),
-                  ],
-                ),
+            if (!cancelled)
+              OutlinedButton.icon(
+                onPressed: () => context.go('/returns/new?kind=purchase&invoice=${inv.id}'),
+                icon: const Icon(Icons.assignment_return_outlined),
+                label: const Text(Strings.purchaseReturn),
               ),
+            OutlinedButton.icon(
+              onPressed: () => printPurchaseInvoice(context, ref, inv.id),
+              icon: const Icon(Icons.print_outlined),
+              label: const Text(Strings.print),
             ),
-            if (inv.notes != null) ...[
-              const SizedBox(height: 16),
-              Text('${Strings.notes}: ${inv.notes}'),
-            ],
+            if (!cancelled)
+              OutlinedButton.icon(
+                onPressed: () => _cancel(d),
+                icon: const Icon(Icons.block),
+                label: const Text(Strings.cancelInvoice),
+                style: OutlinedButton.styleFrom(foregroundColor: theme.colorScheme.error),
+              ),
           ],
         );
       },

@@ -365,16 +365,36 @@ void main() {
     await tester.tap(find.text(Strings.close).last);
     await settle(tester);
 
-    await go(tester, '/sales');
-    await tester.tap(find.text('أوامر البيع'));
-    await settle(tester);
-    await tester.tap(find.textContaining('شركة النور للمقاولات').first);
+    await go(tester, '/sales/orders');
+    await shot(tester, '27_sales_orders');
+    await tester.tap(find.text('SO-000001').first);
     await settle(tester);
     await shot(tester, '20_sales_order_stock');
     await tester.tap(find.text(Strings.close).last);
     await settle(tester);
-    await tester.tap(find.text(Strings.close).last);
+
+    // Record pages: a supplier, a customer, a product.
+    await go(tester, '/suppliers');
+    await tester.tap(find.text('الشركة المصرية للخلاطات').first);
     await settle(tester);
+    await shot(tester, '21_supplier_page');
+    await go(tester, '/customers');
+    await tester.tap(find.text('شركة النور للمقاولات').first);
+    await settle(tester);
+    await shot(tester, '22_customer_page');
+    await go(tester, '/products/${shop.mixer.id}');
+    await shot(tester, '23_product_page');
+
+    // Lists with their figures and filters, and a purchase as a document.
+    await go(tester, '/purchases');
+    await shot(tester, '24_purchases_list');
+    await tester.tap(find.text('INV-5521').first);
+    await settle(tester);
+    await shot(tester, '25_purchase_view');
+    await go(tester, '/sales');
+    await tester.tap(find.text(Strings.all).first);
+    await settle(tester);
+    await shot(tester, '26_sales_list');
 
     await go(tester, '/sales/new');
     await tester.enterText(find.byType(TextField).at(1), 'M1');

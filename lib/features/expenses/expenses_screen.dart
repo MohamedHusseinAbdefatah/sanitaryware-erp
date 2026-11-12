@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/auth/session.dart';
 import '../../core/dates.dart';
@@ -9,8 +10,10 @@ import '../../core/money.dart';
 import '../../core/providers.dart';
 import '../../core/services/doc_types.dart';
 import '../../core/services/expense_service.dart';
+import '../../core/theme.dart';
 import '../../core/widgets/data_list.dart';
 import '../../core/widgets/date_range_bar.dart';
+import '../../core/widgets/list_kit.dart';
 import '../../core/widgets/feedback.dart';
 import '../../core/widgets/number_fields.dart';
 import '../payments/payments_screen.dart';
@@ -45,7 +48,6 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
   @override
   Widget build(BuildContext context) {
     final rows = ref.watch(_expensesProvider(_range));
-    final scheme = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -73,19 +75,33 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (e, _) => Center(child: Text('$e')),
             data: (list) {
-              final total = list
-                  .where((r) => r.expense.status == DocStatus.active)
-                  .fold(0, (s, r) => s + r.expense.amount);
+              final active = list.where((r) => r.expense.status == DocStatus.active).toList();
+              final total = active.fold(0, (s, r) => s + r.expense.amount);
+              // The biggest categories of the period.
+              final byCategory = <String, int>{};
+              for (final r in active) {
+                byCategory[r.categoryName] = (byCategory[r.categoryName] ?? 0) + r.expense.amount;
+              }
+              final top = byCategory.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+              final purchaseCosts =
+                  active.where((r) => r.expense.purchaseInvoiceId != null).fold(0, (s, r) => s + r.expense.amount);
               return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  SummaryStrip(items: [
+                    SummaryItem(Strings.totalExpenses, formatMoney(total), icon: Icons.money_off_outlined, tone: AppColors.bad),
+                    SummaryItem('عدد المصروفات', '${active.length}', icon: Icons.numbers),
+                    for (final e in top.take(2))
+                      SummaryItem(e.key, formatMoney(e.value), icon: Icons.label_outline),
+                    if (purchaseCosts > 0)
+                      SummaryItem('نقل مشتريات (ضمن التكلفة)', formatMoney(purchaseCosts), icon: Icons.local_shipping_outlined),
+                  ]),
                   Expanded(
                     child: DataList<ExpenseRow>(
                       rows: list,
                       emptyText: Strings.noExpenses,
-                      rowColor: (r) => r.expense.status == DocStatus.cancelled
-                          ? scheme.errorContainer.withValues(alpha: 0.3)
-                          : null,
-                      trailing: (r) => r.expense.status == DocStatus.active
+                      rowColor: (r) => r.expense.status == DocStatus.cancelled ? AppColors.canvas : null,
+                      trailing: (r) => r.expense.status == DocStatus.active && r.expense.purchaseInvoiceId == null
                           ? IconButton(
                               tooltip: Strings.cancelExpense,
                               icon: const Icon(Icons.block),
@@ -95,23 +111,19 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
                       columns: [
                         DataListColumn(Strings.date, (r) => Text(formatDate(r.expense.date))),
                         DataListColumn(Strings.expenseCategory, flex: 2, (r) => Text(r.categoryName)),
-                        DataListColumn(Strings.amount, numeric: true, (r) => Text(formatMoney(r.expense.amount))),
+                        DataListColumn(Strings.amount, numeric: true,
+                            (r) => Text(formatMoney(r.expense.amount), style: const TextStyle(fontWeight: FontWeight.w700))),
                         DataListColumn(Strings.method, numeric: true, (r) => Text(paymentMethodLabel(r.expense.method))),
-                        DataListColumn(Strings.description, flex: 3, (r) => Text(r.expense.description ?? '')),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    color: scheme.surfaceContainerHigh,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-                    child: Row(
-                      children: [
-                        Text(_range.label),
-                        const Spacer(),
-                        Text(
-                          '${Strings.totalExpenses}: ${formatMoney(total)}',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
+                        DataListColumn(Strings.description, flex: 3, (r) => r.expense.purchaseInvoiceId == null
+                            ? Text(r.expense.description ?? '')
+                            : InkWell(
+                                onTap: () => context.go('/purchases/${r.expense.purchaseInvoiceId}'),
+                                child: Text(r.expense.description ?? '',
+                                    style: const TextStyle(color: AppColors.brand, fontWeight: FontWeight.w600)),
+                              )),
+                        DataListColumn(Strings.status, numeric: true, (r) => r.expense.status == DocStatus.cancelled
+                            ? const StatusPill.bad(Strings.cancelled)
+                            : const StatusPill.good('ساري')),
                       ],
                     ),
                   ),

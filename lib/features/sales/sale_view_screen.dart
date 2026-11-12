@@ -10,9 +10,12 @@ import '../../core/money.dart';
 import '../../core/printing/print_actions.dart';
 import '../../core/providers.dart';
 import '../../core/quantity.dart';
+import '../../core/db/database.dart';
 import '../../core/services/sales_service.dart';
-import '../../core/widgets/amounts.dart';
+import '../../core/theme.dart';
+import '../../core/widgets/document_view.dart';
 import '../payments/payment_dialog.dart';
+import '../payments/payments_screen.dart';
 import '../../core/widgets/feedback.dart';
 
 /// A posted invoice, read-only. Posted invoices are never edited: the admin
@@ -27,9 +30,12 @@ class SaleViewScreen extends ConsumerStatefulWidget {
 }
 
 class _SaleViewScreenState extends ConsumerState<SaleViewScreen> {
-  late Future<SalesInvoiceDetail> _detail = _load();
+  late Future<(SalesInvoiceDetail, List<Payment>)> _detail = _load();
 
-  Future<SalesInvoiceDetail> _load() => ref.read(salesServiceProvider).detail(widget.invoiceId);
+  Future<(SalesInvoiceDetail, List<Payment>)> _load() async => (
+        await ref.read(salesServiceProvider).detail(widget.invoiceId),
+        await ref.read(paymentServiceProvider).onInvoice(RefType.salesInvoice, widget.invoiceId),
+      );
 
   Future<void> _cancel(SalesInvoiceDetail d) async {
     final reason = await askReason(context, title: '${Strings.cancelInvoice} ${d.invoice.number}');
@@ -66,35 +72,71 @@ class _SaleViewScreenState extends ConsumerState<SaleViewScreen> {
   Widget build(BuildContext context) {
     final isAdmin = ref.watch(currentUserProvider)?.isAdmin ?? false;
     final theme = Theme.of(context);
-    return FutureBuilder<SalesInvoiceDetail>(
+    return FutureBuilder<(SalesInvoiceDetail, List<Payment>)>(
       future: _detail,
       builder: (context, snap) {
         if (snap.hasError) return Center(child: Text('${snap.error}'));
-        final d = snap.data;
-        if (d == null) return const Center(child: CircularProgressIndicator());
+        final data = snap.data;
+        if (data == null) return const Center(child: CircularProgressIndicator());
+        final (d, payments) = data;
         final inv = d.invoice;
         final cancelled = inv.status == DocStatus.cancelled;
-        return ListView(
-          padding: const EdgeInsets.all(24),
-          children: [
-            // Wraps the buttons onto a second line in a narrow window.
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                IconButton(
-                  tooltip: Strings.back,
-                  icon: const Icon(Icons.arrow_forward),
-                  onPressed: () => context.go('/sales'),
-                ),
-                Text('${Strings.salesInvoice} ${inv.number}', style: theme.textTheme.headlineSmall),
-                if (cancelled)
-                  Chip(
-                    label: const Text(Strings.cancelled),
-                    backgroundColor: theme.colorScheme.errorContainer,
+        final remaining = inv.total - d.paid;
+        return DocumentView(
+          backLabel: Strings.sales,
+          backPath: '/sales',
+          kind: Strings.salesInvoice,
+          number: inv.number,
+          cancelled: cancelled,
+          steps: const ['صادرة', 'مدفوعة جزئياً', 'مدفوعة'],
+          step: remaining <= 0 ? 2 : (d.paid > 0 ? 1 : 0),
+          partyLabel: Strings.customer,
+          partyName: d.customer?.name ?? Strings.cashCustomer,
+          partyPath: d.customer == null ? null : '/customers/${d.customer!.id}',
+          partyDetail: d.customer?.phone,
+          facts: [
+            (Strings.date, formatDateTime(inv.date)),
+            if (d.createdByName != null) (Strings.createdBy, d.createdByName!),
+          ],
+          columns: const [
+            DocColumn('#'),
+            DocColumn(Strings.productName, flex: 6),
+            DocColumn(Strings.qty, flex: 2, numeric: true),
+            DocColumn(Strings.price, flex: 2, numeric: true),
+            DocColumn(Strings.discount, flex: 2, numeric: true),
+            DocColumn(Strings.lineTotal, flex: 2, numeric: true),
+          ],
+          rows: [
+            for (var i = 0; i < d.lines.length; i++)
+              [
+                Text('${i + 1}', style: const TextStyle(color: AppColors.muted)),
+                InkWell(
+                  onTap: () => context.go('/products/${d.lines[i].item.productId}'),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(d.lines[i].productName, style: const TextStyle(fontWeight: FontWeight.w600)),
+                      Text(d.lines[i].productCode, style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+                    ],
                   ),
-                const SizedBox(width: 16),
+                ),
+                Text('${formatQty(d.lines[i].item.qty)} ${d.lines[i].unitName ?? ''}'),
+                Text(formatMoney(d.lines[i].item.unitPrice)),
+                Text(d.lines[i].item.discount == 0 ? '' : formatMoney(d.lines[i].item.discount)),
+                Text(formatMoney(d.lines[i].item.lineTotal), style: const TextStyle(fontWeight: FontWeight.w700)),
+              ],
+          ],
+          totals: [
+            (Strings.subtotal, inv.subtotal, false),
+            if (inv.discount != 0) (Strings.invoiceDiscount, inv.discount, false),
+            (Strings.total, inv.total, true),
+            (Strings.paid, d.paid, false),
+            (Strings.remaining, cancelled ? 0 : remaining, true),
+            if (d.customerBalance != null) (Strings.customerBalanceNow, d.customerBalance!, false),
+          ],
+          notes: inv.notes,
+          payments: [for (final p in payments) PaymentLine.of(p, paymentMethodLabel(p.method))],
+          actions: [
                 if (!cancelled && d.customer != null && inv.total > d.paid)
                   OutlinedButton.icon(
                     onPressed: () => _receive(d),
@@ -124,71 +166,6 @@ class _SaleViewScreenState extends ConsumerState<SaleViewScreen> {
                   icon: const Icon(Icons.add),
                   label: const Text(Strings.newInvoice),
                 ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 32,
-              runSpacing: 8,
-              children: [
-                Text('${Strings.date}: ${formatDateTime(inv.date)}'),
-                Text('${Strings.customer}: ${d.customer?.name ?? Strings.cashCustomer}'),
-                if (d.createdByName != null) Text('${Strings.createdBy}: ${d.createdByName}'),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Card(
-              clipBehavior: Clip.antiAlias,
-              child: DataTable(
-                columns: const [
-                  DataColumn(label: Text('#')),
-                  DataColumn(label: Text(Strings.code)),
-                  DataColumn(label: Text(Strings.productName)),
-                  DataColumn(label: Text(Strings.qty), numeric: true),
-                  DataColumn(label: Text(Strings.unit)),
-                  DataColumn(label: Text(Strings.price), numeric: true),
-                  DataColumn(label: Text(Strings.discount), numeric: true),
-                  DataColumn(label: Text(Strings.lineTotal), numeric: true),
-                ],
-                rows: [
-                  for (var i = 0; i < d.lines.length; i++)
-                    DataRow(cells: [
-                      DataCell(Text('${i + 1}')),
-                      DataCell(Text(d.lines[i].productCode)),
-                      DataCell(Text(d.lines[i].productName)),
-                      DataCell(Text(formatQty(d.lines[i].item.qty))),
-                      DataCell(Text(d.lines[i].unitName ?? '')),
-                      DataCell(Text(formatMoney(d.lines[i].item.unitPrice))),
-                      DataCell(Text(d.lines[i].item.discount == 0 ? '' : formatMoney(d.lines[i].item.discount))),
-                      DataCell(Text(formatMoney(d.lines[i].item.lineTotal))),
-                    ]),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            Align(
-              alignment: AlignmentDirectional.centerEnd,
-              child: SizedBox(
-                width: 320,
-                child: Column(
-                  children: [
-                    TotalRow(Strings.subtotal, inv.subtotal),
-                    if (inv.discount != 0) TotalRow(Strings.invoiceDiscount, inv.discount),
-                    TotalRow(Strings.total, inv.total, bold: true),
-                    TotalRow(Strings.paid, d.paid),
-                    TotalRow(Strings.remaining, inv.total - d.paid, bold: true),
-                    if (d.customerBalance != null) ...[
-                      const Divider(),
-                      TotalRow(Strings.customerBalanceNow, d.customerBalance!),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-            if (inv.notes != null) ...[
-              const SizedBox(height: 16),
-              Text('${Strings.notes}: ${inv.notes}'),
-            ],
           ],
         );
       },

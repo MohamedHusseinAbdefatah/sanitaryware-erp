@@ -112,13 +112,29 @@ class _Line {
 /// cost above what was agreed is marked. Lines can come from an approved
 /// purchase order or be ticked from a price list.
 class PurchaseEntryScreen extends ConsumerStatefulWidget {
-  const PurchaseEntryScreen({super.key});
+  const PurchaseEntryScreen({super.key, this.supplierId});
+
+  /// Starts the invoice for this supplier (from the supplier's page).
+  final int? supplierId;
 
   @override
   ConsumerState<PurchaseEntryScreen> createState() => _PurchaseEntryScreenState();
 }
 
 class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
+  @override
+  void initState() {
+    super.initState();
+    final id = widget.supplierId;
+    if (id != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        final db = ref.read(databaseProvider);
+        final s = await (db.select(db.suppliers)..where((t) => t.id.equals(id))).getSingleOrNull();
+        if (mounted && s != null) _setSupplier(s);
+      });
+    }
+  }
+
   final _form = GlobalKey<FormState>();
   final _lines = <_Line>[];
   final _supplierInvoiceNo = TextEditingController();

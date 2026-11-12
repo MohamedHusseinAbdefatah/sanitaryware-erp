@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/auth/auth_service.dart';
 import '../../core/auth/session.dart';
@@ -45,7 +46,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
         data: (list) => DataList<Customer>(
           rows: list,
           emptyText: Strings.noCustomers,
-          onTap: (c) => showCustomerForm(context, existing: c),
+          onTap: (c) => context.go('/customers/${c.id}'),
           trailing: (c) => _PartyMenu(
             onEdit: () => showCustomerForm(context, existing: c),
             onStatement: () => showStatement(context, partyType: PartyType.customer, partyId: c.id),
@@ -91,7 +92,7 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
         data: (list) => DataList<Supplier>(
           rows: list,
           emptyText: Strings.noSuppliers,
-          onTap: (s) => showSupplierForm(context, existing: s),
+          onTap: (s) => context.go('/suppliers/${s.id}'),
           trailing: (s) => _PartyMenu(
             onEdit: () => showSupplierForm(context, existing: s),
             onStatement: () => showStatement(context, partyType: PartyType.supplier, partyId: s.id),

@@ -189,6 +189,14 @@ class _NewOrderDialogState extends ConsumerState<_NewOrderDialog> {
   }
 }
 
+/// The form for a new purchase order.
+Future<void> showNewPurchaseOrder(BuildContext context) =>
+    showDialog<void>(context: context, builder: (_) => const _NewOrderDialog());
+
+/// Opens one purchase order (from a supplier's page, say).
+Future<void> showPurchaseOrder(BuildContext context, int orderId) =>
+    showDialog<void>(context: context, builder: (_) => _OrderDetailDialog(orderId: orderId));
+
 class _OrderDetailDialog extends ConsumerStatefulWidget {
   const _OrderDetailDialog({required this.orderId});
 

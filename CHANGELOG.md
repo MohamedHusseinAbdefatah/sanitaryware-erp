@@ -2,6 +2,31 @@
 
 Versions follow `version:` in `pubspec.yaml` and `lib/core/version.dart`.
 
+## 1.11.0
+
+A new look for the screens, in the manner of a full ERP. No database change
+and no new features beyond the screens.
+
+- Record pages: clicking a supplier, customer or product opens its page
+  instead of the edit form. A header with its actions (a new invoice already
+  for that party, a payment, the statement, an advance, editing), key
+  figures, and tabs: invoices with their state, payments with cheque state,
+  orders, advances, returns, reservations, products bought or sold most,
+  agreed discounts and details. A product page shows its photo, stock by
+  place, available after reservations, new and old price, list prices in
+  force, movements, purchases (admin), sales, reservations and price history.
+- Lists of sales, purchases, payments, cheques, returns and expenses show the
+  period's figures on top, filter chips with counts (paid, partly paid,
+  unpaid, overdue, cancelled) and coloured states; party names link to their
+  pages.
+- A posted sales or purchase invoice opens as a document: a status bar
+  (issued, partly paid, paid, or cancelled), the party as a link, the lines
+  with links to the products, the totals and the payments made on it.
+- Sales orders and purchase orders have screens of their own with the open
+  orders, the value still to deliver or receive, and filters by stage.
+- New sale and purchase screens can open with the customer or supplier
+  already chosen.
+
 ## 1.10.0
 
 Product photos and Arabic names from price lists. The database upgrades in

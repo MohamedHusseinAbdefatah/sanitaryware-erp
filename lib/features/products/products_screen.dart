@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/auth/auth_service.dart';
 import '../../core/auth/session.dart';
@@ -95,9 +96,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
             data: (list) => DataList<ProductRow>(
               rows: list,
               emptyText: Strings.noProducts,
-              onTap: (r) => isAdmin
-                  ? showProductForm(context, existing: r)
-                  : showStockCard(context, r),
+              onTap: (r) => context.go('/products/${r.product.id}'),
               rowColor: (r) => r.product.isActive ? null : scheme.surfaceContainerHighest,
               trailing: (r) => _ProductMenu(row: r, isAdmin: isAdmin),
               columns: [
