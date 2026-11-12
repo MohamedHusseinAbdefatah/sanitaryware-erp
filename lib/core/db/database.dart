@@ -43,6 +43,8 @@ part 'database.g.dart';
   SalesOrderLines,
   SalesOrderDeliveries,
   Approvals,
+  SupplierAdvances,
+  SupplierAdvanceLists,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
@@ -50,7 +52,7 @@ class AppDatabase extends _$AppDatabase {
   @override
   int get schemaVersion => latestSchemaVersion;
 
-  static const latestSchemaVersion = 14;
+  static const latestSchemaVersion = 15;
 
   /// The categories every shop starts with. The first three are the old
   /// price levels; discounts start at 0 until the owner sets them.
@@ -498,6 +500,14 @@ class AppDatabase extends _$AppDatabase {
             ]);
             await _addColumns(m, purchaseInvoiceItems, [purchaseInvoiceItems.extraCostShare]);
             await _addColumns(m, expenses, [expenses.purchaseInvoiceId]);
+          }
+          if (from < 15) {
+            // v15: reservations from orders, and supplier advances locked to lists.
+            await _addColumns(m, reservations, [reservations.salesOrderLineId]);
+            await _addColumns(m, purchaseOrderLines, [purchaseOrderLines.salesOrderLineId]);
+            await _addColumns(m, purchaseInvoices, [purchaseInvoices.advanceId, purchaseInvoices.advanceUsed]);
+            if (!await _tableExists('supplier_advances')) await m.createTable(supplierAdvances);
+            if (!await _tableExists('supplier_advance_lists')) await m.createTable(supplierAdvanceLists);
           }
         },
         beforeOpen: (details) async {

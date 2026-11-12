@@ -10,6 +10,7 @@ import 'errors.dart';
 import 'numbering_service.dart';
 import 'payment_service.dart';
 import 'purchase_service.dart';
+import 'reservation_service.dart';
 import 'stock_service.dart';
 
 abstract final class PoStatus {
@@ -21,12 +22,15 @@ abstract final class PoStatus {
 }
 
 class PoLineInput {
-  const PoLineInput({required this.productId, required this.qty});
+  const PoLineInput({required this.productId, required this.qty, this.salesOrderLineId});
 
   final int productId;
 
   /// Thousandths of a unit.
   final int qty;
+
+  /// Ordered for this customer order line: held for the customer on arrival.
+  final int? salesOrderLineId;
 }
 
 class PoLineRow {
@@ -102,8 +106,8 @@ class PurchaseOrderService {
             createdBy: Value(user.id),
           ));
       for (final l in lines) {
-        await db.into(db.purchaseOrderLines).insert(
-            PurchaseOrderLinesCompanion.insert(orderId: id, productId: l.productId, qty: l.qty));
+        await db.into(db.purchaseOrderLines).insert(PurchaseOrderLinesCompanion.insert(
+            orderId: id, productId: l.productId, qty: l.qty, salesOrderLineId: Value(l.salesOrderLineId)));
       }
       await AuditService(db).log(action: AuditAction.create, entity: 'purchase_order', entityId: id, userId: user.id);
       return id;
@@ -239,6 +243,20 @@ class PurchaseOrderService {
         final l = byId[e.key]!;
         await (db.update(db.purchaseOrderLines)..where((t) => t.id.equals(l.id)))
             .write(PurchaseOrderLinesCompanion(qtyReceived: Value(l.qtyReceived + e.value)));
+      }
+      // Goods ordered for a customer order are held for that customer.
+      final reservations = ReservationService(db);
+      for (final e in qtyByLine.entries.where((e) => e.value > 0)) {
+        final soLineId = byId[e.key]!.salesOrderLineId;
+        if (soLineId == null) continue;
+        final soLine =
+            await (db.select(db.salesOrderLines)..where((t) => t.id.equals(soLineId))).getSingleOrNull();
+        if (soLine == null) continue;
+        final so = await (db.select(db.salesOrders)..where((t) => t.id.equals(soLine.orderId))).getSingle();
+        if (so.status != 'confirmed' && so.status != 'partly_delivered') continue;
+        final need = soLine.qty - soLine.qtyDelivered - await reservations.heldForLine(soLine.id);
+        await reservations.holdForLine(soLine, so.customerId, need < e.value ? need : e.value,
+            note: 'أمر بيع ${so.number} — وصل بأمر الشراء ${order.number}', userId: user.id);
       }
       final after = await (db.select(db.purchaseOrderLines)..where((t) => t.orderId.equals(id))).get();
       final allDone = after.every((l) => l.qtyReceived >= l.qty);

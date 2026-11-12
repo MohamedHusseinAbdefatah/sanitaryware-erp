@@ -196,6 +196,28 @@ class PaymentService {
     );
   }
 
+  /// The payment of a supplier advance locked to price lists. Admin only;
+  /// the advance service links it to its advance.
+  Future<Payment> payLockedAdvance({
+    required int supplierId,
+    required int amount,
+    String method = PaymentMethod.cash,
+    ChequeInput? cheque,
+    DateTime? date,
+    String? notes,
+    required User user,
+  }) {
+    if (!user.isAdmin) throw ValidationException('الدفع للموردين للمدير فقط');
+    return _post(
+      PaymentInput(partyId: supplierId, amount: amount, method: method, cheque: cheque, date: date, notes: notes),
+      direction: PaymentDirection.outbound,
+      partyType: PartyType.supplier,
+      userId: user.id,
+      orderRefType: RefType.supplierAdvance,
+      orderRefId: 0,
+    );
+  }
+
   /// Advances paid so far against an order (counted payments only).
   Future<int> advancesOn(String orderRefType, int orderId) =>
       BalanceService(db).paidOnInvoice(orderRefType, orderId);
@@ -258,6 +280,19 @@ class PaymentService {
     return total - await BalanceService(db).paidOnInvoice(refType, invoiceId);
   }
 
+  /// Set only by the advance service while it cancels its own payment.
+  bool _cancellingAdvance = false;
+
+  /// Cancels the payment of a supplier advance; only the advance service.
+  Future<void> cancelAdvancePayment(int paymentId, {required String reason, required User user}) async {
+    _cancellingAdvance = true;
+    try {
+      await cancel(paymentId, reason: reason, user: user);
+    } finally {
+      _cancellingAdvance = false;
+    }
+  }
+
   /// Admin only. The payment stays on record as cancelled; a cheque with it
   /// is cancelled too.
   Future<void> cancel(int paymentId, {required String reason, required User user}) {
@@ -266,6 +301,9 @@ class PaymentService {
       if (reason.trim().isEmpty) throw ValidationException('سبب الإلغاء مطلوب');
       final p = await (db.select(db.payments)..where((t) => t.id.equals(paymentId))).getSingle();
       if (p.status == DocStatus.cancelled) throw ValidationException('الدفعة ${p.number} ملغاة من قبل');
+      if (p.invoiceRefType == RefType.supplierAdvance && !_cancellingAdvance) {
+        throw ValidationException('هذه دفعة مقدمة بسعر قائمة؛ تُلغى من شاشة الدفعات المقدمة للمورد');
+      }
       final note = 'سبب الإلغاء: ${reason.trim()}';
       await (db.update(db.payments)..where((t) => t.id.equals(paymentId))).write(PaymentsCompanion(
             status: const Value(DocStatus.cancelled),

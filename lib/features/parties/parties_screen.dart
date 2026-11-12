@@ -10,6 +10,7 @@ import '../../core/providers.dart';
 import '../../core/services/doc_types.dart';
 import '../../core/services/selling_policy_service.dart';
 import '../../core/widgets/data_list.dart';
+import '../purchases/supplier_advances_dialog.dart';
 import 'party_form_dialog.dart';
 import 'statement_dialog.dart';
 
@@ -94,6 +95,7 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
           trailing: (s) => _PartyMenu(
             onEdit: () => showSupplierForm(context, existing: s),
             onStatement: () => showStatement(context, partyType: PartyType.supplier, partyId: s.id),
+            onAdvances: () => showSupplierAdvances(context, s),
           ),
           columns: [
             DataListColumn(Strings.name, flex: 3, (s) => _NameCell(s.name, s.isActive)),
@@ -194,10 +196,11 @@ final _supplierBalancesProvider = StreamProvider.autoDispose<Map<int, int>>(
 );
 
 class _PartyMenu extends StatelessWidget {
-  const _PartyMenu({required this.onEdit, required this.onStatement});
+  const _PartyMenu({required this.onEdit, required this.onStatement, this.onAdvances});
 
   final VoidCallback onEdit;
   final VoidCallback onStatement;
+  final VoidCallback? onAdvances;
 
   @override
   Widget build(BuildContext context) {
@@ -205,6 +208,7 @@ class _PartyMenu extends StatelessWidget {
       onSelected: (f) => f(),
       itemBuilder: (_) => [
         PopupMenuItem(value: onStatement, child: const Text(Strings.statement)),
+        if (onAdvances != null) PopupMenuItem(value: onAdvances!, child: const Text('دفعات مقدمة بسعر قائمة')),
         PopupMenuItem(value: onEdit, child: const Text(Strings.edit)),
       ],
     );

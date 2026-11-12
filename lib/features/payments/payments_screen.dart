@@ -150,6 +150,9 @@ class _PaymentList extends ConsumerWidget {
         RefType.salesInvoice => Strings.salesInvoice,
         RefType.purchaseInvoice => Strings.purchaseInvoice,
         RefType.returnDoc => Strings.returnRefund,
+        RefType.supplierAdvance => 'دفعة مقدمة بسعر قائمة',
+        RefType.purchaseOrder => 'دفعة مقدمة على أمر شراء',
+        RefType.salesOrder => 'دفعة مقدمة على أمر بيع',
         _ => Strings.onAccount,
       };
 }

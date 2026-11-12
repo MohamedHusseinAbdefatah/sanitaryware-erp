@@ -18,6 +18,7 @@ import '../../core/services/product_service.dart';
 import '../../core/services/purchase_order_service.dart';
 import '../../core/services/purchase_service.dart';
 import '../../core/services/stock_service.dart';
+import '../../core/services/supplier_advance_service.dart';
 import '../../core/widgets/amounts.dart';
 import '../../core/widgets/feedback.dart';
 import '../../core/widgets/number_fields.dart';
@@ -38,9 +39,9 @@ int? _bpOf(String text) {
 
 class _Line {
   _Line(this.row, {this.poLine})
-      : qty = TextEditingController(text: '1'),
-        cost = TextEditingController(),
-        extra = TextEditingController();
+    : qty = TextEditingController(text: '1'),
+      cost = TextEditingController(),
+      extra = TextEditingController();
 
   final ProductRow row;
   final TextEditingController qty;
@@ -131,6 +132,10 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
   final _searchFocus = FocusNode();
   Supplier? _supplier;
   PoDetail? _order;
+  List<AdvanceRow> _advances = const [];
+
+  /// Taken against this supplier advance, at its locked prices.
+  AdvanceRow? _advance;
   String _method = PaymentMethod.cash;
   int _locationId = mainLocationId;
   bool _saving = false;
@@ -144,7 +149,7 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
   int get _discountValue => discountAmount(_discount.text, percent: _discountPercent, subtotal: _subtotal) ?? 0;
   int get _extraValue => moneyOrZero(_extraCosts);
   int get _total => _subtotal - _discountValue + (_extraOnSupplier ? _extraValue : 0);
-  int get _remaining => _total - moneyOrZero(_paid);
+  int get _remaining => _advance != null ? 0 : _total - moneyOrZero(_paid);
 
   @override
   void dispose() {
@@ -152,7 +157,14 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
       l.dispose();
     }
     for (final c in [
-      _supplierInvoiceNo, _discount, _extraCosts, _extraCostsNote, _paid, _notes, _chequeNo, _chequeBank,
+      _supplierInvoiceNo,
+      _discount,
+      _extraCosts,
+      _extraCostsNote,
+      _paid,
+      _notes,
+      _chequeNo,
+      _chequeBank,
     ]) {
       c.dispose();
     }
@@ -182,9 +194,30 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
   Future<void> _applyListCost(_Line line) async {
     final supplier = _supplier;
     if (supplier == null || line.poLine != null) return;
+    final advance = _advance;
+    if (advance != null) {
+      // The locked list price and the supplier's discount of the advance's day.
+      final q = await ref.read(supplierAdvanceServiceProvider).quote(advance.advance.id, line.row.product.id);
+      if (!mounted || advance.advance.id != _advance?.advance.id) return;
+      setState(() {
+        line.extra.clear();
+        line.quote = q;
+        if (q == null) {
+          line.note = 'ليس في قوائم الدفعة ${advance.advance.number}؛ احذفه واشترِه على فاتورة أخرى';
+          line.cost.clear();
+        } else if (q.missingPolicy) {
+          line.note = 'سعر مثبت من ${q.quote.label}، ولا يوجد خصم مسجل لهذا المورد يومها؛ اكتب التكلفة';
+          line.cost.clear();
+        } else {
+          line.note = 'سعر مثبت من الدفعة ${advance.advance.number} (${q.quote.label})';
+          line.cost.text = _plain(q.netCost!);
+        }
+      });
+      return;
+    }
     final quotes = await ref.read(buyingPolicyServiceProvider).quotes(line.row.product.id, supplierId: supplier.id);
     final backed = quotes.where((q) => !q.missingPolicy).toList();
-    if (!mounted || supplier.id != _supplier?.id) return;
+    if (!mounted || supplier.id != _supplier?.id || _advance != null) return;
     setState(() {
       line.extra.clear();
       if (backed.length == 1) {
@@ -197,9 +230,7 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
         line.cost.clear();
       } else {
         line.quote = null;
-        line.note = quotes.isEmpty
-            ? 'لا يوجد سعر قائمة ساري لهذا الصنف'
-            : 'للصنف أكثر من قائمة سارية؛ اكتب التكلفة';
+        line.note = quotes.isEmpty ? 'لا يوجد سعر قائمة ساري لهذا الصنف' : 'للصنف أكثر من قائمة سارية؛ اكتب التكلفة';
         line.cost.clear();
       }
     });
@@ -226,7 +257,31 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
       // Lines from another supplier's order cannot stay.
       _clearOrder();
     }
-    setState(() => _supplier = s);
+    setState(() {
+      _supplier = s;
+      _advance = null;
+      _advances = const [];
+    });
+    _loadAdvances();
+    _refreshListCosts();
+  }
+
+  Future<void> _loadAdvances() async {
+    final s = _supplier;
+    if (s == null) return;
+    final open = await ref.read(supplierAdvanceServiceProvider).rows(supplierId: s.id, openOnly: true);
+    if (!mounted || s.id != _supplier?.id) return;
+    setState(() => _advances = open);
+  }
+
+  void _setAdvance(AdvanceRow? a) {
+    setState(() {
+      _advance = a;
+      if (a != null) {
+        _paid.clear();
+        _dueDate = null;
+      }
+    });
     _refreshListCosts();
   }
 
@@ -266,8 +321,10 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
     setState(() {
       _supplier = supplier;
       _order = picked;
+      _advance = null;
       _lines.insertAll(0, lines);
     });
+    _loadAdvances();
     _refreshListCosts();
   }
 
@@ -331,9 +388,7 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
     final cheque = _method == PaymentMethod.cheque
         ? ChequeInput(number: _chequeNo.text, bank: _chequeBank.text, dueDate: _chequeDue)
         : null;
-    final free = [
-      for (final l in _lines.where((l) => l.poLine == null)) _lineInput(l),
-    ];
+    final free = [for (final l in _lines.where((l) => l.poLine == null)) _lineInput(l)];
     final invoice = await runGuarded(context, () async {
       if (_order != null) {
         return PurchaseOrderService(ref.read(databaseProvider)).receive(
@@ -355,7 +410,9 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
           user: user,
         );
       }
-      return ref.read(purchaseServiceProvider).post(
+      return ref
+          .read(purchaseServiceProvider)
+          .post(
             PurchaseInput(
               supplierId: _supplier!.id,
               supplierInvoiceNo: _supplierInvoiceNo.text,
@@ -365,12 +422,13 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
               extraCostsOnSupplier: _extraOnSupplier,
               extraCostsNote: _extraCostsNote.text,
               dueDate: _dueDate,
-              paidAmount: moneyOrZero(_paid),
+              paidAmount: _advance == null ? moneyOrZero(_paid) : 0,
               paymentMethod: _method,
-              cheque: cheque,
+              cheque: _advance == null ? cheque : null,
               notes: _notes.text,
               locationId: _locationId,
               allowDuplicateSupplierNo: allowDuplicate,
+              advanceId: _advance?.advance.id,
             ),
             user: user,
           );
@@ -402,16 +460,16 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
   }
 
   Future<bool?> _confirm(String title, String text) => showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text(title),
-          content: SizedBox(width: 480, child: SingleChildScrollView(child: Text(text))),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('رجوع')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('حفظ')),
-          ],
-        ),
-      );
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(title),
+      content: SizedBox(width: 480, child: SingleChildScrollView(child: Text(text))),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('رجوع')),
+        FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('حفظ')),
+      ],
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -500,6 +558,55 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                 ],
               ),
             ),
+            if (_advances.isNotEmpty && _order == null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+                child: Row(
+                  children: [
+                    Icon(Icons.lock_clock_outlined, color: theme.colorScheme.primary),
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 460,
+                      child: DropdownButtonFormField<int?>(
+                        isExpanded: true,
+                        isDense: true,
+                        initialValue: _advance?.advance.id,
+                        decoration: const InputDecoration(
+                          labelText: 'الشراء من دفعة مقدمة بسعر مثبت',
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
+                        items: [
+                          const DropdownMenuItem(value: null, child: Text('لا — بأسعار اليوم')),
+                          for (final a in _advances)
+                            DropdownMenuItem(
+                              value: a.advance.id,
+                              child: Text(
+                                '${a.advance.number} · ${formatDate(a.advance.date)} · المتبقي ${formatMoney(a.remaining)} · '
+                                '${a.lists.map((l) => l.brandName).toSet().join('، ')}',
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                        ],
+                        onChanged: (v) =>
+                            _setAdvance(v == null ? null : _advances.firstWhere((a) => a.advance.id == v)),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    if (_advance != null)
+                      Expanded(
+                        child: Text(
+                          'الأسعار مثبتة من ${formatDate(_advance!.advance.date)}. '
+                          'تُخصم الفاتورة من الدفعة: يتبقى ${formatMoney(_advance!.remaining - _total)}',
+                          style: TextStyle(
+                            color: _total > _advance!.remaining ? theme.colorScheme.error : theme.colorScheme.primary,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             if (_order != null)
               Padding(
                 padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
@@ -541,7 +648,9 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
             Expanded(
               child: _lines.isEmpty
                   ? const Center(
-                      child: Text('ابحث عن صنف، أو اختر «من أمر شراء» أو «من قائمة أسعار» لإضافة أصناف كثيرة مرة واحدة'),
+                      child: Text(
+                        'ابحث عن صنف، أو اختر «من أمر شراء» أو «من قائمة أسعار» لإضافة أصناف كثيرة مرة واحدة',
+                      ),
                     )
                   : ListView.separated(
                       padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -566,8 +675,13 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
     String? message;
     Color? color;
     if (l.overAgreed) {
-      message = 'أعلى من المتفق: خصم المورد ${_pct(agreed!)} والفاتورة '
-          '${actual == null ? '—' : actual < 0 ? 'أعلى من سعر القائمة' : _pct(actual)} '
+      message =
+          'أعلى من المتفق: خصم المورد ${_pct(agreed!)} والفاتورة '
+          '${actual == null
+              ? '—'
+              : actual < 0
+              ? 'أعلى من سعر القائمة'
+              : _pct(actual)} '
           '(المتفق ${formatMoney(l.expectedCost!)})';
       color = warn;
     } else if (po != null) {
@@ -610,14 +724,8 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
               onSubmitted: (_) => _searchFocus.requestFocus(),
             ),
           ),
-          Expanded(
-            flex: 2,
-            child: Text(list == null ? '—' : formatMoney(list), textAlign: TextAlign.center),
-          ),
-          Expanded(
-            flex: 2,
-            child: Text(agreed == null ? '—' : _pct(agreed), textAlign: TextAlign.center),
-          ),
+          Expanded(flex: 2, child: Text(list == null ? '—' : formatMoney(list), textAlign: TextAlign.center)),
+          Expanded(flex: 2, child: Text(agreed == null ? '—' : _pct(agreed), textAlign: TextAlign.center)),
           Expanded(
             flex: 2,
             child: po != null || list == null
@@ -702,11 +810,7 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
               ),
               SizedBox(
                 width: 150,
-                child: MoneyField(
-                  controller: _extraCosts,
-                  label: 'نقل وتحميل',
-                  onChanged: (_) => setState(() {}),
-                ),
+                child: MoneyField(controller: _extraCosts, label: 'نقل وتحميل', onChanged: (_) => setState(() {})),
               ),
               if (_extraValue > 0) ...[
                 SegmentedButton<bool>(
@@ -745,48 +849,55 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                       : 'النقل يُضاف لتكلفة الأصناف ويُسجل مصروف شراء نقدي (لا يُخصم مرتين من صافي الربح)',
                   style: theme.textTheme.bodySmall,
                 ),
-              SizedBox(
-                width: 130,
-                child: MoneyField(controller: _paid, label: Strings.paidNow, onChanged: (_) => setState(() {})),
-              ),
-              DropdownButton<String>(
-                value: _method,
-                items: const [
-                  DropdownMenuItem(value: PaymentMethod.cash, child: Text(Strings.methodCash)),
-                  DropdownMenuItem(value: PaymentMethod.bank, child: Text(Strings.methodBank)),
-                  DropdownMenuItem(value: PaymentMethod.cheque, child: Text('شيك')),
+              if (_advance != null)
+                Text(
+                  'مدفوعة من الدفعة ${_advance!.advance.number}',
+                  style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold),
+                ),
+              if (_advance == null) ...[
+                SizedBox(
+                  width: 130,
+                  child: MoneyField(controller: _paid, label: Strings.paidNow, onChanged: (_) => setState(() {})),
+                ),
+                DropdownButton<String>(
+                  value: _method,
+                  items: const [
+                    DropdownMenuItem(value: PaymentMethod.cash, child: Text(Strings.methodCash)),
+                    DropdownMenuItem(value: PaymentMethod.bank, child: Text(Strings.methodBank)),
+                    DropdownMenuItem(value: PaymentMethod.cheque, child: Text('شيك')),
+                  ],
+                  onChanged: (v) => setState(() => _method = v!),
+                ),
+                if (_method == PaymentMethod.cheque && moneyOrZero(_paid) > 0) ...[
+                  SizedBox(
+                    width: 130,
+                    child: TextFormField(
+                      controller: _chequeNo,
+                      decoration: const InputDecoration(labelText: 'رقم الشيك', isDense: true),
+                      validator: (v) => (v ?? '').trim().isEmpty ? Strings.required : null,
+                    ),
+                  ),
+                  SizedBox(
+                    width: 130,
+                    child: TextField(
+                      controller: _chequeBank,
+                      decoration: const InputDecoration(labelText: 'البنك', isDense: true),
+                    ),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => _pickDate(true),
+                    icon: const Icon(Icons.event),
+                    label: Text('استحقاق الشيك ${formatDate(_chequeDue)}'),
+                  ),
                 ],
-                onChanged: (v) => setState(() => _method = v!),
-              ),
-              if (_method == PaymentMethod.cheque && moneyOrZero(_paid) > 0) ...[
-                SizedBox(
-                  width: 130,
-                  child: TextFormField(
-                    controller: _chequeNo,
-                    decoration: const InputDecoration(labelText: 'رقم الشيك', isDense: true),
-                    validator: (v) => (v ?? '').trim().isEmpty ? Strings.required : null,
+                AmountLabel(Strings.remaining, _remaining),
+                if (hasRemaining)
+                  OutlinedButton.icon(
+                    onPressed: () => _pickDate(false),
+                    icon: const Icon(Icons.event_note),
+                    label: Text(_dueDate == null ? 'تاريخ استحقاق الباقي' : 'يستحق ${formatDate(_dueDate!)}'),
                   ),
-                ),
-                SizedBox(
-                  width: 130,
-                  child: TextField(
-                    controller: _chequeBank,
-                    decoration: const InputDecoration(labelText: 'البنك', isDense: true),
-                  ),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () => _pickDate(true),
-                  icon: const Icon(Icons.event),
-                  label: Text('استحقاق الشيك ${formatDate(_chequeDue)}'),
-                ),
               ],
-              AmountLabel(Strings.remaining, _remaining),
-              if (hasRemaining)
-                OutlinedButton.icon(
-                  onPressed: () => _pickDate(false),
-                  icon: const Icon(Icons.event_note),
-                  label: Text(_dueDate == null ? 'تاريخ استحقاق الباقي' : 'يستحق ${formatDate(_dueDate!)}'),
-                ),
               OutlinedButton(onPressed: () => context.go('/purchases'), child: const Text(Strings.cancel)),
               FilledButton.icon(
                 onPressed: _saving ? null : _save,

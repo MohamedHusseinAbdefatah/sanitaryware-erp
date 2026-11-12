@@ -290,6 +290,7 @@ class _SoDetailDialog extends ConsumerStatefulWidget {
 
 class _SoDetailDialogState extends ConsumerState<_SoDetailDialog> {
   SoDetail? _detail;
+  List<SoShortage> _stock = const [];
   final _deliver = <int, TextEditingController>{};
   final _paid = TextEditingController();
   final _belowCost = TextEditingController();
@@ -316,10 +317,12 @@ class _SoDetailDialogState extends ConsumerState<_SoDetailDialog> {
   Future<void> _load() async {
     final d = await ref.read(salesOrderServiceProvider).detail(widget.orderId);
     final adv = await ref.read(paymentServiceProvider).advancesOn(RefType.salesOrder, widget.orderId);
+    final stock = await ref.read(salesOrderServiceProvider).shortages(widget.orderId);
     if (!mounted) return;
     setState(() {
       _detail = d;
       _advance = adv;
+      _stock = stock;
       for (final l in d.lines) {
         _deliver.putIfAbsent(l.line.id, () => TextEditingController());
         _deliver[l.line.id]!.clear();
@@ -411,6 +414,53 @@ class _SoDetailDialogState extends ConsumerState<_SoDetailDialog> {
     final reason = await showSalePreview(context, preview, isAdmin: user.isAdmin, confirmLabel: 'تأكيد الأمر');
     if (reason == null || !mounted) return;
     await _act((u) => svc.confirm(widget.orderId, manualPrices: manual, approvalReason: reason, user: u));
+  }
+
+  /// Puts what is short on a draft purchase order to a supplier.
+  Future<void> _orderShort() async {
+    final suppliers = await ref.read(partyServiceProvider).watchSuppliers().first;
+    if (!mounted) return;
+    int? picked;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, set) => AlertDialog(
+          title: const Text('طلب الناقص من مورد'),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text('يُنشأ أمر شراء (مسودة) بالكميات الناقصة. اعتمده من شاشة أوامر الشراء، '
+                    'وعند استلامه تُحجز البضاعة لهذا العميل تلقائياً.'),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<int>(
+                  isExpanded: true,
+                  initialValue: picked,
+                  decoration: const InputDecoration(labelText: 'المورد'),
+                  items: [
+                    for (final s in suppliers.where((s) => s.isActive)) DropdownMenuItem(value: s.id, child: Text(s.name)),
+                  ],
+                  onChanged: (v) => set(() => picked = v),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text(Strings.cancel)),
+            FilledButton(onPressed: () => Navigator.pop(context, picked != null), child: const Text('إنشاء أمر الشراء')),
+          ],
+        ),
+      ),
+    );
+    if (ok != true || picked == null || !mounted) return;
+    await _act((u) async {
+      final poId = await ref.read(salesOrderServiceProvider).orderShortages(widget.orderId, supplierId: picked!, user: u);
+      final po = await ref.read(purchaseOrderServiceProvider).detail(poId);
+      if (mounted) showToast(context, 'تم إنشاء أمر الشراء ${po.order.number} (مسودة)');
+      return poId;
+    });
   }
 
   Future<void> _doDeliver() async {
@@ -509,6 +559,50 @@ class _SoDetailDialogState extends ConsumerState<_SoDetailDialog> {
                     OutlinedButton(onPressed: _doAdvance, child: const Text('تسجيل الدفعة')),
                   ],
                 ),
+              if (canDeliver && _stock.isNotEmpty) ...[
+                const Divider(height: 24),
+                Text('البضاعة لهذا الأمر', style: Theme.of(context).textTheme.titleSmall),
+                const SizedBox(height: 4),
+                Table(
+                  columnWidths: const {0: FlexColumnWidth(3)},
+                  children: [
+                    const TableRow(children: [
+                      Text('الصنف', style: head),
+                      Text('محجوز في المخزن', style: head),
+                      Text('مطلوب من مورد', style: head),
+                      Text('ناقص', style: head),
+                    ]),
+                    for (final s in _stock)
+                      TableRow(children: [
+                        Text(s.row.productName),
+                        Text(formatQty(s.held)),
+                        Text(formatQty(s.onOrder)),
+                        Text(formatQty(s.short),
+                            style: s.short > 0
+                                ? TextStyle(color: Theme.of(context).colorScheme.error, fontWeight: FontWeight.bold)
+                                : null),
+                      ]),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 12,
+                  children: [
+                    if (_stock.any((s) => s.short > 0))
+                      OutlinedButton.icon(
+                        onPressed: () => _act((u) => svc.holdAvailable(widget.orderId, userId: u.id)),
+                        icon: const Icon(Icons.bookmark_add_outlined),
+                        label: const Text('احجز ما وصل للمخزن'),
+                      ),
+                    if (_stock.any((s) => s.short > 0) && (ref.read(currentUserProvider)?.isAdmin ?? false))
+                      FilledButton.tonalIcon(
+                        onPressed: _orderShort,
+                        icon: const Icon(Icons.add_shopping_cart),
+                        label: const Text('اطلب الناقص من مورد'),
+                      ),
+                  ],
+                ),
+              ],
               if (canDeliver) ...[
                 const Divider(height: 24),
                 Text('تسليم بضاعة', style: Theme.of(context).textTheme.titleSmall),

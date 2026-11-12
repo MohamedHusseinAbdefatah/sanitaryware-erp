@@ -46,6 +46,9 @@ abstract final class RefType {
   /// An advance paid or received against an order before any invoice.
   static const purchaseOrder = 'purchase_order';
   static const salesOrder = 'sales_order';
+
+  /// Money paid to a supplier ahead, locked to that day's price lists.
+  static const supplierAdvance = 'supplier_advance';
 }
 
 /// Party id on a payment for a cash sale with no named customer. It never

@@ -2,6 +2,32 @@
 
 Versions follow `version:` in `pubspec.yaml` and `lib/core/version.dart`.
 
+## 1.9.0
+
+Reservations come from orders, and money paid to a supplier ahead is locked
+to that day's price lists. The database upgrades in place (schema 15) and
+keeps all existing data; existing reservations stay as they were.
+
+- Reservations are no longer typed by hand. Confirming a customer's sales
+  order holds what is in stock for him. The order shows, line by line, what
+  is held, what is on order from a supplier, and what is short.
+  "اطلب الناقص من مورد" puts the shortage on a draft purchase order tied to
+  that order; when it is received (from the purchase order or "from a
+  purchase order" on the purchase invoice) the goods are held for that
+  customer. "احجز ما وصل للمخزن" holds goods that came in another way.
+  Delivering a line in full or cancelling the order releases its holds. The
+  admin can still release a reservation from the reservations screen.
+- New: supplier advance locked to a price list (supplier menu, "دفعات مقدمة
+  بسعر قائمة"). An amount paid ahead (cash, bank or cheque) locks the price
+  lists in force that day for the brands chosen, and the supplier's discount
+  on them that day. It counts in the supplier's balance at once.
+- A purchase invoice for that supplier can be taken "from the advance": every
+  line is priced from the locked list and discount, whatever newer lists
+  exist, and the invoice is paid from the advance, which shows what was taken
+  and what is left. An invoice bigger than what is left, or a product not on
+  the locked lists, is refused. Cancelling the invoice gives its value back;
+  an advance can be cancelled only while nothing was taken.
+
 ## 1.8.0
 
 A fuller purchase invoice. The database upgrades in place (schema 14, new

@@ -123,7 +123,8 @@ class BalanceService {
         .map((rows) => {for (final r in rows) r.read<int>('id'): r.read<int>('balance')});
   }
 
-  /// What has been paid against one invoice (counted payments linked to it).
+  /// What has been paid against one invoice (counted payments linked to it,
+  /// and for a purchase the part of a supplier advance it used).
   Future<int> paidOnInvoice(String refType, int invoiceId) async {
     final pending = await _countPending();
     final row = await db.customSelect(
@@ -131,6 +132,11 @@ class BalanceService {
       'WHERE p.invoice_ref_type = ? AND p.invoice_ref_id = ? AND ${countedPayment('p')}',
       variables: [Variable.withString(refType), Variable.withInt(invoiceId), Variable.withBool(pending)],
     ).getSingle();
-    return row.read<int>('paid');
+    var paid = row.read<int>('paid');
+    if (refType == RefType.purchaseInvoice) {
+      final inv = await (db.select(db.purchaseInvoices)..where((t) => t.id.equals(invoiceId))).getSingleOrNull();
+      paid += inv?.advanceUsed ?? 0;
+    }
+    return paid;
   }
 }

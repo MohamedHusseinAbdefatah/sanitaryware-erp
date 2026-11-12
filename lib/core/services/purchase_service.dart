@@ -15,6 +15,7 @@ import 'payment_service.dart';
 import 'query_helpers.dart';
 import 'settings_service.dart';
 import 'stock_service.dart';
+import 'supplier_advance_service.dart';
 
 class PurchaseLineInput {
   const PurchaseLineInput({
@@ -63,7 +64,12 @@ class PurchaseInput {
     this.notes,
     this.locationId = mainLocationId,
     this.allowDuplicateSupplierNo = false,
+    this.advanceId,
   });
+
+  /// Taken against this supplier advance, at its locked prices. The invoice
+  /// is then paid from the advance and must fit in what is left of it.
+  final int? advanceId;
 
   /// Transport, unloading and the like, added to the goods' cost. On the
   /// supplier's invoice ([extraCostsOnSupplier]) they are owed to the
@@ -172,6 +178,23 @@ class PurchaseService {
       if (input.paidAmount < 0 || input.paidAmount > total) {
         throw ValidationException('المبلغ المدفوع يجب أن يكون بين صفر وإجمالي الفاتورة');
       }
+      if (input.advanceId != null) {
+        final advances = SupplierAdvanceService(db);
+        final adv = await advances.row(input.advanceId!);
+        if (adv.advance.supplierId != input.supplierId) throw ValidationException('الدفعة المقدمة ليست لهذا المورد');
+        if (adv.advance.status != DocStatus.active) throw ValidationException('الدفعة المقدمة ملغاة');
+        for (final line in input.lines) {
+          if (await advances.quote(adv.advance.id, line.productId) == null) {
+            throw ValidationException('الصنف "${products[line.productId]!.nameAr}" ليس في قوائم الدفعة '
+                '${adv.advance.number}؛ اشترِه على فاتورة أخرى');
+          }
+        }
+        if (total > adv.remaining) {
+          throw ValidationException('الفاتورة ${formatMoney(total)} أكبر من المتبقي من الدفعة '
+              '${adv.advance.number} (${formatMoney(adv.remaining)}). قسّم الأصناف على فاتورتين.');
+        }
+        if (input.paidAmount > 0) throw ValidationException('الفاتورة مدفوعة من الدفعة المقدمة؛ لا تكتب مبلغاً مدفوعاً');
+      }
       final supplierNo = _blankToNull(input.supplierInvoiceNo);
       if (supplierNo != null && !input.allowDuplicateSupplierNo) {
         final same = await findBySupplierNo(input.supplierId, supplierNo);
@@ -196,7 +219,11 @@ class PurchaseService {
             createdBy: Value(user.id),
             extraCosts: Value(input.extraCosts),
             extraCostsOnSupplier: Value(input.extraCostsOnSupplier),
-            dueDate: Value(input.paidAmount >= total || input.dueDate == null ? null : dayOf(input.dueDate!)),
+            dueDate: Value(input.advanceId != null || input.paidAmount >= total || input.dueDate == null
+                ? null
+                : dayOf(input.dueDate!)),
+            advanceId: Value(input.advanceId),
+            advanceUsed: Value(input.advanceId == null ? 0 : total),
           ));
 
       final place = await (db.select(db.locations)..where((l) => l.id.equals(input.locationId))).getSingleOrNull();
@@ -425,7 +452,7 @@ class PurchaseService {
       SELECT pi.*, su.name AS supplier_name,
              COALESCE((SELECT SUM(p.amount) FROM payments p
                        WHERE p.invoice_ref_type = '${RefType.purchaseInvoice}' AND p.invoice_ref_id = pi.id
-                         AND ${BalanceService.countedPayment('p')}), 0) AS paid
+                         AND ${BalanceService.countedPayment('p')}), 0) + pi.advance_used AS paid
       FROM purchase_invoices pi
       JOIN suppliers su ON su.id = pi.supplier_id
       WHERE (? IS NULL OR pi.date >= ?) AND (? IS NULL OR pi.date < ?)
@@ -499,7 +526,7 @@ class PurchaseService {
       SELECT pi.*, su.name AS supplier_name,
              COALESCE((SELECT SUM(p.amount) FROM payments p
                        WHERE p.invoice_ref_type = '${RefType.purchaseInvoice}' AND p.invoice_ref_id = pi.id
-                         AND ${BalanceService.countedPayment('p')}), 0) AS paid
+                         AND ${BalanceService.countedPayment('p')}), 0) + pi.advance_used AS paid
       FROM purchase_invoices pi
       JOIN suppliers su ON su.id = pi.supplier_id
       WHERE pi.status = '${DocStatus.active}' AND pi.due_date IS NOT NULL AND pi.due_date < ?

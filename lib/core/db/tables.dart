@@ -263,6 +263,33 @@ class Reservations extends Table with Timestamps {
   TextColumn get status => text().withDefault(const Constant('active'))();
   DateTimeColumn get expiresAt => dateTime().nullable()();
   TextColumn get note => text().nullable()();
+  // Schema 15: the customer order line it holds stock for. Reservations are
+  // made by confirming a sales order and by receiving goods ordered for it.
+  IntColumn get salesOrderLineId => integer().nullable()();
+}
+
+// Money paid to a supplier ahead (schema 15), locked to the price lists of
+// the chosen brands in force that day and their discounts. Goods are taken
+// against it later at those prices, whatever lists come after.
+class SupplierAdvances extends Table with Timestamps {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get number => text().unique()();
+  IntColumn get supplierId => integer().references(Suppliers, #id)();
+  DateTimeColumn get date => dateTime()();
+  IntColumn get amount => integer()();
+  IntColumn get paymentId => integer().references(Payments, #id)();
+  // 'active' or 'cancelled'
+  TextColumn get status => text().withDefault(const Constant('active'))();
+  TextColumn get note => text().nullable()();
+  IntColumn get createdBy => integer().nullable().references(Users, #id)();
+}
+
+/// One locked list of an advance: a brand and the version in force that day.
+class SupplierAdvanceLists extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get advanceId => integer().references(SupplierAdvances, #id)();
+  IntColumn get brandId => integer().references(Brands, #id)();
+  IntColumn get priceListId => integer().references(PriceLists, #id)();
 }
 
 // Purchase orders (schema 8). The price is frozen when the order is approved;
@@ -297,6 +324,9 @@ class PurchaseOrderLines extends Table {
   IntColumn get discountBp => integer().withDefault(const Constant(0))();
   IntColumn get extraDiscountBp => integer().withDefault(const Constant(0))();
   IntColumn get unitCost => integer().withDefault(const Constant(0))();
+  // Schema 15: ordered for this customer order line; received goods are
+  // reserved for that customer.
+  IntColumn get salesOrderLineId => integer().nullable()();
 }
 
 class PurchaseOrderReceipts extends Table {
@@ -484,6 +514,10 @@ class PurchaseInvoices extends Table with Timestamps {
   BoolColumn get extraCostsOnSupplier => boolean().withDefault(const Constant(true))();
   // When what is left to pay is due (a credit purchase).
   DateTimeColumn get dueDate => dateTime().nullable()();
+  // Schema 15: taken against a supplier advance at its locked prices; the
+  // amount of the advance it used counts as paid on this invoice.
+  IntColumn get advanceId => integer().nullable()();
+  IntColumn get advanceUsed => integer().withDefault(const Constant(0))();
 }
 
 class PurchaseInvoiceItems extends Table {

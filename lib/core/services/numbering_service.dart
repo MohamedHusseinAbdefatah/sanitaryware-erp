@@ -15,6 +15,7 @@ class NumberingService {
     'sales_order': 'SO',
     'payment': 'R',
     'return': 'T',
+    'supplier_advance': 'SA',
   };
 
   /// Returns the next number for [kind], e.g. "S-000001".

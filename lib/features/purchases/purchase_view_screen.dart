@@ -180,6 +180,7 @@ class _PurchaseViewScreenState extends ConsumerState<PurchaseViewScreen> {
                       TotalRow(inv.extraCostsOnSupplier ? 'نقل وتحميل (على المورد)' : 'نقل وتحميل (دُفع لجهة أخرى، خارج الإجمالي)',
                           inv.extraCosts),
                     TotalRow(Strings.total, inv.total, bold: true),
+                    if (inv.advanceUsed != 0) TotalRow('منها من دفعة مقدمة بسعر مثبت', inv.advanceUsed),
                     TotalRow(Strings.paid, d.paid),
                     TotalRow(Strings.remaining, inv.total - d.paid, bold: true),
                   ],

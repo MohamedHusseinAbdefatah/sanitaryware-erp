@@ -10,6 +10,8 @@ import 'errors.dart';
 import 'numbering_service.dart';
 import 'payment_service.dart';
 import 'price_list_service.dart';
+import 'purchase_order_service.dart';
+import 'reservation_service.dart';
 import 'sales_service.dart';
 import 'selling_policy_service.dart';
 
@@ -79,8 +81,25 @@ class SoDetail {
   int get remainingValue => orderedValue - deliveredValue;
 }
 
-/// Sales orders: draft, confirm (which freezes price and discount), then
-/// deliver in one or more parts. Each delivery is an ordinary sales invoice.
+/// One open line of a confirmed order and where its goods stand.
+class SoShortage {
+  const SoShortage(this.row, this.held, this.onOrder, this.short);
+
+  final SoLineRow row;
+
+  /// Held in stock for this customer.
+  final int held;
+
+  /// On a supplier purchase order for this line, not yet received.
+  final int onOrder;
+
+  /// Neither held nor on order.
+  final int short;
+}
+
+/// Sales orders: draft, confirm (which freezes price and discount and holds
+/// the stock for the customer), then deliver in one or more parts. Each
+/// delivery is an ordinary sales invoice.
 class SalesOrderService {
   SalesOrderService(this.db);
 
@@ -272,8 +291,75 @@ class SalesOrderService {
           confirmedBy: Value(user.id),
           confirmedAt: Value(now),
           updatedAt: Value(now)));
+      // What is in stock is held for this customer now; the rest is a
+      // shortage that can be ordered from a supplier.
+      final reservations = ReservationService(db);
+      for (final l in await (db.select(db.salesOrderLines)..where((t) => t.orderId.equals(id))).get()) {
+        await reservations.holdForLine(l, order.customerId, l.qty - l.qtyDelivered,
+            note: 'أمر بيع ${order.number}', userId: user.id);
+      }
       await AuditService(db).log(action: AuditAction.update, entity: 'sales_order', entityId: id, userId: user.id);
     });
+  }
+
+  /// For each open line of a confirmed order: what is left to deliver, what
+  /// is held in stock for it, what is on order from a supplier for it, and
+  /// what is still short.
+  Future<List<SoShortage>> shortages(int id) async {
+    final order = await _order(id);
+    if (order.status != SoStatus.confirmed && order.status != SoStatus.partlyDelivered) return const [];
+    final reservations = ReservationService(db);
+    final result = <SoShortage>[];
+    for (final row in (await detail(id)).lines) {
+      final l = row.line;
+      final left = l.qty - l.qtyDelivered;
+      if (left <= 0) continue;
+      final held = await reservations.heldForLine(l.id);
+      final onOrder = await _onOrderFor(l.id);
+      result.add(SoShortage(row, held, onOrder, (left - held - onOrder).clamp(0, left)));
+    }
+    return result;
+  }
+
+  Future<int> _onOrderFor(int salesOrderLineId) async {
+    final rows = await db.customSelect(
+      'SELECT COALESCE(SUM(pl.qty - pl.qty_received), 0) AS n FROM purchase_order_lines pl '
+      'JOIN purchase_orders po ON po.id = pl.order_id '
+      "WHERE pl.sales_order_line_id = ? AND po.status IN ('draft', 'approved', 'partly_received')",
+      variables: [Variable.withInt(salesOrderLineId)],
+    ).getSingle();
+    return rows.read<int>('n');
+  }
+
+  /// Puts what is short on a new draft purchase order to [supplierId], each
+  /// line tied to this customer order. When the goods arrive they are held
+  /// for the customer. Admin only. Returns the purchase order id.
+  Future<int> orderShortages(int id, {required int supplierId, required User user}) async {
+    final short = (await shortages(id)).where((s) => s.short > 0).toList();
+    if (short.isEmpty) throw ValidationException('لا يوجد نقص في هذا الأمر؛ كل الكمية محجوزة أو مطلوبة من مورد');
+    final order = await _order(id);
+    return PurchaseOrderService(db).createDraft(
+      supplierId: supplierId,
+      lines: [
+        for (final s in short)
+          PoLineInput(productId: s.row.line.productId, qty: s.short, salesOrderLineId: s.row.line.id),
+      ],
+      notes: 'نقص أمر البيع ${order.number}',
+      user: user,
+    );
+  }
+
+  /// Holds whatever has come into stock since for the order's open lines.
+  Future<int> holdAvailable(int id, {int? userId}) async {
+    final order = await _order(id);
+    if (order.status != SoStatus.confirmed && order.status != SoStatus.partlyDelivered) return 0;
+    final reservations = ReservationService(db);
+    var held = 0;
+    for (final l in await (db.select(db.salesOrderLines)..where((t) => t.orderId.equals(id))).get()) {
+      final need = l.qty - l.qtyDelivered - await reservations.heldForLine(l.id);
+      held += await reservations.holdForLine(l, order.customerId, need, note: 'أمر بيع ${order.number}', userId: userId);
+    }
+    return held;
   }
 
   /// Delivers goods ([qtyByLine]: line id -> thousandths) at the frozen
@@ -342,6 +428,9 @@ class SalesOrderService {
       }
       final after = await (db.select(db.salesOrderLines)..where((t) => t.orderId.equals(id))).get();
       final allDone = after.every((l) => l.qtyDelivered >= l.qty);
+      // A line delivered in full holds nothing more.
+      await ReservationService(db)
+          .releaseLines(after.where((l) => l.qtyDelivered >= l.qty).map((l) => l.id), userId: user.id);
       await (db.update(db.salesOrders)..where((t) => t.id.equals(id))).write(SalesOrdersCompanion(
           status: Value(allDone ? SoStatus.delivered : SoStatus.partlyDelivered),
           updatedAt: Value(DateTime.now())));
@@ -370,6 +459,8 @@ class SalesOrderService {
       }
       await (db.update(db.salesOrders)..where((t) => t.id.equals(id))).write(
           SalesOrdersCompanion(status: const Value(SoStatus.cancelled), updatedAt: Value(DateTime.now())));
+      final lines = await (db.select(db.salesOrderLines)..where((t) => t.orderId.equals(id))).get();
+      await ReservationService(db).releaseLines(lines.map((l) => l.id), userId: user.id);
       await AuditService(db).log(action: AuditAction.cancel, entity: 'sales_order', entityId: id, userId: user.id);
     });
   }

@@ -16,11 +16,15 @@ class ReservationRow {
     required this.reservation,
     required this.productName,
     this.customerName,
+    this.orderNumber,
   });
 
   final Reservation reservation;
   final String productName;
   final String? customerName;
+
+  /// The customer order it holds stock for.
+  final String? orderNumber;
 }
 
 /// Holds stock back for a customer without moving it. A reservation that has
@@ -121,6 +125,49 @@ class ReservationService {
     });
   }
 
+  /// Stock that can be held for an order now: sellable stock less what is
+  /// already held for anyone.
+  Future<int> freeToHold(int productId) async =>
+      await StockService(db).sellableStock(productId) - await reservedQty(productId);
+
+  /// Held for one customer order line.
+  Future<int> heldForLine(int salesOrderLineId) async {
+    final rows = await (db.select(db.reservations)
+          ..where((r) => r.salesOrderLineId.equals(salesOrderLineId) & r.status.equals(ReservationStatus.active)))
+        .get();
+    return rows.fold<int>(0, (a, r) => a + r.qty);
+  }
+
+  /// Holds up to [wanted] of the line's product for its customer, as much as
+  /// is free now. Returns what was held (0 when nothing is free).
+  Future<int> holdForLine(SalesOrderLine line, int customerId, int wanted, {String? note, int? userId}) async {
+    if (wanted <= 0) return 0;
+    final free = await freeToHold(line.productId);
+    final qty = wanted < free ? wanted : free;
+    if (qty <= 0) return 0;
+    final id = await db.into(db.reservations).insert(ReservationsCompanion.insert(
+          productId: line.productId,
+          qty: qty,
+          customerId: Value(customerId),
+          salesOrderLineId: Value(line.id),
+          note: Value(note),
+        ));
+    await AuditService(db).log(action: AuditAction.create, entity: 'reservation', entityId: id, userId: userId);
+    return qty;
+  }
+
+  /// Gives back everything still held for these order lines.
+  Future<void> releaseLines(Iterable<int> salesOrderLineIds, {int? userId}) async {
+    final ids = salesOrderLineIds.toList();
+    if (ids.isEmpty) return;
+    final rows = await (db.select(db.reservations)
+          ..where((r) => r.salesOrderLineId.isIn(ids) & r.status.equals(ReservationStatus.active)))
+        .get();
+    for (final r in rows) {
+      await _close(r.id, ReservationStatus.released, userId);
+    }
+  }
+
   Future<void> release(int id, {int? userId}) => _close(id, ReservationStatus.released, userId);
 
   Future<void> markFulfilled(int id, {int? userId}) => _close(id, ReservationStatus.fulfilled, userId);
@@ -141,6 +188,8 @@ class ReservationService {
     final q = db.select(db.reservations).join([
       innerJoin(db.products, db.products.id.equalsExp(db.reservations.productId)),
       leftOuterJoin(db.customers, db.customers.id.equalsExp(db.reservations.customerId)),
+      leftOuterJoin(db.salesOrderLines, db.salesOrderLines.id.equalsExp(db.reservations.salesOrderLineId)),
+      leftOuterJoin(db.salesOrders, db.salesOrders.id.equalsExp(db.salesOrderLines.orderId)),
     ])
       ..where(db.reservations.status.equals(ReservationStatus.active))
       ..orderBy([OrderingTerm.desc(db.reservations.id)]);
@@ -153,6 +202,7 @@ class ReservationService {
               reservation: r.readTable(db.reservations),
               productName: r.readTable(db.products).nameAr,
               customerName: r.readTableOrNull(db.customers)?.name,
+              orderNumber: r.readTableOrNull(db.salesOrders)?.number,
             ),
       ];
     });

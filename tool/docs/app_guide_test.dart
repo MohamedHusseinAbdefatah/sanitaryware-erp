@@ -144,8 +144,12 @@ final _content = <_B>[
         'Display-only places never count as available to sell.',
     'Transfers move stock with its original cost, received date and price list version.',
     'Stock adjustment: per place, with a reason, at the last known cost.',
-    'Reservations hold stock for a customer; nobody else can buy it, and the customer\'s own purchase uses it up.',
+    'Reservations hold stock for a customer; nobody else can buy it, and the customer\'s own purchase uses it up. '
+        'They are not typed by hand: confirming a sales order holds what is in stock; what is short can be put on a '
+        'draft purchase order to a supplier, tied to that customer order, and is held for the customer when it is '
+        'received. Delivering a line in full or cancelling the order releases it. The admin can still release one.',
   ]),
+  const _S('20_sales_order_stock', 'A sales order: held in stock, on order from a supplier, short'),
   const _H('Stock at the old and the new price', level: 2),
   const _P('Every lot remembers the price list version it came in under and that version\'s list price. Stock '
       'counts as new when its list price equals today\'s price, old when the price has changed since, and unknown '
@@ -221,6 +225,18 @@ final _content = <_B>[
         'cheque and its transport expense are cancelled with it.',
   ]),
   const _S('17_purchase_entry', 'Purchase invoice: list price, agreed discount, extra %, transport'),
+  const _H('Supplier advance locked to a price list', level: 2),
+  const _L([
+    'Money paid to a supplier ahead (e.g. 300,000), from the supplier\'s menu. It locks the price lists in force that '
+        'day for the brands chosen, and the supplier\'s discount on them that day; not particular products.',
+    'It counts in the supplier\'s balance at once. Each advance shows what has been taken and what is left.',
+    'A purchase invoice for that supplier can be "from the advance": every line takes its locked list price and '
+        'discount, whatever newer lists or discounts exist, and the invoice is paid from the advance. An invoice '
+        'bigger than what is left, or a product not on the locked lists, is refused.',
+    'Cancelling such an invoice gives its value back to the advance. An advance can be cancelled only while nothing '
+        'has been taken; its payment cannot be cancelled from the payments screen.',
+  ]),
+  const _S('19_purchase_from_advance', 'A purchase taken against an advance at the locked prices'),
   const _H('8. Returns, payments, balances and expenses'),
   const _L([
     'Sale return (anyone) back into a chosen place, keeping the price list version the goods left under; purchase '

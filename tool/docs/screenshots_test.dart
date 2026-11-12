@@ -35,7 +35,9 @@ import 'package:sanitaryware_erp/core/services/price_list_service.dart';
 import 'package:sanitaryware_erp/core/services/product_service.dart';
 import 'package:sanitaryware_erp/core/services/purchase_service.dart';
 import 'package:sanitaryware_erp/core/services/sales_service.dart';
+import 'package:sanitaryware_erp/core/services/sales_order_service.dart';
 import 'package:sanitaryware_erp/core/services/selling_policy_service.dart';
+import 'package:sanitaryware_erp/core/services/supplier_advance_service.dart';
 import 'package:sanitaryware_erp/core/services/settings_service.dart';
 
 import '../../test/support/fixture.dart';
@@ -191,6 +193,23 @@ Future<(Shop, SalesInvoice)> _shopWithData() async {
     BuyingPolicyInput(supplierId: supplier, brandId: shop.brandId, priceListId: inForce, baseDiscountBp: 2000),
     user: shop.admin,
   );
+  // Money paid ahead, locked to that day's list.
+  await SupplierAdvanceService(db).create(
+    supplierId: supplier,
+    amount: 30000000,
+    brandIds: [shop.brandId],
+    note: 'حجز أسعار قبل الزيادة',
+    user: shop.admin,
+  );
+  // A customer order bigger than the stock: part held, the rest short.
+  final orders = SalesOrderService(db);
+  final so = await orders.createDraft(
+    customerId: contractor,
+    lines: [SoLineInput(productId: basin.id, qty: qtyOf(20))],
+    channel: SaleChannel.project,
+    user: shop.admin,
+  );
+  await orders.confirm(so, manualPrices: {(await orders.detail(so)).lines.single.line.id: 140000}, user: shop.admin);
   return (shop, credit);
 }
 
@@ -316,6 +335,33 @@ void main() {
     await tester.enterText(find.widgetWithText(TextField, Strings.supplierInvoiceNo), 'INV-5602');
     await settle(tester);
     await shot(tester, '17_purchase_entry');
+
+    // The same supplier's advance: lines at the locked prices.
+    await tester.tap(find.byType(DropdownButtonFormField<int?>).first);
+    await settle(tester);
+    await tester.tap(find.textContaining('SA-000001').last);
+    await settle(tester);
+    await shot(tester, '19_purchase_from_advance');
+
+    await go(tester, '/suppliers');
+    await tester.tap(find.byType(PopupMenuButton<VoidCallback>).first);
+    await settle(tester);
+    await tester.tap(find.text('دفعات مقدمة بسعر قائمة').last);
+    await settle(tester);
+    await shot(tester, '18_supplier_advances');
+    await tester.tap(find.text(Strings.close).last);
+    await settle(tester);
+
+    await go(tester, '/sales');
+    await tester.tap(find.text('أوامر البيع'));
+    await settle(tester);
+    await tester.tap(find.textContaining('شركة النور للمقاولات').first);
+    await settle(tester);
+    await shot(tester, '20_sales_order_stock');
+    await tester.tap(find.text(Strings.close).last);
+    await settle(tester);
+    await tester.tap(find.text(Strings.close).last);
+    await settle(tester);
 
     await go(tester, '/sales/new');
     await tester.enterText(find.byType(TextField).at(1), 'M1');

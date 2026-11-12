@@ -13,6 +13,7 @@ import 'services/catalog_service.dart';
 import 'services/buying_policy_service.dart';
 import 'services/sale_preview_service.dart';
 import 'services/selling_policy_service.dart';
+import 'services/supplier_advance_service.dart';
 import 'services/stock_price_service.dart';
 import 'services/expense_service.dart';
 import 'services/inventory_service.dart';
@@ -129,6 +130,9 @@ final buyingPolicyServiceProvider =
 
 final sellingPolicyServiceProvider =
     Provider<SellingPolicyService>((ref) => SellingPolicyService(ref.watch(databaseProvider)));
+
+final supplierAdvanceServiceProvider =
+    Provider<SupplierAdvanceService>((ref) => SupplierAdvanceService(ref.watch(databaseProvider)));
 
 /// Customer categories (retail, wholesale, projects, engineers...), by id.
 final customerCategoriesProvider = StreamProvider.autoDispose<List<CustomerCategory>>(
