@@ -284,6 +284,21 @@ class SupplierAdvances extends Table with Timestamps {
   IntColumn get createdBy => integer().nullable().references(Users, #id)();
 }
 
+/// A product's photo (schema 16), kept inside the database so backups and
+/// restores carry it. Stored shrunk to a small JPEG; one per product.
+class ProductImages extends Table {
+  IntColumn get productId => integer().references(Products, #id)();
+  BlobColumn get bytes => blob()();
+  // A small copy for lists.
+  BlobColumn get thumb => blob()();
+  IntColumn get width => integer()();
+  IntColumn get height => integer()();
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {productId};
+}
+
 /// One locked list of an advance: a brand and the version in force that day.
 class SupplierAdvanceLists extends Table {
   IntColumn get id => integer().autoIncrement()();

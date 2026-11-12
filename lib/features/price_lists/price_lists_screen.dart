@@ -641,6 +641,9 @@ class _ImportDialogState extends ConsumerState<_ImportDialog> {
                 else ...[
                   Text('أصناف معروفة يضاف سعرها: ${p.knownCount}', style: const TextStyle(fontWeight: FontWeight.bold)),
                   Text('أصناف جديدة تأخذ رقم صنف جديد: ${p.createCount}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                  if (p.arabicNameCount > 0)
+                    Text('أصناف موجودة بلا اسم عربي يُضاف لها الاسم العربي من الملف: ${p.arabicNameCount}',
+                        style: TextStyle(color: scheme.primary, fontWeight: FontWeight.bold)),
                   if (p.reviewCount > 0)
                     Text('صفوف متوقفة للمراجعة: ${p.reviewCount}', style: TextStyle(color: scheme.error)),
                   for (final r in stopped)

@@ -36,6 +36,6 @@ void main() {
     expect(await db.select(db.supplierAdvances).get(), isEmpty);
     expect(await db.integrityOk(), isTrue);
     final v = await db.customSelect('PRAGMA user_version').getSingle();
-    expect(v.data.values.first, 15);
+    expect(v.data.values.first, AppDatabase.latestSchemaVersion);
   });
 }

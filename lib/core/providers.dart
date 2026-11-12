@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -14,6 +15,7 @@ import 'services/buying_policy_service.dart';
 import 'services/sale_preview_service.dart';
 import 'services/selling_policy_service.dart';
 import 'services/supplier_advance_service.dart';
+import 'services/product_image_service.dart';
 import 'services/stock_price_service.dart';
 import 'services/expense_service.dart';
 import 'services/inventory_service.dart';
@@ -130,6 +132,13 @@ final buyingPolicyServiceProvider =
 
 final sellingPolicyServiceProvider =
     Provider<SellingPolicyService>((ref) => SellingPolicyService(ref.watch(databaseProvider)));
+
+final productImageServiceProvider =
+    Provider<ProductImageService>((ref) => ProductImageService(ref.watch(databaseProvider)));
+
+/// Thumbnails of the products that have a photo, by product id.
+final productThumbsProvider = StreamProvider.autoDispose<Map<int, Uint8List>>(
+    (ref) => ref.watch(productImageServiceProvider).watchThumbs());
 
 final supplierAdvanceServiceProvider =
     Provider<SupplierAdvanceService>((ref) => SupplierAdvanceService(ref.watch(databaseProvider)));

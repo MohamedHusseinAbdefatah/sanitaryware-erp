@@ -4,11 +4,14 @@ import '../theme.dart';
 
 /// One column of a [DataList].
 class DataListColumn<T> {
-  const DataListColumn(this.title, this.cell, {this.flex = 1, this.numeric = false});
+  const DataListColumn(this.title, this.cell, {this.flex = 1, this.numeric = false, this.width});
 
   final String title;
   final Widget Function(T row) cell;
   final int flex;
+
+  /// A fixed width instead of a share of the row (a photo, an icon).
+  final double? width;
 
   /// Numbers are centred; text starts at the right (RTL).
   final bool numeric;
@@ -34,13 +37,13 @@ class DataList<T> extends StatelessWidget {
   final String? emptyText;
   final Color? Function(T row)? rowColor;
 
-  Widget _cell(DataListColumn<T> column, Widget child) => Expanded(
-    flex: column.flex,
-    child: Padding(
+  Widget _cell(DataListColumn<T> column, Widget child) {
+    final inner = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Align(alignment: column.numeric ? Alignment.center : AlignmentDirectional.centerStart, child: child),
-    ),
-  );
+    );
+    return column.width != null ? SizedBox(width: column.width, child: inner) : Expanded(flex: column.flex, child: inner);
+  }
 
   @override
   Widget build(BuildContext context) {

@@ -75,9 +75,12 @@ final _content = <_B>[
   const _H('What the program can do', level: 2),
   const _L([
     'Products as master data only: fixed Product ID, maker code kept as text, brand, category and subcategory, '
-        'series, variant, finish, dimensions, unit, barcode, specs, verified VAT basis and rate.',
+        'series, variant, finish, dimensions, unit, barcode, specs, verified VAT basis and rate, and a photo '
+        '(shrunk to a small JPEG and kept inside the database, so backups carry it; thumbnails in the lists).',
     'Price lists as dated versions (Price List ID, brand, list type, period, source, VAT status), with full Excel '
-        'import, single or small-group entry, a review queue, and price history per product.',
+        'import, single or small-group entry, a review queue, and price history per product. An "Arabic name" '
+        'column names new products in Arabic (the English kept as description) and fills the Arabic name of '
+        'products named only in English; an Arabic name already there is never replaced.',
     'Buying policies (supplier + brand + list) apart from selling discounts by customer category (retail, '
         'wholesale, projects, engineers, or any the owner adds), with optional special discounts by brand, '
         'category or product. Product before category before all.',

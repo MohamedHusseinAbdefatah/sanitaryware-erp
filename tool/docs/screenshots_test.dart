@@ -35,6 +35,8 @@ import 'package:sanitaryware_erp/core/services/price_list_service.dart';
 import 'package:sanitaryware_erp/core/services/product_service.dart';
 import 'package:sanitaryware_erp/core/services/purchase_service.dart';
 import 'package:sanitaryware_erp/core/services/sales_service.dart';
+import 'package:image/image.dart' as img;
+import 'package:sanitaryware_erp/core/services/product_image_service.dart';
 import 'package:sanitaryware_erp/core/services/sales_order_service.dart';
 import 'package:sanitaryware_erp/core/services/selling_policy_service.dart';
 import 'package:sanitaryware_erp/core/services/supplier_advance_service.dart';
@@ -90,6 +92,17 @@ Future<(Shop, SalesInvoice)> _shopWithData() async {
     openingQty: qtyOf(12),
     openingCost: 90000,
   );
+  // Sample photos: simple drawn shapes standing in for real pictures.
+  Uint8List photo(img.Color back, img.Color shape) {
+    final i = img.Image(width: 400, height: 400)..clear(back);
+    img.fillCircle(i, x: 200, y: 210, radius: 130, color: shape);
+    img.fillRect(i, x1: 170, y1: 40, x2: 230, y2: 120, color: shape);
+    return Uint8List.fromList(img.encodePng(i));
+  }
+
+  final photos = ProductImageService(db);
+  await photos.setImage(shop.mixer.id, photo(img.ColorRgb8(225, 232, 236), img.ColorRgb8(120, 130, 140)), user: shop.admin);
+  await photos.setImage(basin.id, photo(img.ColorRgb8(214, 232, 230), img.ColorRgb8(250, 250, 250)), user: shop.admin);
   await products.create(
     ProductInput(code: 'M2', manufacturerCode: 'M2', nameAr: 'خلاط مطبخ جروهي', categoryId: mixers, brandId: grohe,
         unitId: piece, minStock: qtyOf(3)),

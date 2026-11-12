@@ -12,6 +12,7 @@ import '../../core/widgets/data_list.dart';
 import 'catalog_dialog.dart';
 import 'price_history_dialog.dart';
 import 'product_form_dialog.dart';
+import 'product_image.dart';
 import 'stock_dialogs.dart';
 import 'stock_price_dialog.dart';
 
@@ -100,6 +101,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
               rowColor: (r) => r.product.isActive ? null : scheme.surfaceContainerHighest,
               trailing: (r) => _ProductMenu(row: r, isAdmin: isAdmin),
               columns: [
+                DataListColumn('', width: 56, (r) => ProductThumb(productId: r.product.id)),
                 DataListColumn('رقم الصنف', (r) => Text(r.product.code)),
                 DataListColumn('كود الشركة', (r) => Text(r.product.manufacturerCode)),
                 DataListColumn(Strings.productName, flex: 3, (r) => Text(r.product.nameAr)),

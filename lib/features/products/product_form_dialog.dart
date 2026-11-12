@@ -12,6 +12,7 @@ import '../../core/services/product_service.dart';
 import '../../core/services/stock_service.dart';
 import '../../core/widgets/feedback.dart';
 import '../../core/widgets/number_fields.dart';
+import 'product_image.dart';
 
 Future<void> showProductForm(BuildContext context, {ProductRow? existing}) {
   return showDialog<void>(
@@ -225,6 +226,16 @@ class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _p == null
+                      ? Row(children: [
+                          Icon(Icons.image_outlined, color: Theme.of(context).colorScheme.outline),
+                          const SizedBox(width: 8),
+                          const Text('الصورة تُضاف بعد حفظ الصنف: افتحه مرة أخرى للتعديل.'),
+                        ])
+                      : Align(alignment: AlignmentDirectional.centerStart, child: ProductImageBox(productId: _p.id)),
+                ),
                 _row([
                   TextFormField(
                     controller: _code,

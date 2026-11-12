@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' show Value;
 import 'package:excel/excel.dart';
 
 import '../auth/auth_service.dart';
@@ -7,6 +8,7 @@ import '../money.dart';
 import '../pdf_import/price_table.dart';
 import '../pricing_math.dart';
 import '../search_text.dart';
+import 'audit_service.dart';
 import 'catalog_service.dart';
 import 'errors.dart';
 import 'price_list_service.dart';
@@ -27,7 +29,13 @@ enum PriceRowAction {
 /// One sheet row after checking.
 class PriceImportRow {
   PriceImportRow(this.rowNumber, this.code, this.name, this.variant, this.priceText, this.packText,
-      {this.codeWasNumber = false, this.details = const {}, this.page, this.presetReason});
+      {this.codeWasNumber = false, this.details = const {}, this.page, this.presetReason, this.arabicName = ''});
+
+  /// The Arabic name from a column of its own, when the list has one.
+  final String arabicName;
+
+  /// A known product whose name has no Arabic yet: the Arabic name is filled in.
+  bool fillArabicName = false;
 
   /// As Excel numbers it (header is row 1).
   final int rowNumber;
@@ -97,6 +105,9 @@ class PriceImportPreview {
   int get knownCount => rows.where((r) => r.action == PriceRowAction.known).length;
   int get createCount => rows.where((r) => r.action == PriceRowAction.create).length;
   int get reviewCount => rows.where((r) => r.action == PriceRowAction.review).length;
+
+  /// Known products that get their Arabic name from this list.
+  int get arabicNameCount => rows.where((r) => r.ok && r.fillArabicName).length;
   bool get canImport => missingColumns.isEmpty && rows.isNotEmpty;
 }
 
@@ -116,6 +127,14 @@ class PriceListImportService {
     'كود الشركة', 'كود المورد', 'كود المصنع', 'الكود', 'كود', 'كود الصنف', 'code', 'model', 'manufacturer code',
   ];
   static const _nameHeaders = ['الاسم', 'اسم الصنف', 'الصنف', 'name', 'product name'];
+  static const _arabicNameHeaders = [
+    'الاسم بالعربي', 'الاسم العربي', 'الاسم بالعربية', 'اسم عربي', 'الاسم عربي', 'arabic name', 'name ar', 'name_ar',
+  ];
+
+  static final _arabicLetters = RegExp('[ء-ي]');
+
+  /// True when [text] has Arabic letters.
+  static bool hasArabic(String text) => _arabicLetters.hasMatch(text);
   static const _variantHeaders = ['اللون', 'colour', 'color', 'variant'];
   static const _priceHeaders = ['السعر', 'سعر القائمة', 'price', 'list price'];
   static const _packHeaders = ['عدد الكرتونة', 'التعبئة', 'العدد داخل الكرتونة', 'pack'];
@@ -163,7 +182,7 @@ class PriceListImportService {
     final headerIndex = all.indexWhere((r) => r.any((c) => _text(c?.value).isNotEmpty));
     if (headerIndex < 0) return PriceImportPreview(brandId, [], ['الاسم', 'السعر']);
 
-    int? codeCol, nameCol, variantCol, priceCol, packCol;
+    int? codeCol, nameCol, arabicCol, variantCol, priceCol, packCol;
     final variantPriceCols = <int, String>{}; // column -> variant
     final detailCols = <String, int>{};
     final header = all[headerIndex];
@@ -174,6 +193,8 @@ class PriceListImportService {
       bool isOne(List<String> aliases) => aliases.any((a) => foldForSearch(a) == h);
       if (codeCol == null && isOne(_codeHeaders)) {
         codeCol = i;
+      } else if (arabicCol == null && isOne(_arabicNameHeaders)) {
+        arabicCol = i;
       } else if (nameCol == null && isOne(_nameHeaders)) {
         nameCol = i;
       } else if (variantCol == null && isOne(_variantHeaders)) {
@@ -191,7 +212,7 @@ class PriceListImportService {
       }
     }
     final missing = <String>[
-      if (nameCol == null) 'الاسم',
+      if (nameCol == null && arabicCol == null) 'الاسم',
       if (priceCol == null && variantPriceCols.isEmpty) 'السعر',
     ];
     if (missing.isNotEmpty) return PriceImportPreview(brandId, [], missing);
@@ -203,13 +224,20 @@ class PriceListImportService {
     for (var r = headerIndex + 1; r < all.length; r++) {
       final cells = all[r];
       final code = at(cells, codeCol);
-      final name = at(cells, nameCol);
+      final arabic = at(cells, arabicCol);
+      final listName = at(cells, nameCol);
+      // With no name of its own the row is known by its Arabic name.
+      final name = listName.isEmpty ? arabic : listName;
       final sheetVariant = at(cells, variantCol);
       final pack = at(cells, packCol);
       final numeric = codeCol != null &&
           codeCol < cells.length &&
           (cells[codeCol]?.value is IntCellValue || cells[codeCol]?.value is DoubleCellValue);
       final details = {for (final e in detailCols.entries) e.key: at(cells, e.value)};
+      // The other-language name of a new product is kept as its description.
+      if (arabic.isNotEmpty && listName.isNotEmpty && listName != arabic && (details['description'] ?? '').isEmpty) {
+        details['description'] = listName;
+      }
       final prices = <String?, String>{
         if (priceCol != null) (sheetVariant.isEmpty ? null : sheetVariant): at(cells, priceCol),
         for (final e in variantPriceCols.entries) e.value: at(cells, e.key),
@@ -218,7 +246,10 @@ class PriceListImportService {
       for (final e in prices.entries) {
         // A colour-price column left empty means "not made in that colour".
         if (e.value.isEmpty && prices.length > 1) continue;
-        rows.add(PriceImportRow(r + 1, code, name, e.key, e.value, pack, codeWasNumber: numeric, details: details));
+        rows.add(PriceImportRow(r + 1, code, name, e.key, e.value, pack,
+            codeWasNumber: numeric,
+            details: details,
+            arabicName: hasArabic(arabic) ? arabic : (arabicCol == null && hasArabic(listName) ? listName : '')));
       }
     }
     await _classify(rows, brandId);
@@ -343,6 +374,13 @@ class PriceListImportService {
         r.stop('الاسم مطلوب لإنشاء صنف جديد');
       }
     }
+    // A known product named only in another language takes the list's Arabic
+    // name. An Arabic name already there is never changed.
+    final byProductId = {for (final p in products) p.id: p};
+    for (final r in rows) {
+      final p = r.productId == null ? null : byProductId[r.productId];
+      r.fillArabicName = p != null && r.arabicName.isNotEmpty && !hasArabic(p.nameAr);
+    }
   }
 
   /// Saves the file as one new version. Known rows get their price, new rows
@@ -360,11 +398,25 @@ class PriceListImportService {
       await _classifyAgain(preview);
       var created = 0;
       final inputs = <PriceRowInput>[];
+      final named = <int>{};
       for (final r in preview.rows) {
         int? productId = r.productId;
         if (r.action == PriceRowAction.create) {
           productId = (await _createProduct(r, header.brandId, user)).id;
           created++;
+        } else if (r.ok && r.fillArabicName && productId != null && named.add(productId)) {
+          final before = await (db.select(db.products)..where((t) => t.id.equals(productId!))).getSingle();
+          await (db.update(db.products)..where((t) => t.id.equals(productId!))).write(ProductsCompanion(
+              nameAr: Value(r.arabicName),
+              description: Value(before.description ?? before.nameAr),
+              updatedAt: Value(DateTime.now())));
+          await AuditService(db).log(
+            action: AuditAction.update,
+            entity: 'product',
+            entityId: productId,
+            userId: user.id,
+            details: 'الاسم العربي من قائمة الأسعار: ${before.nameAr} -> ${r.arabicName}',
+          );
         }
         inputs.add(PriceRowInput(
           name: r.name,
@@ -505,7 +557,7 @@ class PriceListImportService {
         units.firstOrNull;
     return ProductService(db).create(
       ProductInput(
-        nameAr: r.name,
+        nameAr: r.arabicName.isNotEmpty ? r.arabicName : r.name,
         manufacturerCode: r.code,
         brandId: brandId,
         variant: r.variant,

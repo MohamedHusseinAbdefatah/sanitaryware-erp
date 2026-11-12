@@ -13,6 +13,7 @@ import '../../core/services/inventory_service.dart';
 import '../../core/services/stock_price_service.dart';
 import '../../core/widgets/data_list.dart';
 import '../products/locations_dialog.dart';
+import '../products/product_image.dart';
 import '../products/reservations_dialog.dart';
 import '../products/stock_dialogs.dart';
 import '../products/stock_price_dialog.dart';
@@ -135,6 +136,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               rowColor: (r) => r.stock == 0 ? scheme.surfaceContainerHighest : null,
               trailing: (r) => _InventoryMenu(row: r, isAdmin: isAdmin),
               columns: [
+                DataListColumn('', width: 52, (r) => ProductThumb(productId: r.product.id)),
                 DataListColumn('رقم الصنف', flex: 2, (r) => Text(r.product.code)),
                 DataListColumn('كود الشركة', flex: 3, (r) => Text(r.product.manufacturerCode)),
                 DataListColumn(Strings.productName, flex: 6, (r) => Text(r.product.nameAr)),

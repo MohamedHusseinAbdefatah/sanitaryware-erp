@@ -2,6 +2,23 @@
 
 Versions follow `version:` in `pubspec.yaml` and `lib/core/version.dart`.
 
+## 1.10.0
+
+Product photos and Arabic names from price lists. The database upgrades in
+place (schema 16, one new table) and keeps all existing data.
+
+- A photo per product: open the product to edit it, then "اختيار صورة" (JPG,
+  PNG, WebP, BMP or GIF). It is shrunk to a JPEG of at most 800 px and kept
+  inside the database, so backups and restores carry it. A small thumbnail
+  shows in the Products and Inventory lists; clicking it shows the photo.
+- Price list import reads an Arabic name column ("الاسم بالعربي", "الاسم
+  العربي" or "Arabic name") beside the list's own name. New products are
+  named in Arabic and keep the English name as their description. Known
+  products named only in English get the Arabic name (shown as a count
+  before saving, written to the audit log); an Arabic name already there is
+  never replaced. A list whose only name column is Arabic does the same.
+- The price list format guide lists the new column.
+
 ## 1.9.0
 
 Reservations come from orders, and money paid to a supplier ahead is locked
