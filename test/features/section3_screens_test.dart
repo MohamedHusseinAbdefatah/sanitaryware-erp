@@ -90,11 +90,22 @@ void main() {
     await tester.tap(find.text('إلغاء'));
     await settle(tester);
 
-    await tester.tap(find.text('سياسات البيع'));
+    await tester.tap(find.text('خصومات البيع'));
     await settle(tester);
-    await tester.tap(find.text('سياسة بيع'));
+    // The customer categories, each with its usual discount.
+    for (final name in ['قطاعي', 'جملة', 'مشروعات ومقاولون', 'مهندسين']) {
+      expect(find.text(name), findsOneWidget);
+    }
+    expect(find.text('الخصم المعتاد 0%'), findsNWidgets(4));
+    await tester.tap(find.text('فئة جديدة'));
     await settle(tester);
-    expect(find.text('أقصى خصم بدون موافقة % (اختياري)'), findsOneWidget);
+    expect(find.text('الخصم المعتاد %'), findsOneWidget);
+    await tester.tap(find.text('إلغاء'));
+    await settle(tester);
+    await tester.tap(find.text('خصم خاص'));
+    await settle(tester);
+    expect(find.text('أقصى خصم بدون موافقة المدير % (اختياري)'), findsOneWidget);
+    expect(find.text('فئة العملاء'), findsOneWidget);
     await tester.tap(find.text('إلغاء'));
     await settle(tester);
     await unmount(tester);

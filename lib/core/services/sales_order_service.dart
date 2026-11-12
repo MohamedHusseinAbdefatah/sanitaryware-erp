@@ -222,7 +222,7 @@ class SalesOrderService {
           await (db.update(db.salesOrderLines)..where((t) => t.id.equals(l.id))).write(SalesOrderLinesCompanion(
               listPrice: Value(manual),
               unitPrice: Value(applyDiscount(manual, l.extraDiscountBp > 10000 ? 10000 : l.extraDiscountBp)),
-              pricingType: Value(PricingType.ofLevel(customer.priceLevel)),
+              pricingType: Value((await SellingPolicyService(db).categoryOf(customer))?.name),
               vatStatus: Value(p.vatBasis),
               vatRateBp: Value(p.vatRateBp)));
           continue;

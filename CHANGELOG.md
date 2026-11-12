@@ -2,6 +2,33 @@
 
 Versions follow `version:` in `pubspec.yaml` and `lib/core/version.dart`.
 
+## 1.7.0
+
+Customer categories and a simpler way to give selling discounts. The
+database upgrades in place (schema 13) and keeps all existing data.
+
+- New: customer categories. The shop starts with قطاعي، جملة، مشروعات
+  ومقاولون and مهندسين, and can add its own. Each has a usual discount on the
+  list price (0% until the owner sets it). Every customer has a category,
+  chosen on the customer card; a sale with no customer is retail. The
+  customer's own discount now reads "extra discount for this customer" and
+  adds on top.
+- Selling policies become "خصومات البيع" (Price Lists screen): the categories
+  with their usual discount, and optional special discounts by category +
+  brand (or every brand) + all, a product category or a product, with an
+  optional maximum discount and minimum margin. A special discount replaces
+  the usual one. They are no longer tied to a price list version, so a new
+  list needs nothing re-entered.
+- Upgrading: each old price level becomes its category (retail, wholesale,
+  projects and contractors), and each old selling policy becomes a special
+  discount for that category and brand with the same discount and limits.
+- The invoice discount on sales and purchases can be typed as an amount or as
+  a percent of the subtotal (a switch beside it). The invoice keeps the amount.
+- Customer import reads the category by its name (column "فئة العميل").
+- New for the shop staff: docs/price_list_format_ar.pdf, how to prepare a
+  price list file, with two Excel templates in docs/templates (one price per
+  row, or one price column per colour), both checked with the real importer.
+
 ## 1.6.1
 
 Fix for updated price lists. No database change.

@@ -151,11 +151,10 @@ class SalePreviewService {
         }
       }
 
-      final policyLabel = snap.sellingPolicyId == null ? 'لا توجد سياسة مسجلة' : 'سياسة بيع رقم ${snap.sellingPolicyId}';
+      final policyLabel = snap.sellingPolicyId == null ? 'الخصم المعتاد للفئة' : 'خصم خاص رقم ${snap.sellingPolicyId}';
       final steps = <DiscountStep>[
         if (snap.policyBp > 0)
-          DiscountStep('خصم السياسة (${PricingType.label(snap.pricingType ?? PricingType.b2c)})', policyLabel,
-              bp: snap.policyBp),
+          DiscountStep('خصم فئة العميل (${pricingTypeLabel(snap.pricingType)})', policyLabel, bp: snap.policyBp),
         if (snap.customerBp > 0) DiscountStep('خصم العميل', 'بطاقة العميل', bp: snap.customerBp),
         if (snap.extraBp > 0) DiscountStep('خصم إضافي (تفاوض)', 'مدخل على السطر', bp: snap.extraBp),
         if (snap.priceListId == null && line.discount > 0)

@@ -73,9 +73,9 @@ void main() {
   Future<int> sellPolicy(String type, int bp, {String scope = PolicyScope.all, int? cat, int? product, int? max, int? minMargin}) =>
       selling.add(
         SellingPolicyInput(
+          // The three starter categories made from the old pricing types.
+          customerCategoryId: {PricingType.b2c: 1, PricingType.b2b: 2, PricingType.project: 3}[type]!,
           brandId: duravit,
-          priceListId: listId,
-          pricingType: type,
           scope: scope,
           categoryId: cat,
           productId: product,
@@ -138,8 +138,11 @@ void main() {
       expect(b.baseBp, 1000);
       expect(b.extraBp, 500);
       expect(b.netCost, 93500);
-      final sellRules = await (db.select(db.sellingPolicies)..where((p) => p.priceListId.equals(v2))).get();
-      expect(sellRules.single.discountBp, 500);
+      // The selling discount is by customer category and brand: it holds for V2 as it is.
+      final sell = (await selling.quotes(basin.id)).single;
+      expect(sell.quote.priceListId, v2);
+      expect(sell.policyBp, 500);
+      expect(sell.unitPrice, 104500);
 
       // A different list type is a separate list: no discount is carried to it.
       final other = (await PriceListService(db).createVersion(
@@ -238,6 +241,45 @@ void main() {
       final c = await customer(PriceLevel.wholesale, discount: 100);
       final q = (await selling.quotes(basin.id, customer: c)).single;
       expect(q.totalBp, 2100);
+    });
+
+    test('each customer category has its usual discount; engineers get theirs', () async {
+      final engineers = (await selling.categories()).firstWhere((c) => c.name == 'مهندسين');
+      await selling.saveCategory(const CustomerCategoryInput(name: 'مهندسين', discountBp: 1200),
+          id: engineers.id, user: shop.admin);
+      final id = await PartyService(db).saveCustomer(CustomerInput(name: 'م. أحمد', categoryId: engineers.id));
+      final eng = await (db.select(db.customers)..where((t) => t.id.equals(id))).getSingle();
+      final q = (await selling.quotes(basin.id, customer: eng)).single;
+      expect(q.policy, isNull, reason: 'no special rule: the usual discount of the category');
+      expect(q.policyBp, 1200);
+      expect(q.unitPrice, 88000);
+      // A walk-in sale is retail, with retail's usual discount (0 here).
+      expect((await selling.quotes(basin.id)).single.policyBp, 0);
+    });
+
+    test('a special discount replaces the usual one; the brand rule beats the all-brands rule', () async {
+      final projects = (await selling.categories()).firstWhere((c) => c.id == 3);
+      await selling.saveCategory(CustomerCategoryInput(name: projects.name, discountBp: 1500),
+          id: projects.id, user: shop.admin);
+      final c = await customer(PriceLevel.contractor);
+      Future<int> bp() async => (await selling.quotes(basin.id, customer: c)).single.policyBp;
+      expect(await bp(), 1500);
+      await selling.add(const SellingPolicyInput(customerCategoryId: 3, discountBp: 1000), user: shop.admin);
+      expect(await bp(), 1000, reason: 'a rule for every brand');
+      await sellPolicy(PricingType.project, 2000);
+      expect(await bp(), 2000, reason: 'the rule for this brand wins');
+      final other = await CatalogService(db).saveBrand(name: 'أخرى');
+      await selling.add(SellingPolicyInput(customerCategoryId: 3, brandId: other, discountBp: 3000), user: shop.admin);
+      expect(await bp(), 2000, reason: 'a rule for another brand does not apply');
+    });
+
+    test('a category name is unique, and retail cannot be switched off', () async {
+      await expectLater(selling.saveCategory(const CustomerCategoryInput(name: 'جملة'), user: shop.admin),
+          throwsA(isA<ValidationException>()));
+      await expectLater(
+          selling.saveCategory(const CustomerCategoryInput(name: 'قطاعي', isActive: false),
+              id: walkInCategoryId, user: shop.admin),
+          throwsA(isA<ValidationException>()));
     });
   });
 

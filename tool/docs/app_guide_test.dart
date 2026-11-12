@@ -78,8 +78,9 @@ final _content = <_B>[
         'series, variant, finish, dimensions, unit, barcode, specs, verified VAT basis and rate.',
     'Price lists as dated versions (Price List ID, brand, list type, period, source, VAT status), with full Excel '
         'import, single or small-group entry, a review queue, and price history per product.',
-    'Separate buying policies (supplier + brand + list) and selling policies (brand + list + B2C/B2B/Project), '
-        'product before category before all.',
+    'Buying policies (supplier + brand + list) apart from selling discounts by customer category (retail, '
+        'wholesale, projects, engineers, or any the owner adds), with optional special discounts by brand, '
+        'category or product. Product before category before all.',
     'Stock in several places (main warehouse, showroom storage, display) with transfers that keep cost and date, '
         'reservations, and display-only places that are never sold from.',
     'Stock at the old and the new price: every lot remembers the list version it came in under.',
@@ -161,7 +162,8 @@ final _content = <_B>[
         'replaces it from that day. A version for a few products leaves the earlier list open for everything else.'],
     ['Same type, new version', 'Only the same brand and list type make a new version. The import shows the brand\'s '
         'list types to pick from and warns in red when a new type would make a separate list. A new version takes '
-        'over the active buying and selling policies of the one it follows, with the same discounts.'],
+        'over the active buying policies of the one it follows, with the same discounts. The format to prepare is '
+        'in docs/price_list_format_ar.pdf, with two templates in docs/templates.'],
     ['Never overwritten', 'A product priced in a version cannot be changed in it. A mistaken version is withdrawn, '
         'never deleted, and documents keep using what they used.'],
     ['Full import', 'Excel with a name and a price column, and the maker\'s code when the list has one. Known '
@@ -175,8 +177,12 @@ final _content = <_B>[
     ['Review queue', 'Link a stopped row to a product, make a new product, or skip it with a reason.'],
     ['Buying policy', 'Supplier + brand + list, scope all, category or product, base and extra discount. '
         'Without a policy no discount is assumed and the cost is typed.'],
-    ['Selling policy', 'Brand + list + pricing type (B2C, B2B, Project), scope, discount, optional maximum discount '
-        'and minimum margin. The customer\'s own discount and the negotiation add on top: 21% + 1 point = 22%.'],
+    ['Customer category', 'Retail, wholesale, projects and contractors, engineers, and any the owner adds, each with '
+        'a usual discount. Every customer has one; a walk-in sale is retail. Not tied to a list version.'],
+    ['Special selling discount', 'Customer category + brand (or every brand), scope all, category or product, a '
+        'discount that replaces the usual one, optional maximum discount and minimum margin. The brand rule beats '
+        'the every-brand rule at the same scope. The customer\'s own discount and the negotiation add on top: '
+        '21% + 1 point = 22%.'],
   ], widths: [1.1, 3.6]),
   const _Page(),
   const _H('6. Selling'),
@@ -185,7 +191,8 @@ final _content = <_B>[
     'Type a code, name or barcode and press Enter; the quantity takes focus. Ctrl+S saves, Ctrl+P saves and prints.',
     'Each line starts at the approved list price with the policy and customer discount filled in. When several '
         'lists can price a product the cashier chooses one; with none, only an admin can type a price.',
-    'The invoice discount is split over the lines exactly, for profit and tax.',
+    'The invoice discount is typed as an amount or a percent (a switch beside it) and is split over the lines '
+        'exactly, for profit and tax. Purchases work the same way.',
     'Stock comes from sellable places, main warehouse first, or from the place chosen on the line.',
     'Before saving, a review shows everything about the price and, for the admin, cost and profit.',
   ]),

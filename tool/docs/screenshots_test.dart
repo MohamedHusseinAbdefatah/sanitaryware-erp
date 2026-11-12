@@ -32,6 +32,7 @@ import 'package:sanitaryware_erp/core/services/price_list_service.dart';
 import 'package:sanitaryware_erp/core/services/product_service.dart';
 import 'package:sanitaryware_erp/core/services/purchase_service.dart';
 import 'package:sanitaryware_erp/core/services/sales_service.dart';
+import 'package:sanitaryware_erp/core/services/selling_policy_service.dart';
 import 'package:sanitaryware_erp/core/services/settings_service.dart';
 
 import '../../test/support/fixture.dart';
@@ -105,6 +106,17 @@ Future<(Shop, SalesInvoice)> _shopWithData() async {
     openingBalance: 250000,
   ));
   await parties.saveSupplier(const SupplierInput(name: 'مورد'), id: shop.supplierId);
+
+  // Customer categories with their usual discounts, and one special discount.
+  final selling = SellingPolicyService(db);
+  for (final (id, name, bp) in const [(2, 'جملة', 1000), (3, 'مشروعات ومقاولون', 1500), (4, 'مهندسين', 1200)]) {
+    await selling.saveCategory(CustomerCategoryInput(name: name, discountBp: bp), id: id, user: shop.admin);
+  }
+  final brandId = (await db.select(db.brands).get()).first.id;
+  await selling.add(
+    SellingPolicyInput(customerCategoryId: 4, brandId: brandId, discountBp: 1500, maxDiscountBp: 2000, note: 'اتفاق المهندسين'),
+    user: shop.admin,
+  );
   final supplier = await parties.saveSupplier(const SupplierInput(name: 'الشركة المصرية للخلاطات', phone: '0223334455'));
 
   await PurchaseService(db).post(
@@ -270,6 +282,9 @@ void main() {
 
     await go(tester, '/price-lists');
     await shot(tester, '13_price_lists');
+    await tester.tap(find.text('خصومات البيع'));
+    await settle(tester);
+    await shot(tester, '16_selling_discounts');
 
     await go(tester, '/sales/new');
     await tester.enterText(find.byType(TextField).at(1), 'M1');

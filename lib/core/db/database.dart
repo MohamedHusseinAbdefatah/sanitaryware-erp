@@ -33,6 +33,7 @@ part 'database.g.dart';
   PriceLists,
   PriceListItems,
   BuyingPolicies,
+  CustomerCategories,
   SellingPolicies,
   Reservations,
   PurchaseOrders,
@@ -49,7 +50,30 @@ class AppDatabase extends _$AppDatabase {
   @override
   int get schemaVersion => latestSchemaVersion;
 
-  static const latestSchemaVersion = 12;
+  static const latestSchemaVersion = 13;
+
+  /// The categories every shop starts with. The first three are the old
+  /// price levels; discounts start at 0 until the owner sets them.
+  static const starterCategories = [
+    ('قطاعي', 'b2c', 'retail'),
+    ('جملة', 'b2b', 'wholesale'),
+    ('مشروعات ومقاولون', 'project', 'contractor'),
+    ('مهندسين', null, null),
+  ];
+
+  Future<void> _seedCustomerCategories() async {
+    final row = await customSelect('SELECT COUNT(*) AS c FROM customer_categories').getSingle();
+    if (row.read<int>('c') > 0) return;
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    for (var i = 0; i < starterCategories.length; i++) {
+      final (name, type, _) = starterCategories[i];
+      await customStatement(
+        'INSERT INTO customer_categories (id, name, discount_bp, legacy_type, is_active, created_at, updated_at) '
+        'VALUES (?, ?, 0, ?, 1, ?, ?)',
+        [i + 1, name, type, now, now],
+      );
+    }
+  }
 
   /// SQLite's own check of the file; false means the file is damaged.
   Future<bool> integrityOk() async {
@@ -345,11 +369,50 @@ class AppDatabase extends _$AppDatabase {
     }
   }
 
+  /// Schema 13: customer categories the owner names, and selling discounts by
+  /// category and brand that hold for every price list version. Each old
+  /// price level becomes its category; each old selling policy becomes a rule
+  /// for that category and brand, with the same discount and limits.
+  Future<void> _upgradeToV13(Migrator m) async {
+    if (!await _tableExists('customer_categories')) await m.createTable(customerCategories);
+    await _seedCustomerCategories();
+    await _addColumns(m, customers, [customers.categoryId]);
+    if (await _tableExists('customers')) {
+      for (var i = 0; i < 3; i++) {
+        await customStatement(
+          'UPDATE customers SET category_id = ? WHERE category_id IS NULL AND price_level = ?',
+          [i + 1, starterCategories[i].$3],
+        );
+      }
+      await customStatement('UPDATE customers SET category_id = 1 WHERE category_id IS NULL');
+    }
+    if (await _tableExists('selling_policies') && !await _columnExists('selling_policies', 'customer_category_id')) {
+      await customStatement('DROP INDEX IF EXISTS idx_selling_policies_list');
+      await customStatement('ALTER TABLE selling_policies RENAME TO selling_policies_v12');
+      await m.createTable(sellingPolicies);
+      await customStatement('''
+        INSERT INTO selling_policies (id, customer_category_id, brand_id, price_list_id, pricing_type, scope,
+          category_id, product_id, discount_bp, max_discount_bp, min_margin_bp, valid_from, valid_to,
+          is_active, note, created_at, updated_at)
+        SELECT id, CASE pricing_type WHEN 'b2b' THEN 2 WHEN 'project' THEN 3 ELSE 1 END, brand_id,
+          price_list_id, pricing_type, scope, category_id, product_id, discount_bp, max_discount_bp,
+          min_margin_bp, valid_from, valid_to, is_active, note, created_at, updated_at
+        FROM selling_policies_v12
+      ''');
+      await customStatement('DROP TABLE selling_policies_v12');
+    } else if (!await _tableExists('selling_policies')) {
+      await m.createTable(sellingPolicies);
+    }
+    await customStatement('CREATE INDEX IF NOT EXISTS idx_selling_policies_customer_category '
+        'ON selling_policies (customer_category_id)');
+  }
+
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) async {
           await m.createAll();
           await _seedMainLocation();
+          await _seedCustomerCategories();
         },
         onUpgrade: (m, from, to) async {
           if (from < 2) {
@@ -425,6 +488,7 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 11) await _upgradeToV11(m);
           if (from < 12) await _upgradeToV12(m);
+          if (from < 13) await _upgradeToV13(m);
         },
         beforeOpen: (details) async {
           // Make SQLite enforce references between tables.

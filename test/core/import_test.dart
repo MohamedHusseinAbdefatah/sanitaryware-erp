@@ -107,12 +107,12 @@ void main() {
     final preview = await imports.preview(ImportKind.customers, bytes);
     expect(preview.okCount, 2);
     expect(preview.rows[2].errors.single, contains('موجود'));
-    expect(preview.rows[3].errors.single, contains('فئة السعر'));
+    expect(preview.rows[3].errors.single, contains('فئة العميل'));
     await imports.import(preview, user: shop.admin);
     final all = await shop.db.select(shop.db.customers).get();
     final amal = all.firstWhere((c) => c.name.startsWith('شركة'));
     expect(amal.phone, '01001234567');
-    expect(amal.priceLevel, PriceLevel.contractor);
+    expect(amal.categoryId, 3, reason: 'مقاولين: the projects and contractors category');
     expect(amal.openingBalance, 250000);
     expect(amal.creditLimit, 1000000);
     expect(all.firstWhere((c) => c.name == 'أحمد علي').openingBalance, -15000);

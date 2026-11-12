@@ -50,7 +50,7 @@ const _fields = {
     _Field('address', ['العنوان', 'address']),
     _Field('opening', ['رصيد أول المدة', 'الرصيد']),
     _Field('creditLimit', ['حد الائتمان']),
-    _Field('priceLevel', ['فئة السعر']),
+    _Field('priceLevel', ['فئة العميل', 'فئة السعر', 'الفئة']),
   ],
   ImportKind.suppliers: [
     _Field('name', ['اسم المورد', 'الاسم', 'المورد', 'name'], required: true),
@@ -299,6 +299,8 @@ class ImportService {
 
   Future<void> _checkCustomers(List<ImportRow> rows) async {
     final existing = {for (final c in await db.select(db.customers).get()) foldForSearch(c.name)};
+    final categories = await (db.select(db.customerCategories)..where((c) => c.isActive.equals(true))).get();
+    final byName = {for (final c in categories) foldForSearch(c.name): c.id};
     final seen = <String>{};
     for (final row in rows) {
       final v = row.values;
@@ -307,13 +309,17 @@ class ImportService {
       final opening = _money(row, v['opening'], 'رصيد أول المدة', allowNegative: true);
       final limit = _money(row, v['creditLimit'], 'حد الائتمان');
       final levelText = foldForSearch(v['priceLevel'] ?? '');
-      final level = switch (levelText) {
-        '' || 'قطاعي' || 'retail' => PriceLevel.retail,
-        'جمله' || 'wholesale' => PriceLevel.wholesale,
-        'مقاولين' || 'مقاول' || 'contractor' => PriceLevel.contractor,
-        _ => null,
-      };
-      if (level == null) row.errors.add('فئة السعر "${v['priceLevel']}" غير معروفة (قطاعي، جملة، مقاولين)');
+      // The category by its name; the old level words still work.
+      final categoryId = byName[levelText] ??
+          switch (levelText) {
+            '' || 'retail' => 1,
+            'wholesale' => 2,
+            'مقاولين' || 'مقاول' || 'contractor' => 3,
+            _ => null,
+          };
+      if (categoryId == null) {
+        row.errors.add('فئة العميل "${v['priceLevel']}" غير معروفة (${categories.map((c) => c.name).join('، ')})');
+      }
       if (row.ok) {
         row.input = CustomerInput(
           name: name,
@@ -321,7 +327,7 @@ class ImportService {
           address: v['address'],
           openingBalance: opening,
           creditLimit: limit,
-          priceLevel: level!,
+          categoryId: categoryId,
         );
       }
     }

@@ -105,7 +105,9 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
   int _searchKey = 0; // bumped to clear the product search field
 
   int get _subtotal => _lines.fold(0, (s, l) => s + (l.total ?? 0));
-  int get _discount => moneyOrZero(_invoiceDiscount);
+  bool _discountPercent = false;
+  int get _discount =>
+      discountAmount(_invoiceDiscount.text, percent: _discountPercent, subtotal: _subtotal) ?? 0;
   int get _total => _subtotal - _discount;
   int get _paidValue => moneyOrZero(_paid);
 
@@ -415,7 +417,9 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                       if (_customer != null)
                         Padding(
                           padding: const EdgeInsetsDirectional.only(start: 8),
-                          child: Chip(label: Text(priceLevelLabel(_customer!.priceLevel))),
+                          child: Chip(
+                              label: Text(categoryNameOf(
+                                  _customer!, ref.watch(customerCategoriesProvider).valueOrNull ?? const []))),
                         ),
                     ],
                   ),
@@ -474,10 +478,16 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                   ),
                   AmountLabel(Strings.subtotal, _subtotal),
                   SizedBox(
-                    width: 140,
-                    child: MoneyField(
+                    width: 280,
+                    child: DiscountField(
                       controller: _invoiceDiscount,
                       label: Strings.invoiceDiscount,
+                      percent: _discountPercent,
+                      subtotal: _subtotal,
+                      onModeChanged: (v) {
+                        setState(() => _discountPercent = v);
+                        _changed();
+                      },
                       onChanged: (_) => _changed(),
                     ),
                   ),

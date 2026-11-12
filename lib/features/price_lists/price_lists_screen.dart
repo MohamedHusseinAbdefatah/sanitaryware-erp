@@ -25,6 +25,7 @@ import '../../core/widgets/report_view.dart';
 import 'list_type_field.dart';
 
 part 'pdf_import_dialog.dart';
+part 'selling_discounts_tab.dart';
 
 String _date(DateTime d) =>
     '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
@@ -66,14 +67,14 @@ class PriceListsScreen extends StatelessWidget {
             Tab(text: 'قوائم الأسعار'),
             Tab(text: 'قيد المراجعة'),
             Tab(text: 'سياسات الشراء'),
-            Tab(text: 'سياسات البيع'),
+            Tab(text: 'خصومات البيع'),
           ]),
           Expanded(
             child: TabBarView(children: [
               _VersionsTab(),
               _ReviewTab(),
               _BuyingTab(),
-              _SellingTab(),
+              _SellingDiscountsTab(),
             ]),
           ),
         ],
@@ -1021,7 +1022,7 @@ class _BuyingTabState extends ConsumerState<_BuyingTab> {
               FilledButton.icon(
                 onPressed: () async {
                   final added = await showDialog<bool>(
-                      context: context, builder: (_) => const _PolicyDialog(buying: true));
+                      context: context, builder: (_) => const _PolicyDialog());
                   if (added == true) _reload();
                 },
                 icon: const Icon(Icons.add),
@@ -1083,87 +1084,12 @@ class _BuyingTabState extends ConsumerState<_BuyingTab> {
   }
 }
 
-class _SellingTab extends ConsumerStatefulWidget {
-  const _SellingTab();
-
-  @override
-  ConsumerState<_SellingTab> createState() => _SellingTabState();
-}
-
-class _SellingTabState extends ConsumerState<_SellingTab> {
-  late Future<List<SellingPolicyRow>> _future = ref.read(sellingPolicyServiceProvider).rows();
-
-  void _reload() => setState(() => _future = ref.read(sellingPolicyServiceProvider).rows());
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              const Expanded(
-                child: Text('ماركة + قائمة + نوع التسعير، ثم النطاق: الصنف قبل التصنيف قبل الكل. لا تأثير لها على تكلفة الشراء.'),
-              ),
-              FilledButton.icon(
-                onPressed: () async {
-                  final added = await showDialog<bool>(
-                      context: context, builder: (_) => const _PolicyDialog(buying: false));
-                  if (added == true) _reload();
-                },
-                icon: const Icon(Icons.add),
-                label: const Text('سياسة بيع'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: FutureBuilder<List<SellingPolicyRow>>(
-              future: _future,
-              builder: (context, snap) {
-                if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-                final rows = snap.data!;
-                if (rows.isEmpty) return const Center(child: Text('لا توجد سياسات بيع.'));
-                return ListView(
-                  children: [
-                    for (final r in rows)
-                      ListTile(
-                        title: Text('${r.brandName} · ${r.listLabel} · ${PricingType.label(r.policy.pricingType)}'),
-                        subtitle: Text('${PolicyScope.label(r.policy.scope)}'
-                            '${r.targetName.isEmpty ? '' : ' — ${r.targetName}'} · خصم ${_percent(r.policy.discountBp)}'
-                            '${r.policy.maxDiscountBp == null ? '' : ' · أقصى خصم ${_percent(r.policy.maxDiscountBp!)}'}'
-                            '${r.policy.minMarginBp == null ? '' : ' · أدنى هامش ${_percent(r.policy.minMarginBp!)}'}'),
-                        trailing: Switch(
-                          value: r.policy.isActive,
-                          onChanged: (v) async {
-                            final ok = await runGuarded(context, () async {
-                              await ref
-                                  .read(sellingPolicyServiceProvider)
-                                  .setActive(r.policy.id, v, user: ref.read(currentUserProvider)!);
-                              return true;
-                            });
-                            if (ok == true) _reload();
-                          },
-                        ),
-                      ),
-                  ],
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Adds a buying policy or a selling policy. They share a form but nothing else.
+/// Adds a buying policy. (Selling discounts have their own form, by customer
+/// category.)
 class _PolicyDialog extends ConsumerStatefulWidget {
-  const _PolicyDialog({required this.buying});
+  const _PolicyDialog();
 
-  final bool buying;
+  bool get buying => true;
 
   @override
   ConsumerState<_PolicyDialog> createState() => _PolicyDialogState();
@@ -1173,7 +1099,6 @@ class _PolicyDialogState extends ConsumerState<_PolicyDialog> {
   int? _supplierId, _brandId, _listId, _categoryId;
   ProductRow? _product;
   String _scope = PolicyScope.all;
-  String _type = PricingType.b2c;
   final _a = TextEditingController();
   final _b = TextEditingController();
   final _c = TextEditingController();
@@ -1201,38 +1126,20 @@ class _PolicyDialogState extends ConsumerState<_PolicyDialog> {
       return;
     }
     final ok = await runGuarded(context, () async {
-      if (widget.buying) {
-        await ref.read(buyingPolicyServiceProvider).add(
-              BuyingPolicyInput(
-                supplierId: _supplierId!,
-                brandId: _brandId!,
-                priceListId: _listId!,
-                scope: _scope,
-                categoryId: _categoryId,
-                productId: _product?.product.id,
-                baseDiscountBp: a,
-                extraDiscountBp: b ?? 0,
-                note: _note.text,
-              ),
-              user: user,
-            );
-      } else {
-        await ref.read(sellingPolicyServiceProvider).add(
-              SellingPolicyInput(
-                brandId: _brandId!,
-                priceListId: _listId!,
-                pricingType: _type,
-                scope: _scope,
-                categoryId: _categoryId,
-                productId: _product?.product.id,
-                discountBp: a,
-                maxDiscountBp: b,
-                minMarginBp: c,
-                note: _note.text,
-              ),
-              user: user,
-            );
-      }
+      await ref.read(buyingPolicyServiceProvider).add(
+            BuyingPolicyInput(
+              supplierId: _supplierId!,
+              brandId: _brandId!,
+              priceListId: _listId!,
+              scope: _scope,
+              categoryId: _categoryId,
+              productId: _product?.product.id,
+              baseDiscountBp: a,
+              extraDiscountBp: b ?? 0,
+              note: _note.text,
+            ),
+            user: user,
+          );
       return true;
     });
     if (ok == true && mounted) Navigator.pop(context, true);
@@ -1287,18 +1194,6 @@ class _PolicyDialogState extends ConsumerState<_PolicyDialog> {
                 ],
                 onChanged: (v) => setState(() => _listId = v),
               ),
-              if (!widget.buying) ...[
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  isExpanded: true,
-                  initialValue: _type,
-                  decoration: const InputDecoration(labelText: 'نوع التسعير'),
-                  items: [
-                    for (final t in PricingType.all) DropdownMenuItem(value: t, child: Text(PricingType.label(t))),
-                  ],
-                  onChanged: (v) => setState(() => _type = v ?? PricingType.b2c),
-                ),
-              ],
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 isExpanded: true,

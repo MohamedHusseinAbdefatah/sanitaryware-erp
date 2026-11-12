@@ -211,15 +211,30 @@ class BuyingPolicies extends Table with Timestamps {
   TextColumn get note => text().nullable()();
 }
 
-// What we give customers (blueprint 3.4): Brand + Price List + Pricing Type,
-// then scope. A product rule beats a category rule, which beats an "all" rule.
-@TableIndex(name: 'idx_selling_policies_list', columns: {#priceListId})
+// A group of customers the shop prices alike (schema 13): retail, wholesale,
+// projects, engineers... The owner names them. Each has a usual discount.
+class CustomerCategories extends Table with Timestamps {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get name => text().unique()();
+  IntColumn get discountBp => integer().withDefault(const Constant(0))();
+  // The old fixed pricing type ('b2c', 'b2b', 'project') for the three
+  // categories made from the old price levels; lists limited to one use it.
+  TextColumn get legacyType => text().nullable()();
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+}
+
+// A special selling discount (schema 13): customer category + brand (null =
+// every brand), then scope. A product rule beats a category rule, which beats
+// an "all" rule. It is not tied to a price list version, so it holds for
+// every new list. Before schema 13 a rule was tied to one version and one of
+// three pricing types; those two columns are kept for the record only.
+@TableIndex(name: 'idx_selling_policies_customer_category', columns: {#customerCategoryId})
 class SellingPolicies extends Table with Timestamps {
   IntColumn get id => integer().autoIncrement()();
-  IntColumn get brandId => integer().references(Brands, #id)();
-  IntColumn get priceListId => integer().references(PriceLists, #id)();
-  // 'b2c', 'b2b' or 'project'
-  TextColumn get pricingType => text()();
+  IntColumn get customerCategoryId => integer().references(CustomerCategories, #id)();
+  IntColumn get brandId => integer().nullable().references(Brands, #id)();
+  IntColumn get priceListId => integer().nullable().references(PriceLists, #id)();
+  TextColumn get pricingType => text().nullable()();
   // 'all', 'category' or 'product'
   TextColumn get scope => text()();
   IntColumn get categoryId => integer().nullable().references(Categories, #id)();
@@ -379,8 +394,10 @@ class Customers extends Table with Timestamps {
   TextColumn get address => text().nullable()();
   IntColumn get openingBalance => integer().withDefault(const Constant(0))();
   IntColumn get creditLimit => integer().withDefault(const Constant(0))();
-  // 'retail', 'wholesale' or 'contractor'
+  // Before schema 13: 'retail', 'wholesale' or 'contractor'. Now the
+  // customer's category says how they are priced; this stays for the record.
   TextColumn get priceLevel => text().withDefault(const Constant('retail'))();
+  IntColumn get categoryId => integer().nullable().references(CustomerCategories, #id)();
   /// Customer's usual discount in basis points (1000 = 10%); 0 = none.
   IntColumn get discountBp => integer().withDefault(const Constant(0))();
   TextColumn get notes => text().nullable()();

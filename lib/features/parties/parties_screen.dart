@@ -8,16 +8,14 @@ import '../../core/l10n/strings.dart';
 import '../../core/money.dart';
 import '../../core/providers.dart';
 import '../../core/services/doc_types.dart';
-import '../../core/services/product_service.dart';
+import '../../core/services/selling_policy_service.dart';
 import '../../core/widgets/data_list.dart';
 import 'party_form_dialog.dart';
 import 'statement_dialog.dart';
 
-String priceLevelLabel(String level) => switch (level) {
-      PriceLevel.wholesale => 'جملة (B2B)',
-      PriceLevel.contractor => 'مشروعات ومقاولون (Project)',
-      _ => 'قطاعي (B2C)',
-    };
+/// A customer's category name, from the list of categories.
+String categoryNameOf(Customer c, List<CustomerCategory> categories) =>
+    categories.where((k) => k.id == (c.categoryId ?? walkInCategoryId)).firstOrNull?.name ?? '';
 
 class CustomersScreen extends ConsumerStatefulWidget {
   const CustomersScreen({super.key});
@@ -34,6 +32,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     final isAdmin = ref.watch(currentUserProvider)?.isAdmin ?? false;
     final rows = ref.watch(_customersProvider(_search));
     final customerBalances = ref.watch(_customerBalancesProvider).valueOrNull ?? const <int, int>{};
+    final categories = ref.watch(customerCategoriesProvider).valueOrNull ?? const <CustomerCategory>[];
     return _PartyPage(
       title: Strings.customers,
       newLabel: Strings.newCustomer,
@@ -54,7 +53,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
             DataListColumn(Strings.name, flex: 3, (c) => _NameCell(c.name, c.isActive)),
             DataListColumn(Strings.phone, flex: 2, (c) => Text(c.phone ?? '', textDirection: TextDirection.ltr)),
             DataListColumn(Strings.address, flex: 3, (c) => Text(c.address ?? '')),
-            DataListColumn(Strings.priceLevel, numeric: true, (c) => Text(priceLevelLabel(c.priceLevel))),
+            DataListColumn('الفئة', numeric: true, (c) => Text(categoryNameOf(c, categories))),
             if (isAdmin)
               DataListColumn(Strings.creditLimit, numeric: true,
                   (c) => Text(c.creditLimit == 0 ? '—' : formatMoney(c.creditLimit))),

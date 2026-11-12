@@ -3649,6 +3649,460 @@ class StockMovementsCompanion extends UpdateCompanion<StockMovement> {
   }
 }
 
+class $CustomerCategoriesTable extends CustomerCategories
+    with TableInfo<$CustomerCategoriesTable, CustomerCategory> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CustomerCategoriesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways('UNIQUE'),
+  );
+  static const VerificationMeta _discountBpMeta = const VerificationMeta(
+    'discountBp',
+  );
+  @override
+  late final GeneratedColumn<int> discountBp = GeneratedColumn<int>(
+    'discount_bp',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _legacyTypeMeta = const VerificationMeta(
+    'legacyType',
+  );
+  @override
+  late final GeneratedColumn<String> legacyType = GeneratedColumn<String>(
+    'legacy_type',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _isActiveMeta = const VerificationMeta(
+    'isActive',
+  );
+  @override
+  late final GeneratedColumn<bool> isActive = GeneratedColumn<bool>(
+    'is_active',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_active" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    createdAt,
+    updatedAt,
+    id,
+    name,
+    discountBp,
+    legacyType,
+    isActive,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'customer_categories';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CustomerCategory> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('discount_bp')) {
+      context.handle(
+        _discountBpMeta,
+        discountBp.isAcceptableOrUnknown(data['discount_bp']!, _discountBpMeta),
+      );
+    }
+    if (data.containsKey('legacy_type')) {
+      context.handle(
+        _legacyTypeMeta,
+        legacyType.isAcceptableOrUnknown(data['legacy_type']!, _legacyTypeMeta),
+      );
+    }
+    if (data.containsKey('is_active')) {
+      context.handle(
+        _isActiveMeta,
+        isActive.isAcceptableOrUnknown(data['is_active']!, _isActiveMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  CustomerCategory map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CustomerCategory(
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      discountBp: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}discount_bp'],
+      )!,
+      legacyType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}legacy_type'],
+      ),
+      isActive: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_active'],
+      )!,
+    );
+  }
+
+  @override
+  $CustomerCategoriesTable createAlias(String alias) {
+    return $CustomerCategoriesTable(attachedDatabase, alias);
+  }
+}
+
+class CustomerCategory extends DataClass
+    implements Insertable<CustomerCategory> {
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final int id;
+  final String name;
+  final int discountBp;
+  final String? legacyType;
+  final bool isActive;
+  const CustomerCategory({
+    required this.createdAt,
+    required this.updatedAt,
+    required this.id,
+    required this.name,
+    required this.discountBp,
+    this.legacyType,
+    required this.isActive,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    map['id'] = Variable<int>(id);
+    map['name'] = Variable<String>(name);
+    map['discount_bp'] = Variable<int>(discountBp);
+    if (!nullToAbsent || legacyType != null) {
+      map['legacy_type'] = Variable<String>(legacyType);
+    }
+    map['is_active'] = Variable<bool>(isActive);
+    return map;
+  }
+
+  CustomerCategoriesCompanion toCompanion(bool nullToAbsent) {
+    return CustomerCategoriesCompanion(
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+      id: Value(id),
+      name: Value(name),
+      discountBp: Value(discountBp),
+      legacyType: legacyType == null && nullToAbsent
+          ? const Value.absent()
+          : Value(legacyType),
+      isActive: Value(isActive),
+    );
+  }
+
+  factory CustomerCategory.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CustomerCategory(
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      id: serializer.fromJson<int>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      discountBp: serializer.fromJson<int>(json['discountBp']),
+      legacyType: serializer.fromJson<String?>(json['legacyType']),
+      isActive: serializer.fromJson<bool>(json['isActive']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'id': serializer.toJson<int>(id),
+      'name': serializer.toJson<String>(name),
+      'discountBp': serializer.toJson<int>(discountBp),
+      'legacyType': serializer.toJson<String?>(legacyType),
+      'isActive': serializer.toJson<bool>(isActive),
+    };
+  }
+
+  CustomerCategory copyWith({
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    int? id,
+    String? name,
+    int? discountBp,
+    Value<String?> legacyType = const Value.absent(),
+    bool? isActive,
+  }) => CustomerCategory(
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    id: id ?? this.id,
+    name: name ?? this.name,
+    discountBp: discountBp ?? this.discountBp,
+    legacyType: legacyType.present ? legacyType.value : this.legacyType,
+    isActive: isActive ?? this.isActive,
+  );
+  CustomerCategory copyWithCompanion(CustomerCategoriesCompanion data) {
+    return CustomerCategory(
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      discountBp: data.discountBp.present
+          ? data.discountBp.value
+          : this.discountBp,
+      legacyType: data.legacyType.present
+          ? data.legacyType.value
+          : this.legacyType,
+      isActive: data.isActive.present ? data.isActive.value : this.isActive,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CustomerCategory(')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('discountBp: $discountBp, ')
+          ..write('legacyType: $legacyType, ')
+          ..write('isActive: $isActive')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    createdAt,
+    updatedAt,
+    id,
+    name,
+    discountBp,
+    legacyType,
+    isActive,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CustomerCategory &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.discountBp == this.discountBp &&
+          other.legacyType == this.legacyType &&
+          other.isActive == this.isActive);
+}
+
+class CustomerCategoriesCompanion extends UpdateCompanion<CustomerCategory> {
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<int> id;
+  final Value<String> name;
+  final Value<int> discountBp;
+  final Value<String?> legacyType;
+  final Value<bool> isActive;
+  const CustomerCategoriesCompanion({
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.discountBp = const Value.absent(),
+    this.legacyType = const Value.absent(),
+    this.isActive = const Value.absent(),
+  });
+  CustomerCategoriesCompanion.insert({
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.id = const Value.absent(),
+    required String name,
+    this.discountBp = const Value.absent(),
+    this.legacyType = const Value.absent(),
+    this.isActive = const Value.absent(),
+  }) : name = Value(name);
+  static Insertable<CustomerCategory> custom({
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? id,
+    Expression<String>? name,
+    Expression<int>? discountBp,
+    Expression<String>? legacyType,
+    Expression<bool>? isActive,
+  }) {
+    return RawValuesInsertable({
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (discountBp != null) 'discount_bp': discountBp,
+      if (legacyType != null) 'legacy_type': legacyType,
+      if (isActive != null) 'is_active': isActive,
+    });
+  }
+
+  CustomerCategoriesCompanion copyWith({
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<int>? id,
+    Value<String>? name,
+    Value<int>? discountBp,
+    Value<String?>? legacyType,
+    Value<bool>? isActive,
+  }) {
+    return CustomerCategoriesCompanion(
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      id: id ?? this.id,
+      name: name ?? this.name,
+      discountBp: discountBp ?? this.discountBp,
+      legacyType: legacyType ?? this.legacyType,
+      isActive: isActive ?? this.isActive,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (discountBp.present) {
+      map['discount_bp'] = Variable<int>(discountBp.value);
+    }
+    if (legacyType.present) {
+      map['legacy_type'] = Variable<String>(legacyType.value);
+    }
+    if (isActive.present) {
+      map['is_active'] = Variable<bool>(isActive.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CustomerCategoriesCompanion(')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('discountBp: $discountBp, ')
+          ..write('legacyType: $legacyType, ')
+          ..write('isActive: $isActive')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $CustomersTable extends Customers
     with TableInfo<$CustomersTable, Customer> {
   @override
@@ -3757,6 +4211,20 @@ class $CustomersTable extends Customers
     requiredDuringInsert: false,
     defaultValue: const Constant('retail'),
   );
+  static const VerificationMeta _categoryIdMeta = const VerificationMeta(
+    'categoryId',
+  );
+  @override
+  late final GeneratedColumn<int> categoryId = GeneratedColumn<int>(
+    'category_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES customer_categories (id)',
+    ),
+  );
   static const VerificationMeta _discountBpMeta = const VerificationMeta(
     'discountBp',
   );
@@ -3804,6 +4272,7 @@ class $CustomersTable extends Customers
     openingBalance,
     creditLimit,
     priceLevel,
+    categoryId,
     discountBp,
     notes,
     isActive,
@@ -3879,6 +4348,12 @@ class $CustomersTable extends Customers
         priceLevel.isAcceptableOrUnknown(data['price_level']!, _priceLevelMeta),
       );
     }
+    if (data.containsKey('category_id')) {
+      context.handle(
+        _categoryIdMeta,
+        categoryId.isAcceptableOrUnknown(data['category_id']!, _categoryIdMeta),
+      );
+    }
     if (data.containsKey('discount_bp')) {
       context.handle(
         _discountBpMeta,
@@ -3942,6 +4417,10 @@ class $CustomersTable extends Customers
         DriftSqlType.string,
         data['${effectivePrefix}price_level'],
       )!,
+      categoryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}category_id'],
+      ),
       discountBp: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}discount_bp'],
@@ -3973,6 +4452,7 @@ class Customer extends DataClass implements Insertable<Customer> {
   final int openingBalance;
   final int creditLimit;
   final String priceLevel;
+  final int? categoryId;
 
   /// Customer's usual discount in basis points (1000 = 10%); 0 = none.
   final int discountBp;
@@ -3988,6 +4468,7 @@ class Customer extends DataClass implements Insertable<Customer> {
     required this.openingBalance,
     required this.creditLimit,
     required this.priceLevel,
+    this.categoryId,
     required this.discountBp,
     this.notes,
     required this.isActive,
@@ -4008,6 +4489,9 @@ class Customer extends DataClass implements Insertable<Customer> {
     map['opening_balance'] = Variable<int>(openingBalance);
     map['credit_limit'] = Variable<int>(creditLimit);
     map['price_level'] = Variable<String>(priceLevel);
+    if (!nullToAbsent || categoryId != null) {
+      map['category_id'] = Variable<int>(categoryId);
+    }
     map['discount_bp'] = Variable<int>(discountBp);
     if (!nullToAbsent || notes != null) {
       map['notes'] = Variable<String>(notes);
@@ -4031,6 +4515,9 @@ class Customer extends DataClass implements Insertable<Customer> {
       openingBalance: Value(openingBalance),
       creditLimit: Value(creditLimit),
       priceLevel: Value(priceLevel),
+      categoryId: categoryId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(categoryId),
       discountBp: Value(discountBp),
       notes: notes == null && nullToAbsent
           ? const Value.absent()
@@ -4054,6 +4541,7 @@ class Customer extends DataClass implements Insertable<Customer> {
       openingBalance: serializer.fromJson<int>(json['openingBalance']),
       creditLimit: serializer.fromJson<int>(json['creditLimit']),
       priceLevel: serializer.fromJson<String>(json['priceLevel']),
+      categoryId: serializer.fromJson<int?>(json['categoryId']),
       discountBp: serializer.fromJson<int>(json['discountBp']),
       notes: serializer.fromJson<String?>(json['notes']),
       isActive: serializer.fromJson<bool>(json['isActive']),
@@ -4072,6 +4560,7 @@ class Customer extends DataClass implements Insertable<Customer> {
       'openingBalance': serializer.toJson<int>(openingBalance),
       'creditLimit': serializer.toJson<int>(creditLimit),
       'priceLevel': serializer.toJson<String>(priceLevel),
+      'categoryId': serializer.toJson<int?>(categoryId),
       'discountBp': serializer.toJson<int>(discountBp),
       'notes': serializer.toJson<String?>(notes),
       'isActive': serializer.toJson<bool>(isActive),
@@ -4088,6 +4577,7 @@ class Customer extends DataClass implements Insertable<Customer> {
     int? openingBalance,
     int? creditLimit,
     String? priceLevel,
+    Value<int?> categoryId = const Value.absent(),
     int? discountBp,
     Value<String?> notes = const Value.absent(),
     bool? isActive,
@@ -4101,6 +4591,7 @@ class Customer extends DataClass implements Insertable<Customer> {
     openingBalance: openingBalance ?? this.openingBalance,
     creditLimit: creditLimit ?? this.creditLimit,
     priceLevel: priceLevel ?? this.priceLevel,
+    categoryId: categoryId.present ? categoryId.value : this.categoryId,
     discountBp: discountBp ?? this.discountBp,
     notes: notes.present ? notes.value : this.notes,
     isActive: isActive ?? this.isActive,
@@ -4122,6 +4613,9 @@ class Customer extends DataClass implements Insertable<Customer> {
       priceLevel: data.priceLevel.present
           ? data.priceLevel.value
           : this.priceLevel,
+      categoryId: data.categoryId.present
+          ? data.categoryId.value
+          : this.categoryId,
       discountBp: data.discountBp.present
           ? data.discountBp.value
           : this.discountBp,
@@ -4142,6 +4636,7 @@ class Customer extends DataClass implements Insertable<Customer> {
           ..write('openingBalance: $openingBalance, ')
           ..write('creditLimit: $creditLimit, ')
           ..write('priceLevel: $priceLevel, ')
+          ..write('categoryId: $categoryId, ')
           ..write('discountBp: $discountBp, ')
           ..write('notes: $notes, ')
           ..write('isActive: $isActive')
@@ -4160,6 +4655,7 @@ class Customer extends DataClass implements Insertable<Customer> {
     openingBalance,
     creditLimit,
     priceLevel,
+    categoryId,
     discountBp,
     notes,
     isActive,
@@ -4177,6 +4673,7 @@ class Customer extends DataClass implements Insertable<Customer> {
           other.openingBalance == this.openingBalance &&
           other.creditLimit == this.creditLimit &&
           other.priceLevel == this.priceLevel &&
+          other.categoryId == this.categoryId &&
           other.discountBp == this.discountBp &&
           other.notes == this.notes &&
           other.isActive == this.isActive);
@@ -4192,6 +4689,7 @@ class CustomersCompanion extends UpdateCompanion<Customer> {
   final Value<int> openingBalance;
   final Value<int> creditLimit;
   final Value<String> priceLevel;
+  final Value<int?> categoryId;
   final Value<int> discountBp;
   final Value<String?> notes;
   final Value<bool> isActive;
@@ -4205,6 +4703,7 @@ class CustomersCompanion extends UpdateCompanion<Customer> {
     this.openingBalance = const Value.absent(),
     this.creditLimit = const Value.absent(),
     this.priceLevel = const Value.absent(),
+    this.categoryId = const Value.absent(),
     this.discountBp = const Value.absent(),
     this.notes = const Value.absent(),
     this.isActive = const Value.absent(),
@@ -4219,6 +4718,7 @@ class CustomersCompanion extends UpdateCompanion<Customer> {
     this.openingBalance = const Value.absent(),
     this.creditLimit = const Value.absent(),
     this.priceLevel = const Value.absent(),
+    this.categoryId = const Value.absent(),
     this.discountBp = const Value.absent(),
     this.notes = const Value.absent(),
     this.isActive = const Value.absent(),
@@ -4233,6 +4733,7 @@ class CustomersCompanion extends UpdateCompanion<Customer> {
     Expression<int>? openingBalance,
     Expression<int>? creditLimit,
     Expression<String>? priceLevel,
+    Expression<int>? categoryId,
     Expression<int>? discountBp,
     Expression<String>? notes,
     Expression<bool>? isActive,
@@ -4247,6 +4748,7 @@ class CustomersCompanion extends UpdateCompanion<Customer> {
       if (openingBalance != null) 'opening_balance': openingBalance,
       if (creditLimit != null) 'credit_limit': creditLimit,
       if (priceLevel != null) 'price_level': priceLevel,
+      if (categoryId != null) 'category_id': categoryId,
       if (discountBp != null) 'discount_bp': discountBp,
       if (notes != null) 'notes': notes,
       if (isActive != null) 'is_active': isActive,
@@ -4263,6 +4765,7 @@ class CustomersCompanion extends UpdateCompanion<Customer> {
     Value<int>? openingBalance,
     Value<int>? creditLimit,
     Value<String>? priceLevel,
+    Value<int?>? categoryId,
     Value<int>? discountBp,
     Value<String?>? notes,
     Value<bool>? isActive,
@@ -4277,6 +4780,7 @@ class CustomersCompanion extends UpdateCompanion<Customer> {
       openingBalance: openingBalance ?? this.openingBalance,
       creditLimit: creditLimit ?? this.creditLimit,
       priceLevel: priceLevel ?? this.priceLevel,
+      categoryId: categoryId ?? this.categoryId,
       discountBp: discountBp ?? this.discountBp,
       notes: notes ?? this.notes,
       isActive: isActive ?? this.isActive,
@@ -4313,6 +4817,9 @@ class CustomersCompanion extends UpdateCompanion<Customer> {
     if (priceLevel.present) {
       map['price_level'] = Variable<String>(priceLevel.value);
     }
+    if (categoryId.present) {
+      map['category_id'] = Variable<int>(categoryId.value);
+    }
     if (discountBp.present) {
       map['discount_bp'] = Variable<int>(discountBp.value);
     }
@@ -4337,6 +4844,7 @@ class CustomersCompanion extends UpdateCompanion<Customer> {
           ..write('openingBalance: $openingBalance, ')
           ..write('creditLimit: $creditLimit, ')
           ..write('priceLevel: $priceLevel, ')
+          ..write('categoryId: $categoryId, ')
           ..write('discountBp: $discountBp, ')
           ..write('notes: $notes, ')
           ..write('isActive: $isActive')
@@ -16343,6 +16851,19 @@ class $SellingPoliciesTable extends SellingPolicies
       'PRIMARY KEY AUTOINCREMENT',
     ),
   );
+  static const VerificationMeta _customerCategoryIdMeta =
+      const VerificationMeta('customerCategoryId');
+  @override
+  late final GeneratedColumn<int> customerCategoryId = GeneratedColumn<int>(
+    'customer_category_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES customer_categories (id)',
+    ),
+  );
   static const VerificationMeta _brandIdMeta = const VerificationMeta(
     'brandId',
   );
@@ -16350,9 +16871,9 @@ class $SellingPoliciesTable extends SellingPolicies
   late final GeneratedColumn<int> brandId = GeneratedColumn<int>(
     'brand_id',
     aliasedName,
-    false,
+    true,
     type: DriftSqlType.int,
-    requiredDuringInsert: true,
+    requiredDuringInsert: false,
     defaultConstraints: GeneratedColumn.constraintIsAlways(
       'REFERENCES brands (id)',
     ),
@@ -16364,9 +16885,9 @@ class $SellingPoliciesTable extends SellingPolicies
   late final GeneratedColumn<int> priceListId = GeneratedColumn<int>(
     'price_list_id',
     aliasedName,
-    false,
+    true,
     type: DriftSqlType.int,
-    requiredDuringInsert: true,
+    requiredDuringInsert: false,
     defaultConstraints: GeneratedColumn.constraintIsAlways(
       'REFERENCES price_lists (id)',
     ),
@@ -16378,9 +16899,9 @@ class $SellingPoliciesTable extends SellingPolicies
   late final GeneratedColumn<String> pricingType = GeneratedColumn<String>(
     'pricing_type',
     aliasedName,
-    false,
+    true,
     type: DriftSqlType.string,
-    requiredDuringInsert: true,
+    requiredDuringInsert: false,
   );
   static const VerificationMeta _scopeMeta = const VerificationMeta('scope');
   @override
@@ -16504,6 +17025,7 @@ class $SellingPoliciesTable extends SellingPolicies
     createdAt,
     updatedAt,
     id,
+    customerCategoryId,
     brandId,
     priceListId,
     pricingType,
@@ -16545,13 +17067,22 @@ class $SellingPoliciesTable extends SellingPolicies
     if (data.containsKey('id')) {
       context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
     }
+    if (data.containsKey('customer_category_id')) {
+      context.handle(
+        _customerCategoryIdMeta,
+        customerCategoryId.isAcceptableOrUnknown(
+          data['customer_category_id']!,
+          _customerCategoryIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_customerCategoryIdMeta);
+    }
     if (data.containsKey('brand_id')) {
       context.handle(
         _brandIdMeta,
         brandId.isAcceptableOrUnknown(data['brand_id']!, _brandIdMeta),
       );
-    } else if (isInserting) {
-      context.missing(_brandIdMeta);
     }
     if (data.containsKey('price_list_id')) {
       context.handle(
@@ -16561,8 +17092,6 @@ class $SellingPoliciesTable extends SellingPolicies
           _priceListIdMeta,
         ),
       );
-    } else if (isInserting) {
-      context.missing(_priceListIdMeta);
     }
     if (data.containsKey('pricing_type')) {
       context.handle(
@@ -16572,8 +17101,6 @@ class $SellingPoliciesTable extends SellingPolicies
           _pricingTypeMeta,
         ),
       );
-    } else if (isInserting) {
-      context.missing(_pricingTypeMeta);
     }
     if (data.containsKey('scope')) {
       context.handle(
@@ -16664,18 +17191,22 @@ class $SellingPoliciesTable extends SellingPolicies
         DriftSqlType.int,
         data['${effectivePrefix}id'],
       )!,
+      customerCategoryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}customer_category_id'],
+      )!,
       brandId: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}brand_id'],
-      )!,
+      ),
       priceListId: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}price_list_id'],
-      )!,
+      ),
       pricingType: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}pricing_type'],
-      )!,
+      ),
       scope: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}scope'],
@@ -16729,9 +17260,10 @@ class SellingPolicy extends DataClass implements Insertable<SellingPolicy> {
   final DateTime createdAt;
   final DateTime updatedAt;
   final int id;
-  final int brandId;
-  final int priceListId;
-  final String pricingType;
+  final int customerCategoryId;
+  final int? brandId;
+  final int? priceListId;
+  final String? pricingType;
   final String scope;
   final int? categoryId;
   final int? productId;
@@ -16746,9 +17278,10 @@ class SellingPolicy extends DataClass implements Insertable<SellingPolicy> {
     required this.createdAt,
     required this.updatedAt,
     required this.id,
-    required this.brandId,
-    required this.priceListId,
-    required this.pricingType,
+    required this.customerCategoryId,
+    this.brandId,
+    this.priceListId,
+    this.pricingType,
     required this.scope,
     this.categoryId,
     this.productId,
@@ -16766,9 +17299,16 @@ class SellingPolicy extends DataClass implements Insertable<SellingPolicy> {
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     map['id'] = Variable<int>(id);
-    map['brand_id'] = Variable<int>(brandId);
-    map['price_list_id'] = Variable<int>(priceListId);
-    map['pricing_type'] = Variable<String>(pricingType);
+    map['customer_category_id'] = Variable<int>(customerCategoryId);
+    if (!nullToAbsent || brandId != null) {
+      map['brand_id'] = Variable<int>(brandId);
+    }
+    if (!nullToAbsent || priceListId != null) {
+      map['price_list_id'] = Variable<int>(priceListId);
+    }
+    if (!nullToAbsent || pricingType != null) {
+      map['pricing_type'] = Variable<String>(pricingType);
+    }
     map['scope'] = Variable<String>(scope);
     if (!nullToAbsent || categoryId != null) {
       map['category_id'] = Variable<int>(categoryId);
@@ -16801,9 +17341,16 @@ class SellingPolicy extends DataClass implements Insertable<SellingPolicy> {
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
       id: Value(id),
-      brandId: Value(brandId),
-      priceListId: Value(priceListId),
-      pricingType: Value(pricingType),
+      customerCategoryId: Value(customerCategoryId),
+      brandId: brandId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(brandId),
+      priceListId: priceListId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(priceListId),
+      pricingType: pricingType == null && nullToAbsent
+          ? const Value.absent()
+          : Value(pricingType),
       scope: Value(scope),
       categoryId: categoryId == null && nullToAbsent
           ? const Value.absent()
@@ -16838,9 +17385,10 @@ class SellingPolicy extends DataClass implements Insertable<SellingPolicy> {
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       id: serializer.fromJson<int>(json['id']),
-      brandId: serializer.fromJson<int>(json['brandId']),
-      priceListId: serializer.fromJson<int>(json['priceListId']),
-      pricingType: serializer.fromJson<String>(json['pricingType']),
+      customerCategoryId: serializer.fromJson<int>(json['customerCategoryId']),
+      brandId: serializer.fromJson<int?>(json['brandId']),
+      priceListId: serializer.fromJson<int?>(json['priceListId']),
+      pricingType: serializer.fromJson<String?>(json['pricingType']),
       scope: serializer.fromJson<String>(json['scope']),
       categoryId: serializer.fromJson<int?>(json['categoryId']),
       productId: serializer.fromJson<int?>(json['productId']),
@@ -16860,9 +17408,10 @@ class SellingPolicy extends DataClass implements Insertable<SellingPolicy> {
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'id': serializer.toJson<int>(id),
-      'brandId': serializer.toJson<int>(brandId),
-      'priceListId': serializer.toJson<int>(priceListId),
-      'pricingType': serializer.toJson<String>(pricingType),
+      'customerCategoryId': serializer.toJson<int>(customerCategoryId),
+      'brandId': serializer.toJson<int?>(brandId),
+      'priceListId': serializer.toJson<int?>(priceListId),
+      'pricingType': serializer.toJson<String?>(pricingType),
       'scope': serializer.toJson<String>(scope),
       'categoryId': serializer.toJson<int?>(categoryId),
       'productId': serializer.toJson<int?>(productId),
@@ -16880,9 +17429,10 @@ class SellingPolicy extends DataClass implements Insertable<SellingPolicy> {
     DateTime? createdAt,
     DateTime? updatedAt,
     int? id,
-    int? brandId,
-    int? priceListId,
-    String? pricingType,
+    int? customerCategoryId,
+    Value<int?> brandId = const Value.absent(),
+    Value<int?> priceListId = const Value.absent(),
+    Value<String?> pricingType = const Value.absent(),
     String? scope,
     Value<int?> categoryId = const Value.absent(),
     Value<int?> productId = const Value.absent(),
@@ -16897,9 +17447,10 @@ class SellingPolicy extends DataClass implements Insertable<SellingPolicy> {
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     id: id ?? this.id,
-    brandId: brandId ?? this.brandId,
-    priceListId: priceListId ?? this.priceListId,
-    pricingType: pricingType ?? this.pricingType,
+    customerCategoryId: customerCategoryId ?? this.customerCategoryId,
+    brandId: brandId.present ? brandId.value : this.brandId,
+    priceListId: priceListId.present ? priceListId.value : this.priceListId,
+    pricingType: pricingType.present ? pricingType.value : this.pricingType,
     scope: scope ?? this.scope,
     categoryId: categoryId.present ? categoryId.value : this.categoryId,
     productId: productId.present ? productId.value : this.productId,
@@ -16918,6 +17469,9 @@ class SellingPolicy extends DataClass implements Insertable<SellingPolicy> {
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       id: data.id.present ? data.id.value : this.id,
+      customerCategoryId: data.customerCategoryId.present
+          ? data.customerCategoryId.value
+          : this.customerCategoryId,
       brandId: data.brandId.present ? data.brandId.value : this.brandId,
       priceListId: data.priceListId.present
           ? data.priceListId.value
@@ -16952,6 +17506,7 @@ class SellingPolicy extends DataClass implements Insertable<SellingPolicy> {
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('id: $id, ')
+          ..write('customerCategoryId: $customerCategoryId, ')
           ..write('brandId: $brandId, ')
           ..write('priceListId: $priceListId, ')
           ..write('pricingType: $pricingType, ')
@@ -16974,6 +17529,7 @@ class SellingPolicy extends DataClass implements Insertable<SellingPolicy> {
     createdAt,
     updatedAt,
     id,
+    customerCategoryId,
     brandId,
     priceListId,
     pricingType,
@@ -16995,6 +17551,7 @@ class SellingPolicy extends DataClass implements Insertable<SellingPolicy> {
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.id == this.id &&
+          other.customerCategoryId == this.customerCategoryId &&
           other.brandId == this.brandId &&
           other.priceListId == this.priceListId &&
           other.pricingType == this.pricingType &&
@@ -17014,9 +17571,10 @@ class SellingPoliciesCompanion extends UpdateCompanion<SellingPolicy> {
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<int> id;
-  final Value<int> brandId;
-  final Value<int> priceListId;
-  final Value<String> pricingType;
+  final Value<int> customerCategoryId;
+  final Value<int?> brandId;
+  final Value<int?> priceListId;
+  final Value<String?> pricingType;
   final Value<String> scope;
   final Value<int?> categoryId;
   final Value<int?> productId;
@@ -17031,6 +17589,7 @@ class SellingPoliciesCompanion extends UpdateCompanion<SellingPolicy> {
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.id = const Value.absent(),
+    this.customerCategoryId = const Value.absent(),
     this.brandId = const Value.absent(),
     this.priceListId = const Value.absent(),
     this.pricingType = const Value.absent(),
@@ -17049,9 +17608,10 @@ class SellingPoliciesCompanion extends UpdateCompanion<SellingPolicy> {
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.id = const Value.absent(),
-    required int brandId,
-    required int priceListId,
-    required String pricingType,
+    required int customerCategoryId,
+    this.brandId = const Value.absent(),
+    this.priceListId = const Value.absent(),
+    this.pricingType = const Value.absent(),
     required String scope,
     this.categoryId = const Value.absent(),
     this.productId = const Value.absent(),
@@ -17062,14 +17622,13 @@ class SellingPoliciesCompanion extends UpdateCompanion<SellingPolicy> {
     this.validTo = const Value.absent(),
     this.isActive = const Value.absent(),
     this.note = const Value.absent(),
-  }) : brandId = Value(brandId),
-       priceListId = Value(priceListId),
-       pricingType = Value(pricingType),
+  }) : customerCategoryId = Value(customerCategoryId),
        scope = Value(scope);
   static Insertable<SellingPolicy> custom({
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<int>? id,
+    Expression<int>? customerCategoryId,
     Expression<int>? brandId,
     Expression<int>? priceListId,
     Expression<String>? pricingType,
@@ -17088,6 +17647,8 @@ class SellingPoliciesCompanion extends UpdateCompanion<SellingPolicy> {
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (id != null) 'id': id,
+      if (customerCategoryId != null)
+        'customer_category_id': customerCategoryId,
       if (brandId != null) 'brand_id': brandId,
       if (priceListId != null) 'price_list_id': priceListId,
       if (pricingType != null) 'pricing_type': pricingType,
@@ -17108,9 +17669,10 @@ class SellingPoliciesCompanion extends UpdateCompanion<SellingPolicy> {
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<int>? id,
-    Value<int>? brandId,
-    Value<int>? priceListId,
-    Value<String>? pricingType,
+    Value<int>? customerCategoryId,
+    Value<int?>? brandId,
+    Value<int?>? priceListId,
+    Value<String?>? pricingType,
     Value<String>? scope,
     Value<int?>? categoryId,
     Value<int?>? productId,
@@ -17126,6 +17688,7 @@ class SellingPoliciesCompanion extends UpdateCompanion<SellingPolicy> {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       id: id ?? this.id,
+      customerCategoryId: customerCategoryId ?? this.customerCategoryId,
       brandId: brandId ?? this.brandId,
       priceListId: priceListId ?? this.priceListId,
       pricingType: pricingType ?? this.pricingType,
@@ -17153,6 +17716,9 @@ class SellingPoliciesCompanion extends UpdateCompanion<SellingPolicy> {
     }
     if (id.present) {
       map['id'] = Variable<int>(id.value);
+    }
+    if (customerCategoryId.present) {
+      map['customer_category_id'] = Variable<int>(customerCategoryId.value);
     }
     if (brandId.present) {
       map['brand_id'] = Variable<int>(brandId.value);
@@ -17202,6 +17768,7 @@ class SellingPoliciesCompanion extends UpdateCompanion<SellingPolicy> {
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('id: $id, ')
+          ..write('customerCategoryId: $customerCategoryId, ')
           ..write('brandId: $brandId, ')
           ..write('priceListId: $priceListId, ')
           ..write('pricingType: $pricingType, ')
@@ -22010,6 +22577,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $UnitsTable units = $UnitsTable(this);
   late final $ProductsTable products = $ProductsTable(this);
   late final $StockMovementsTable stockMovements = $StockMovementsTable(this);
+  late final $CustomerCategoriesTable customerCategories =
+      $CustomerCategoriesTable(this);
   late final $CustomersTable customers = $CustomersTable(this);
   late final $SuppliersTable suppliers = $SuppliersTable(this);
   late final $SalesInvoicesTable salesInvoices = $SalesInvoicesTable(this);
@@ -22099,9 +22668,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     'idx_buying_policies_supplier',
     'CREATE INDEX idx_buying_policies_supplier ON buying_policies (supplier_id)',
   );
-  late final Index idxSellingPoliciesList = Index(
-    'idx_selling_policies_list',
-    'CREATE INDEX idx_selling_policies_list ON selling_policies (price_list_id)',
+  late final Index idxSellingPoliciesCustomerCategory = Index(
+    'idx_selling_policies_customer_category',
+    'CREATE INDEX idx_selling_policies_customer_category ON selling_policies (customer_category_id)',
   );
   late final Index idxReservationsProduct = Index(
     'idx_reservations_product',
@@ -22131,6 +22700,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     units,
     products,
     stockMovements,
+    customerCategories,
     customers,
     suppliers,
     salesInvoices,
@@ -22171,7 +22741,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     idxPriceListItemsList,
     idxPriceListItemsProduct,
     idxBuyingPoliciesSupplier,
-    idxSellingPoliciesList,
+    idxSellingPoliciesCustomerCategory,
     idxReservationsProduct,
     idxPoLinesOrder,
     idxSoLinesOrder,
@@ -27061,6 +27631,460 @@ typedef $$StockMovementsTableProcessedTableManager =
       StockMovement,
       PrefetchHooks Function({bool productId, bool createdBy})
     >;
+typedef $$CustomerCategoriesTableCreateCompanionBuilder =
+    CustomerCategoriesCompanion Function({
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<int> id,
+      required String name,
+      Value<int> discountBp,
+      Value<String?> legacyType,
+      Value<bool> isActive,
+    });
+typedef $$CustomerCategoriesTableUpdateCompanionBuilder =
+    CustomerCategoriesCompanion Function({
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<int> id,
+      Value<String> name,
+      Value<int> discountBp,
+      Value<String?> legacyType,
+      Value<bool> isActive,
+    });
+
+final class $$CustomerCategoriesTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $CustomerCategoriesTable,
+          CustomerCategory
+        > {
+  $$CustomerCategoriesTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static MultiTypedResultKey<$CustomersTable, List<Customer>>
+  _customersRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.customers,
+    aliasName: $_aliasNameGenerator(
+      db.customerCategories.id,
+      db.customers.categoryId,
+    ),
+  );
+
+  $$CustomersTableProcessedTableManager get customersRefs {
+    final manager = $$CustomersTableTableManager(
+      $_db,
+      $_db.customers,
+    ).filter((f) => f.categoryId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_customersRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$SellingPoliciesTable, List<SellingPolicy>>
+  _sellingPoliciesRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.sellingPolicies,
+    aliasName: $_aliasNameGenerator(
+      db.customerCategories.id,
+      db.sellingPolicies.customerCategoryId,
+    ),
+  );
+
+  $$SellingPoliciesTableProcessedTableManager get sellingPoliciesRefs {
+    final manager =
+        $$SellingPoliciesTableTableManager($_db, $_db.sellingPolicies).filter(
+          (f) => f.customerCategoryId.id.sqlEquals($_itemColumn<int>('id')!),
+        );
+
+    final cache = $_typedResult.readTableOrNull(
+      _sellingPoliciesRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$CustomerCategoriesTableFilterComposer
+    extends Composer<_$AppDatabase, $CustomerCategoriesTable> {
+  $$CustomerCategoriesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get discountBp => $composableBuilder(
+    column: $table.discountBp,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get legacyType => $composableBuilder(
+    column: $table.legacyType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isActive => $composableBuilder(
+    column: $table.isActive,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  Expression<bool> customersRefs(
+    Expression<bool> Function($$CustomersTableFilterComposer f) f,
+  ) {
+    final $$CustomersTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.customers,
+      getReferencedColumn: (t) => t.categoryId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CustomersTableFilterComposer(
+            $db: $db,
+            $table: $db.customers,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> sellingPoliciesRefs(
+    Expression<bool> Function($$SellingPoliciesTableFilterComposer f) f,
+  ) {
+    final $$SellingPoliciesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.sellingPolicies,
+      getReferencedColumn: (t) => t.customerCategoryId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SellingPoliciesTableFilterComposer(
+            $db: $db,
+            $table: $db.sellingPolicies,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$CustomerCategoriesTableOrderingComposer
+    extends Composer<_$AppDatabase, $CustomerCategoriesTable> {
+  $$CustomerCategoriesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get discountBp => $composableBuilder(
+    column: $table.discountBp,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get legacyType => $composableBuilder(
+    column: $table.legacyType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isActive => $composableBuilder(
+    column: $table.isActive,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$CustomerCategoriesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CustomerCategoriesTable> {
+  $$CustomerCategoriesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<int> get discountBp => $composableBuilder(
+    column: $table.discountBp,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get legacyType => $composableBuilder(
+    column: $table.legacyType,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get isActive =>
+      $composableBuilder(column: $table.isActive, builder: (column) => column);
+
+  Expression<T> customersRefs<T extends Object>(
+    Expression<T> Function($$CustomersTableAnnotationComposer a) f,
+  ) {
+    final $$CustomersTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.customers,
+      getReferencedColumn: (t) => t.categoryId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CustomersTableAnnotationComposer(
+            $db: $db,
+            $table: $db.customers,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<T> sellingPoliciesRefs<T extends Object>(
+    Expression<T> Function($$SellingPoliciesTableAnnotationComposer a) f,
+  ) {
+    final $$SellingPoliciesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.sellingPolicies,
+      getReferencedColumn: (t) => t.customerCategoryId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SellingPoliciesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.sellingPolicies,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$CustomerCategoriesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $CustomerCategoriesTable,
+          CustomerCategory,
+          $$CustomerCategoriesTableFilterComposer,
+          $$CustomerCategoriesTableOrderingComposer,
+          $$CustomerCategoriesTableAnnotationComposer,
+          $$CustomerCategoriesTableCreateCompanionBuilder,
+          $$CustomerCategoriesTableUpdateCompanionBuilder,
+          (CustomerCategory, $$CustomerCategoriesTableReferences),
+          CustomerCategory,
+          PrefetchHooks Function({bool customersRefs, bool sellingPoliciesRefs})
+        > {
+  $$CustomerCategoriesTableTableManager(
+    _$AppDatabase db,
+    $CustomerCategoriesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CustomerCategoriesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CustomerCategoriesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CustomerCategoriesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<int> discountBp = const Value.absent(),
+                Value<String?> legacyType = const Value.absent(),
+                Value<bool> isActive = const Value.absent(),
+              }) => CustomerCategoriesCompanion(
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                id: id,
+                name: name,
+                discountBp: discountBp,
+                legacyType: legacyType,
+                isActive: isActive,
+              ),
+          createCompanionCallback:
+              ({
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> id = const Value.absent(),
+                required String name,
+                Value<int> discountBp = const Value.absent(),
+                Value<String?> legacyType = const Value.absent(),
+                Value<bool> isActive = const Value.absent(),
+              }) => CustomerCategoriesCompanion.insert(
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                id: id,
+                name: name,
+                discountBp: discountBp,
+                legacyType: legacyType,
+                isActive: isActive,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$CustomerCategoriesTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback:
+              ({customersRefs = false, sellingPoliciesRefs = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (customersRefs) db.customers,
+                    if (sellingPoliciesRefs) db.sellingPolicies,
+                  ],
+                  addJoins: null,
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (customersRefs)
+                        await $_getPrefetchedData<
+                          CustomerCategory,
+                          $CustomerCategoriesTable,
+                          Customer
+                        >(
+                          currentTable: table,
+                          referencedTable: $$CustomerCategoriesTableReferences
+                              ._customersRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$CustomerCategoriesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).customersRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.categoryId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (sellingPoliciesRefs)
+                        await $_getPrefetchedData<
+                          CustomerCategory,
+                          $CustomerCategoriesTable,
+                          SellingPolicy
+                        >(
+                          currentTable: table,
+                          referencedTable: $$CustomerCategoriesTableReferences
+                              ._sellingPoliciesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$CustomerCategoriesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).sellingPoliciesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.customerCategoryId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
+              },
+        ),
+      );
+}
+
+typedef $$CustomerCategoriesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $CustomerCategoriesTable,
+      CustomerCategory,
+      $$CustomerCategoriesTableFilterComposer,
+      $$CustomerCategoriesTableOrderingComposer,
+      $$CustomerCategoriesTableAnnotationComposer,
+      $$CustomerCategoriesTableCreateCompanionBuilder,
+      $$CustomerCategoriesTableUpdateCompanionBuilder,
+      (CustomerCategory, $$CustomerCategoriesTableReferences),
+      CustomerCategory,
+      PrefetchHooks Function({bool customersRefs, bool sellingPoliciesRefs})
+    >;
 typedef $$CustomersTableCreateCompanionBuilder =
     CustomersCompanion Function({
       Value<DateTime> createdAt,
@@ -27072,6 +28096,7 @@ typedef $$CustomersTableCreateCompanionBuilder =
       Value<int> openingBalance,
       Value<int> creditLimit,
       Value<String> priceLevel,
+      Value<int?> categoryId,
       Value<int> discountBp,
       Value<String?> notes,
       Value<bool> isActive,
@@ -27087,6 +28112,7 @@ typedef $$CustomersTableUpdateCompanionBuilder =
       Value<int> openingBalance,
       Value<int> creditLimit,
       Value<String> priceLevel,
+      Value<int?> categoryId,
       Value<int> discountBp,
       Value<String?> notes,
       Value<bool> isActive,
@@ -27095,6 +28121,25 @@ typedef $$CustomersTableUpdateCompanionBuilder =
 final class $$CustomersTableReferences
     extends BaseReferences<_$AppDatabase, $CustomersTable, Customer> {
   $$CustomersTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $CustomerCategoriesTable _categoryIdTable(_$AppDatabase db) =>
+      db.customerCategories.createAlias(
+        $_aliasNameGenerator(db.customers.categoryId, db.customerCategories.id),
+      );
+
+  $$CustomerCategoriesTableProcessedTableManager? get categoryId {
+    final $_column = $_itemColumn<int>('category_id');
+    if ($_column == null) return null;
+    final manager = $$CustomerCategoriesTableTableManager(
+      $_db,
+      $_db.customerCategories,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_categoryIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
 
   static MultiTypedResultKey<$SalesInvoicesTable, List<SalesInvoice>>
   _salesInvoicesRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
@@ -27225,6 +28270,29 @@ class $$CustomersTableFilterComposer
     column: $table.isActive,
     builder: (column) => ColumnFilters(column),
   );
+
+  $$CustomerCategoriesTableFilterComposer get categoryId {
+    final $$CustomerCategoriesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.categoryId,
+      referencedTable: $db.customerCategories,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CustomerCategoriesTableFilterComposer(
+            $db: $db,
+            $table: $db.customerCategories,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 
   Expression<bool> salesInvoicesRefs(
     Expression<bool> Function($$SalesInvoicesTableFilterComposer f) f,
@@ -27370,6 +28438,29 @@ class $$CustomersTableOrderingComposer
     column: $table.isActive,
     builder: (column) => ColumnOrderings(column),
   );
+
+  $$CustomerCategoriesTableOrderingComposer get categoryId {
+    final $$CustomerCategoriesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.categoryId,
+      referencedTable: $db.customerCategories,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CustomerCategoriesTableOrderingComposer(
+            $db: $db,
+            $table: $db.customerCategories,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$CustomersTableAnnotationComposer
@@ -27424,6 +28515,30 @@ class $$CustomersTableAnnotationComposer
 
   GeneratedColumn<bool> get isActive =>
       $composableBuilder(column: $table.isActive, builder: (column) => column);
+
+  $$CustomerCategoriesTableAnnotationComposer get categoryId {
+    final $$CustomerCategoriesTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.categoryId,
+          referencedTable: $db.customerCategories,
+          getReferencedColumn: (t) => t.id,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$CustomerCategoriesTableAnnotationComposer(
+                $db: $db,
+                $table: $db.customerCategories,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return composer;
+  }
 
   Expression<T> salesInvoicesRefs<T extends Object>(
     Expression<T> Function($$SalesInvoicesTableAnnotationComposer a) f,
@@ -27515,6 +28630,7 @@ class $$CustomersTableTableManager
           (Customer, $$CustomersTableReferences),
           Customer,
           PrefetchHooks Function({
+            bool categoryId,
             bool salesInvoicesRefs,
             bool reservationsRefs,
             bool salesOrdersRefs,
@@ -27542,6 +28658,7 @@ class $$CustomersTableTableManager
                 Value<int> openingBalance = const Value.absent(),
                 Value<int> creditLimit = const Value.absent(),
                 Value<String> priceLevel = const Value.absent(),
+                Value<int?> categoryId = const Value.absent(),
                 Value<int> discountBp = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<bool> isActive = const Value.absent(),
@@ -27555,6 +28672,7 @@ class $$CustomersTableTableManager
                 openingBalance: openingBalance,
                 creditLimit: creditLimit,
                 priceLevel: priceLevel,
+                categoryId: categoryId,
                 discountBp: discountBp,
                 notes: notes,
                 isActive: isActive,
@@ -27570,6 +28688,7 @@ class $$CustomersTableTableManager
                 Value<int> openingBalance = const Value.absent(),
                 Value<int> creditLimit = const Value.absent(),
                 Value<String> priceLevel = const Value.absent(),
+                Value<int?> categoryId = const Value.absent(),
                 Value<int> discountBp = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<bool> isActive = const Value.absent(),
@@ -27583,6 +28702,7 @@ class $$CustomersTableTableManager
                 openingBalance: openingBalance,
                 creditLimit: creditLimit,
                 priceLevel: priceLevel,
+                categoryId: categoryId,
                 discountBp: discountBp,
                 notes: notes,
                 isActive: isActive,
@@ -27597,6 +28717,7 @@ class $$CustomersTableTableManager
               .toList(),
           prefetchHooksCallback:
               ({
+                categoryId = false,
                 salesInvoicesRefs = false,
                 reservationsRefs = false,
                 salesOrdersRefs = false,
@@ -27608,7 +28729,38 @@ class $$CustomersTableTableManager
                     if (reservationsRefs) db.reservations,
                     if (salesOrdersRefs) db.salesOrders,
                   ],
-                  addJoins: null,
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (categoryId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.categoryId,
+                                    referencedTable: $$CustomersTableReferences
+                                        ._categoryIdTable(db),
+                                    referencedColumn: $$CustomersTableReferences
+                                        ._categoryIdTable(db)
+                                        .id,
+                                  )
+                                  as T;
+                        }
+
+                        return state;
+                      },
                   getPrefetchedDataCallback: (items) async {
                     return [
                       if (salesInvoicesRefs)
@@ -27695,6 +28847,7 @@ typedef $$CustomersTableProcessedTableManager =
       (Customer, $$CustomersTableReferences),
       Customer,
       PrefetchHooks Function({
+        bool categoryId,
         bool salesInvoicesRefs,
         bool reservationsRefs,
         bool salesOrdersRefs,
@@ -38001,9 +39154,10 @@ typedef $$SellingPoliciesTableCreateCompanionBuilder =
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<int> id,
-      required int brandId,
-      required int priceListId,
-      required String pricingType,
+      required int customerCategoryId,
+      Value<int?> brandId,
+      Value<int?> priceListId,
+      Value<String?> pricingType,
       required String scope,
       Value<int?> categoryId,
       Value<int?> productId,
@@ -38020,9 +39174,10 @@ typedef $$SellingPoliciesTableUpdateCompanionBuilder =
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<int> id,
-      Value<int> brandId,
-      Value<int> priceListId,
-      Value<String> pricingType,
+      Value<int> customerCategoryId,
+      Value<int?> brandId,
+      Value<int?> priceListId,
+      Value<String?> pricingType,
       Value<String> scope,
       Value<int?> categoryId,
       Value<int?> productId,
@@ -38044,13 +39199,35 @@ final class $$SellingPoliciesTableReferences
     super.$_typedResult,
   );
 
+  static $CustomerCategoriesTable _customerCategoryIdTable(_$AppDatabase db) =>
+      db.customerCategories.createAlias(
+        $_aliasNameGenerator(
+          db.sellingPolicies.customerCategoryId,
+          db.customerCategories.id,
+        ),
+      );
+
+  $$CustomerCategoriesTableProcessedTableManager get customerCategoryId {
+    final $_column = $_itemColumn<int>('customer_category_id')!;
+
+    final manager = $$CustomerCategoriesTableTableManager(
+      $_db,
+      $_db.customerCategories,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_customerCategoryIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
   static $BrandsTable _brandIdTable(_$AppDatabase db) => db.brands.createAlias(
     $_aliasNameGenerator(db.sellingPolicies.brandId, db.brands.id),
   );
 
-  $$BrandsTableProcessedTableManager get brandId {
-    final $_column = $_itemColumn<int>('brand_id')!;
-
+  $$BrandsTableProcessedTableManager? get brandId {
+    final $_column = $_itemColumn<int>('brand_id');
+    if ($_column == null) return null;
     final manager = $$BrandsTableTableManager(
       $_db,
       $_db.brands,
@@ -38067,9 +39244,9 @@ final class $$SellingPoliciesTableReferences
         $_aliasNameGenerator(db.sellingPolicies.priceListId, db.priceLists.id),
       );
 
-  $$PriceListsTableProcessedTableManager get priceListId {
-    final $_column = $_itemColumn<int>('price_list_id')!;
-
+  $$PriceListsTableProcessedTableManager? get priceListId {
+    final $_column = $_itemColumn<int>('price_list_id');
+    if ($_column == null) return null;
     final manager = $$PriceListsTableTableManager(
       $_db,
       $_db.priceLists,
@@ -38188,6 +39365,29 @@ class $$SellingPoliciesTableFilterComposer
     column: $table.note,
     builder: (column) => ColumnFilters(column),
   );
+
+  $$CustomerCategoriesTableFilterComposer get customerCategoryId {
+    final $$CustomerCategoriesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.customerCategoryId,
+      referencedTable: $db.customerCategories,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CustomerCategoriesTableFilterComposer(
+            $db: $db,
+            $table: $db.customerCategories,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 
   $$BrandsTableFilterComposer get brandId {
     final $$BrandsTableFilterComposer composer = $composerBuilder(
@@ -38351,6 +39551,29 @@ class $$SellingPoliciesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  $$CustomerCategoriesTableOrderingComposer get customerCategoryId {
+    final $$CustomerCategoriesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.customerCategoryId,
+      referencedTable: $db.customerCategories,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CustomerCategoriesTableOrderingComposer(
+            $db: $db,
+            $table: $db.customerCategories,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
   $$BrandsTableOrderingComposer get brandId {
     final $$BrandsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -38497,6 +39720,30 @@ class $$SellingPoliciesTableAnnotationComposer
   GeneratedColumn<String> get note =>
       $composableBuilder(column: $table.note, builder: (column) => column);
 
+  $$CustomerCategoriesTableAnnotationComposer get customerCategoryId {
+    final $$CustomerCategoriesTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.customerCategoryId,
+          referencedTable: $db.customerCategories,
+          getReferencedColumn: (t) => t.id,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$CustomerCategoriesTableAnnotationComposer(
+                $db: $db,
+                $table: $db.customerCategories,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return composer;
+  }
+
   $$BrandsTableAnnotationComposer get brandId {
     final $$BrandsTableAnnotationComposer composer = $composerBuilder(
       composer: this,
@@ -38604,6 +39851,7 @@ class $$SellingPoliciesTableTableManager
           (SellingPolicy, $$SellingPoliciesTableReferences),
           SellingPolicy,
           PrefetchHooks Function({
+            bool customerCategoryId,
             bool brandId,
             bool priceListId,
             bool categoryId,
@@ -38628,9 +39876,10 @@ class $$SellingPoliciesTableTableManager
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> id = const Value.absent(),
-                Value<int> brandId = const Value.absent(),
-                Value<int> priceListId = const Value.absent(),
-                Value<String> pricingType = const Value.absent(),
+                Value<int> customerCategoryId = const Value.absent(),
+                Value<int?> brandId = const Value.absent(),
+                Value<int?> priceListId = const Value.absent(),
+                Value<String?> pricingType = const Value.absent(),
                 Value<String> scope = const Value.absent(),
                 Value<int?> categoryId = const Value.absent(),
                 Value<int?> productId = const Value.absent(),
@@ -38645,6 +39894,7 @@ class $$SellingPoliciesTableTableManager
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 id: id,
+                customerCategoryId: customerCategoryId,
                 brandId: brandId,
                 priceListId: priceListId,
                 pricingType: pricingType,
@@ -38664,9 +39914,10 @@ class $$SellingPoliciesTableTableManager
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> id = const Value.absent(),
-                required int brandId,
-                required int priceListId,
-                required String pricingType,
+                required int customerCategoryId,
+                Value<int?> brandId = const Value.absent(),
+                Value<int?> priceListId = const Value.absent(),
+                Value<String?> pricingType = const Value.absent(),
                 required String scope,
                 Value<int?> categoryId = const Value.absent(),
                 Value<int?> productId = const Value.absent(),
@@ -38681,6 +39932,7 @@ class $$SellingPoliciesTableTableManager
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 id: id,
+                customerCategoryId: customerCategoryId,
                 brandId: brandId,
                 priceListId: priceListId,
                 pricingType: pricingType,
@@ -38705,6 +39957,7 @@ class $$SellingPoliciesTableTableManager
               .toList(),
           prefetchHooksCallback:
               ({
+                customerCategoryId = false,
                 brandId = false,
                 priceListId = false,
                 categoryId = false,
@@ -38729,6 +39982,21 @@ class $$SellingPoliciesTableTableManager
                           dynamic
                         >
                       >(state) {
+                        if (customerCategoryId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.customerCategoryId,
+                                    referencedTable:
+                                        $$SellingPoliciesTableReferences
+                                            ._customerCategoryIdTable(db),
+                                    referencedColumn:
+                                        $$SellingPoliciesTableReferences
+                                            ._customerCategoryIdTable(db)
+                                            .id,
+                                  )
+                                  as T;
+                        }
                         if (brandId) {
                           state =
                               state.withJoin(
@@ -38814,6 +40082,7 @@ typedef $$SellingPoliciesTableProcessedTableManager =
       (SellingPolicy, $$SellingPoliciesTableReferences),
       SellingPolicy,
       PrefetchHooks Function({
+        bool customerCategoryId,
         bool brandId,
         bool priceListId,
         bool categoryId,
@@ -43520,6 +44789,8 @@ class $AppDatabaseManager {
       $$ProductsTableTableManager(_db, _db.products);
   $$StockMovementsTableTableManager get stockMovements =>
       $$StockMovementsTableTableManager(_db, _db.stockMovements);
+  $$CustomerCategoriesTableTableManager get customerCategories =>
+      $$CustomerCategoriesTableTableManager(_db, _db.customerCategories);
   $$CustomersTableTableManager get customers =>
       $$CustomersTableTableManager(_db, _db.customers);
   $$SuppliersTableTableManager get suppliers =>

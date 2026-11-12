@@ -8,10 +8,9 @@ import '../../core/l10n/strings.dart';
 import '../../core/money.dart';
 import '../../core/providers.dart';
 import '../../core/services/party_service.dart';
-import '../../core/services/product_service.dart';
+import '../../core/services/selling_policy_service.dart';
 import '../../core/widgets/feedback.dart';
 import '../../core/widgets/number_fields.dart';
-import 'parties_screen.dart';
 
 /// Returns the saved customer's id, or null if cancelled.
 Future<int?> showCustomerForm(BuildContext context, {Customer? existing}) =>
@@ -45,7 +44,7 @@ class _PartyFormDialogState extends ConsumerState<_PartyFormDialog> {
   late final _creditLimit = TextEditingController(text: _money(_c?.creditLimit));
   late final _discount = TextEditingController(text: _pct(_c?.discountBp));
   late final _notes = TextEditingController(text: _c?.notes ?? _s?.notes);
-  late String _priceLevel = _c?.priceLevel ?? PriceLevel.retail;
+  late int _categoryId = _c?.categoryId ?? walkInCategoryId;
   late bool _active = _c?.isActive ?? _s?.isActive ?? true;
 
   static String _pct(int? bp) {
@@ -88,7 +87,7 @@ class _PartyFormDialogState extends ConsumerState<_PartyFormDialog> {
             address: _address.text,
             openingBalance: moneyOrZero(_opening),
             creditLimit: moneyOrZero(_creditLimit),
-            priceLevel: _priceLevel,
+            categoryId: _categoryId,
             discountBp: _bp(_discount.text) ?? 0,
             notes: _notes.text,
             isActive: _active,
@@ -116,6 +115,7 @@ class _PartyFormDialogState extends ConsumerState<_PartyFormDialog> {
   @override
   Widget build(BuildContext context) {
     final isAdmin = ref.watch(currentUserProvider)?.isAdmin ?? false;
+    final categories = ref.watch(customerCategoriesProvider).valueOrNull ?? const <CustomerCategory>[];
     final title = widget.isCustomer
         ? (_isNew ? Strings.newCustomer : Strings.editCustomer)
         : (_isNew ? Strings.newSupplier : Strings.editSupplier);
@@ -144,21 +144,27 @@ class _PartyFormDialogState extends ConsumerState<_PartyFormDialog> {
                   decoration: const InputDecoration(labelText: Strings.address),
                 ),
                 if (widget.isCustomer)
-                  DropdownButtonFormField<String>(
-                    initialValue: _priceLevel,
-                    decoration: const InputDecoration(labelText: Strings.priceLevel),
+                  DropdownButtonFormField<int>(
+                    key: ValueKey('cat-${categories.length}'),
+                    initialValue: categories.any((c) => c.id == _categoryId) ? _categoryId : null,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: 'فئة العميل'),
                     items: [
-                      for (final l in PriceLevel.all)
-                        DropdownMenuItem(value: l, child: Text(priceLevelLabel(l))),
+                      for (final c in categories)
+                        if (c.isActive || c.id == _categoryId)
+                          DropdownMenuItem(
+                            value: c.id,
+                            child: Text(c.discountBp == 0 ? c.name : '${c.name} (خصم ${_pct(c.discountBp)}%)'),
+                          ),
                     ],
-                    onChanged: (v) => setState(() => _priceLevel = v!),
+                    onChanged: (v) => setState(() => _categoryId = v ?? walkInCategoryId),
                   ),
                 if (widget.isCustomer)
                   TextFormField(
                     controller: _discount,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     decoration: const InputDecoration(
-                        labelText: 'خصم العميل المعتاد %', hintText: 'اختياري'),
+                        labelText: 'خصم إضافي لهذا العميل %', hintText: 'اختياري، فوق خصم الفئة'),
                     validator: (v) => _bp(v ?? '') == null ? 'من 0 إلى 100' : null,
                   ),
                 if (isAdmin) ...[

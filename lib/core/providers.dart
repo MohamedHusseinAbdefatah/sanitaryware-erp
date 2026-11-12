@@ -130,5 +130,9 @@ final buyingPolicyServiceProvider =
 final sellingPolicyServiceProvider =
     Provider<SellingPolicyService>((ref) => SellingPolicyService(ref.watch(databaseProvider)));
 
+/// Customer categories (retail, wholesale, projects, engineers...), by id.
+final customerCategoriesProvider = StreamProvider.autoDispose<List<CustomerCategory>>(
+    (ref) => ref.watch(sellingPolicyServiceProvider).watchCategories());
+
 final salePreviewServiceProvider =
     Provider<SalePreviewService>((ref) => SalePreviewService(ref.watch(databaseProvider)));

@@ -76,7 +76,9 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
   int _searchKey = 0;
 
   int get _subtotal => _lines.fold(0, (s, l) => s + (l.total ?? 0));
-  int get _total => _subtotal - moneyOrZero(_discount);
+  bool _discountPercent = false;
+  int get _discountValue => discountAmount(_discount.text, percent: _discountPercent, subtotal: _subtotal) ?? 0;
+  int get _total => _subtotal - _discountValue;
 
   @override
   void dispose() {
@@ -165,7 +167,7 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
             extraDiscountBp: l.cost.text == l.initialCost ? (l.quote?.extraBp ?? 0) : 0,
           ),
       ],
-      discount: moneyOrZero(_discount),
+      discount: _discountValue,
       paidAmount: moneyOrZero(_paid),
       paymentMethod: _method,
       notes: _notes.text,
@@ -347,10 +349,13 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                   ),
                   AmountLabel(Strings.subtotal, _subtotal),
                   SizedBox(
-                    width: 110,
-                    child: MoneyField(
+                    width: 280,
+                    child: DiscountField(
                       controller: _discount,
                       label: Strings.invoiceDiscount,
+                      percent: _discountPercent,
+                      subtotal: _subtotal,
+                      onModeChanged: (v) => setState(() => _discountPercent = v),
                       onChanged: (_) => setState(() {}),
                     ),
                   ),

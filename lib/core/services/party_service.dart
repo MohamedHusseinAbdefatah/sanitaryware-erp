@@ -14,6 +14,7 @@ class CustomerInput {
     this.openingBalance = 0,
     this.creditLimit = 0,
     this.priceLevel = PriceLevel.retail,
+    this.categoryId,
     this.discountBp = 0,
     this.notes,
     this.isActive = true,
@@ -24,7 +25,13 @@ class CustomerInput {
   final String? address;
   final int openingBalance;
   final int creditLimit;
+
+  /// The old fixed level; used only to pick the starting category when
+  /// [categoryId] is not given.
   final String priceLevel;
+
+  /// The customer category (retail, wholesale, projects, engineers...).
+  final int? categoryId;
 
   /// Usual discount in basis points (1000 = 10%).
   final int discountBp;
@@ -87,7 +94,13 @@ class PartyService {
         throw ValidationException('نسبة الخصم يجب أن تكون بين 0 و 100');
       }
       if (input.creditLimit < 0) throw ValidationException('حد الائتمان لا يمكن أن يكون سالباً');
+      final categoryId = input.categoryId ??
+          AppDatabase.starterCategories.indexWhere((c) => c.$3 == input.priceLevel) + 1;
+      final category =
+          await (db.select(db.customerCategories)..where((c) => c.id.equals(categoryId))).getSingleOrNull();
+      if (category == null) throw ValidationException('اختر فئة العميل');
       final companion = CustomersCompanion(
+        categoryId: Value(categoryId),
         name: Value(name),
         phone: Value(_blankToNull(input.phone)),
         address: Value(_blankToNull(input.address)),
