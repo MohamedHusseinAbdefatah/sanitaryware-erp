@@ -61,6 +61,11 @@ class _SalesOrdersScreenState extends ConsumerState<SalesOrdersScreen> {
               label: const Text(Strings.sales),
             ),
             SearchBox(hint: 'بحث برقم الأمر أو العميل', onChanged: (v) => setState(() => _search = v)),
+            OutlinedButton.icon(
+              onPressed: () => showNewSalesOrder(context, quotation: true),
+              icon: const Icon(Icons.request_quote_outlined),
+              label: const Text('عرض سعر جديد'),
+            ),
             FilledButton.icon(
               onPressed: () => showNewSalesOrder(context),
               icon: const Icon(Icons.add),

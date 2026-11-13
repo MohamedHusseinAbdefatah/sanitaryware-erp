@@ -15,7 +15,7 @@ import '../../core/services/sales_service.dart';
 import '../../core/services/selling_policy_service.dart';
 import '../../core/services/sales_order_service.dart';
 import '../../core/widgets/feedback.dart';
-import '../../core/widgets/pickers.dart';
+import 'order_lines_editor.dart';
 import 'sale_preview_dialog.dart';
 
 String soStatusLabel(String s) => switch (s) {
@@ -90,18 +90,11 @@ class SalesOrdersDialog extends ConsumerWidget {
   }
 }
 
-class _NewLine {
-  _NewLine(this.row)
-      : qty = TextEditingController(text: '1'),
-        extra = TextEditingController();
-  final ProductRow row;
-  int? priceListId;
-  final TextEditingController qty;
-  final TextEditingController extra;
-}
-
 class _NewSoDialog extends ConsumerStatefulWidget {
-  const _NewSoDialog();
+  const _NewSoDialog({this.quotation = false});
+
+  /// Opens as a quotation instead of an order.
+  final bool quotation;
 
   @override
   ConsumerState<_NewSoDialog> createState() => _NewSoDialogState();
@@ -110,18 +103,17 @@ class _NewSoDialog extends ConsumerStatefulWidget {
 class _NewSoDialogState extends ConsumerState<_NewSoDialog> {
   int? _customerId;
   String _channel = SaleChannel.showroom;
-  final _lines = <_NewLine>[];
+  final _lines = <OrderLine>[];
   final _notes = TextEditingController();
   final _external = TextEditingController();
   final _reason = TextEditingController();
-  bool _quotation = false;
+  late bool _quotation = widget.quotation;
   DateTime _validUntil = DateTime.now().add(const Duration(days: defaultQuoteValidityDays));
 
   @override
   void dispose() {
     for (final l in _lines) {
-      l.qty.dispose();
-      l.extra.dispose();
+      l.dispose();
     }
     _notes.dispose();
     _external.dispose();
@@ -130,16 +122,15 @@ class _NewSoDialogState extends ConsumerState<_NewSoDialog> {
   }
 
   /// When several versions can price the product, the person chooses now.
-  Future<void> _addLine(ProductRow r) async {
+  Future<OrderLine?> _makeLine(ProductRow r) async {
     final quotes = await ref.read(sellingPolicyServiceProvider).quotes(r.product.id);
-    if (!mounted) return;
-    final line = _NewLine(r);
+    if (!mounted) return null;
     if (quotes.length > 1) {
       final q = await pickSellQuote(context, quotes, r.product.nameAr);
-      if (q == null || !mounted) return;
-      line.priceListId = q.quote.priceListId;
+      if (q == null || !mounted) return null;
+      return OrderLine(r, priceListId: q.quote.priceListId);
     }
-    setState(() => _lines.add(line));
+    return OrderLine(r);
   }
 
   Future<void> _save() async {
@@ -147,6 +138,10 @@ class _NewSoDialogState extends ConsumerState<_NewSoDialog> {
     if (user == null) return;
     if (_customerId == null) {
       await showMessage(context, 'اختر العميل');
+      return;
+    }
+    if (_lines.isEmpty) {
+      await showMessage(context, 'أضف صنفاً واحداً على الأقل');
       return;
     }
     final inputs = <SoLineInput>[];
@@ -178,9 +173,9 @@ class _NewSoDialogState extends ConsumerState<_NewSoDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('أمر بيع جديد'),
+      title: Text(_quotation ? 'عرض سعر جديد' : 'أمر بيع جديد'),
       content: SizedBox(
-        width: 680,
+        width: 980,
         child: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -218,41 +213,13 @@ class _NewSoDialogState extends ConsumerState<_NewSoDialog> {
                 ],
               ),
               const SizedBox(height: 12),
-              ProductSearchField(
-                autofocus: false,
-                onSelected: _addLine,
+              OrderLinesEditor(
+                lines: _lines,
+                create: _makeLine,
+                onChanged: () => setState(() {}),
+                withDiscount: true,
               ),
-              for (final l in _lines)
-                Row(
-                  children: [
-                    Expanded(child: Text(l.row.product.nameAr)),
-                    SizedBox(
-                      width: 90,
-                      child: TextField(
-                        controller: l.qty,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        decoration: const InputDecoration(labelText: 'الكمية'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    SizedBox(
-                      width: 110,
-                      child: TextField(
-                        controller: l.extra,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        decoration: const InputDecoration(labelText: 'خصم إضافي %'),
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => setState(() {
-                        _lines.remove(l);
-                        l.qty.dispose();
-                        l.extra.dispose();
-                      }),
-                    ),
-                  ],
-                ),
+              const SizedBox(height: 8),
               TextField(
                 controller: _external,
                 decoration: const InputDecoration(labelText: 'رقم الطلب الخارجي (اختياري)'),
@@ -296,8 +263,8 @@ class _NewSoDialogState extends ConsumerState<_NewSoDialog> {
 }
 
 /// The form for a new sales order or quotation.
-Future<void> showNewSalesOrder(BuildContext context) =>
-    showDialog<void>(context: context, builder: (_) => const _NewSoDialog());
+Future<void> showNewSalesOrder(BuildContext context, {bool quotation = false}) =>
+    showDialog<void>(context: context, builder: (_) => _NewSoDialog(quotation: quotation));
 
 /// Opens one sales order (from a customer's page, say).
 Future<void> showSalesOrder(BuildContext context, int orderId) =>

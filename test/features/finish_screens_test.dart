@@ -17,6 +17,7 @@ import 'package:sanitaryware_erp/core/services/sales_service.dart';
 import 'package:sanitaryware_erp/features/accounting/accounting_reports.dart';
 import 'package:sanitaryware_erp/features/parties/parties_screen.dart';
 import 'package:sanitaryware_erp/features/products/products_screen.dart';
+import 'package:sanitaryware_erp/features/purchases/purchase_entry_screen.dart';
 import 'package:sanitaryware_erp/features/sales/sale_entry_screen.dart';
 
 import '../support/fixture.dart';
@@ -143,6 +144,25 @@ void main() {
     await tester.tap(find.text('تم'));
     await settle(tester);
     expect(find.widgetWithText(TextField, '2'), findsOneWidget, reason: 'one line with quantity 2');
+    expect(tester.takeException(), isNull);
+    await unmount(tester);
+  });
+
+  testWidgets('the purchase invoice has the product browser too', (tester) async {
+    await pump(tester, const PurchaseEntryScreen());
+    await tester.tap(find.text('تصفح الأصناف (F3)'));
+    await settle(tester);
+    expect(find.text('تصفح الأصناف'), findsOneWidget);
+    await tester.tap(find.text('ماسورة').last);
+    await settle(tester);
+    await tester.tap(find.text('خلاط').last);
+    await settle(tester);
+    await tester.tap(find.text('خلاط').last);
+    await settle(tester);
+    await tester.tap(find.text('تم'));
+    await settle(tester);
+    expect(find.widgetWithText(TextField, '2'), findsOneWidget, reason: 'the mixer once, quantity 2');
+    expect(find.widgetWithText(TextField, '1'), findsOneWidget, reason: 'the pipe, quantity 1');
     expect(tester.takeException(), isNull);
     await unmount(tester);
   });

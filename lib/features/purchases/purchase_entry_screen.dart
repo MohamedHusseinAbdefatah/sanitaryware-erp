@@ -24,6 +24,7 @@ import '../../core/widgets/feedback.dart';
 import '../../core/widgets/number_fields.dart';
 import '../../core/widgets/pickers.dart';
 import '../parties/party_form_dialog.dart';
+import '../sales/product_browser.dart';
 import 'purchase_pickers.dart';
 
 String _pct(int bp) => '${(bp / 100).toStringAsFixed(bp % 100 == 0 ? 0 : 1)}%';
@@ -206,6 +207,26 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
       });
     }
   }
+
+  /// From the product browser: one more of a product already on the invoice
+  /// (outside a purchase order's lines), or a new line for it.
+  Future<void> _pickFromBrowser(ProductRow row) async {
+    final existing = _lines.where((l) => l.poLine == null && l.row.product.id == row.product.id).firstOrNull;
+    if (existing != null) {
+      existing.qty.text = formatQty((existing.qtyValue ?? 0) + qtyScale);
+      setState(() {});
+      return;
+    }
+    _add(row, qty: qtyScale);
+  }
+
+  Future<void> _browse() => showProductBrowser(
+        context,
+        onPick: _pickFromBrowser,
+        countOf: (id) =>
+            _lines.where((l) => l.row.product.id == id).fold(0, (s, l) => s + (l.qtyValue ?? 0)) ~/ qtyScale,
+        inStockOnly: false,
+      );
 
   /// With a supplier chosen, a line starts at the cost its recorded policy
   /// gives, when exactly one version has one. With a list price but no
@@ -501,6 +522,7 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
       bindings: {
         const SingleActivator(LogicalKeyboardKey.keyS, control: true): _save,
         const SingleActivator(LogicalKeyboardKey.f2): () => _searchFocus.requestFocus(),
+        const SingleActivator(LogicalKeyboardKey.f3): _browse,
       },
       child: Form(
         key: _form,
@@ -563,6 +585,12 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                 children: [
                   Expanded(
                     child: ProductSearchField(key: ValueKey(_searchKey), focusNode: _searchFocus, onSelected: _add),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.tonalIcon(
+                    onPressed: _browse,
+                    icon: const Icon(Icons.grid_view_rounded),
+                    label: const Text('تصفح الأصناف (F3)'),
                   ),
                   const SizedBox(width: 8),
                   OutlinedButton.icon(

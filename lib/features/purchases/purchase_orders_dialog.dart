@@ -9,11 +9,11 @@ import '../../core/money.dart';
 import '../../core/providers.dart';
 import '../../core/quantity.dart';
 import '../../core/services/doc_types.dart';
-import '../../core/services/product_service.dart';
 import '../../core/services/purchase_order_service.dart';
 import '../../core/services/stock_service.dart';
 import '../../core/widgets/feedback.dart';
 import '../../core/widgets/pickers.dart';
+import '../sales/order_lines_editor.dart';
 
 String poStatusLabel(String s) => switch (s) {
       PoStatus.draft => 'مسودة',
@@ -70,12 +70,6 @@ class PurchaseOrdersDialog extends ConsumerWidget {
   }
 }
 
-class _NewLine {
-  _NewLine(this.row) : qty = TextEditingController(text: '1');
-  final ProductRow row;
-  final TextEditingController qty;
-}
-
 class _NewOrderDialog extends ConsumerStatefulWidget {
   const _NewOrderDialog();
 
@@ -85,13 +79,13 @@ class _NewOrderDialog extends ConsumerStatefulWidget {
 
 class _NewOrderDialogState extends ConsumerState<_NewOrderDialog> {
   int? _supplierId;
-  final _lines = <_NewLine>[];
+  final _lines = <OrderLine>[];
   final _notes = TextEditingController();
 
   @override
   void dispose() {
     for (final l in _lines) {
-      l.qty.dispose();
+      l.dispose();
     }
     _notes.dispose();
     super.dispose();
@@ -100,6 +94,10 @@ class _NewOrderDialogState extends ConsumerState<_NewOrderDialog> {
   Future<void> _save() async {
     final user = ref.read(currentUserProvider);
     if (user == null) return;
+    if (_lines.isEmpty) {
+      await showMessage(context, 'أضف صنفاً واحداً على الأقل');
+      return;
+    }
     final inputs = <PoLineInput>[];
     for (final l in _lines) {
       final q = parseQty(l.qty.text, allowDecimal: l.row.unitAllowsDecimal);
@@ -129,7 +127,7 @@ class _NewOrderDialogState extends ConsumerState<_NewOrderDialog> {
     return AlertDialog(
       title: const Text('أمر شراء جديد'),
       content: SizedBox(
-        width: 640,
+        width: 900,
         child: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -148,31 +146,13 @@ class _NewOrderDialogState extends ConsumerState<_NewOrderDialog> {
                 ),
               ),
               const SizedBox(height: 12),
-              ProductSearchField(
-                autofocus: false,
-                onSelected: (r) => setState(() => _lines.add(_NewLine(r))),
+              OrderLinesEditor(
+                lines: _lines,
+                create: (r) async => OrderLine(r),
+                onChanged: () => setState(() {}),
+                inStockOnly: false,
               ),
-              for (final l in _lines)
-                Row(
-                  children: [
-                    Expanded(child: Text(l.row.product.nameAr)),
-                    SizedBox(
-                      width: 100,
-                      child: TextField(
-                        controller: l.qty,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        decoration: const InputDecoration(labelText: 'الكمية'),
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => setState(() {
-                        _lines.remove(l);
-                        l.qty.dispose();
-                      }),
-                    ),
-                  ],
-                ),
+              const SizedBox(height: 8),
               TextField(controller: _notes, decoration: const InputDecoration(labelText: Strings.notes)),
               const SizedBox(height: 8),
               const Text('التكلفة تُثبَّت عند الاعتماد من القائمة السارية وسياسة الشراء المسجلة لهذا المورد؛ بدون سياسة لا يُفترض خصم وتُدخل التكلفة يدوياً.',

@@ -26,17 +26,19 @@ Future<void> showProductBrowser(
   BuildContext context, {
   required Future<void> Function(ProductRow row) onPick,
   required int Function(int productId) countOf,
+  bool inStockOnly = true,
 }) =>
     showDialog<void>(
       context: context,
-      builder: (_) => _ProductBrowser(onPick: onPick, countOf: countOf),
+      builder: (_) => _ProductBrowser(onPick: onPick, countOf: countOf, inStockOnly: inStockOnly),
     );
 
 class _ProductBrowser extends ConsumerStatefulWidget {
-  const _ProductBrowser({required this.onPick, required this.countOf});
+  const _ProductBrowser({required this.onPick, required this.countOf, this.inStockOnly = true});
 
   final Future<void> Function(ProductRow row) onPick;
   final int Function(int productId) countOf;
+  final bool inStockOnly;
 
   @override
   ConsumerState<_ProductBrowser> createState() => _ProductBrowserState();
@@ -46,7 +48,7 @@ class _ProductBrowserState extends ConsumerState<_ProductBrowser> {
   String _search = '';
   int? _categoryId;
   int? _brandId;
-  bool _inStockOnly = true;
+  late bool _inStockOnly = widget.inStockOnly;
   bool _topOnly = false;
   int _added = 0;
 

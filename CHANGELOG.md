@@ -2,6 +2,22 @@
 
 Versions follow `version:` in `pubspec.yaml` and `lib/core/version.dart`.
 
+## 2.2.1
+
+No database change.
+
+- Fix: a new purchase order, sales order or quotation took only one
+  product, because the product search kept the first product's name. The
+  forms now work like the invoice: the search clears after each pick,
+  "Browse products" (F3) adds products from photos and categories, picking a
+  product again adds one more of it, and the lines show in a table with the
+  stock, list price, quantity (and extra discount on sales) and the total at
+  list price. Saving with no products is refused.
+- "New quotation" button on the sales orders screen, beside "New order".
+- Purchase invoice: "Browse products" (F3) as on the sales invoice, showing
+  all products (not only those in stock); a product picked again adds one
+  more to its line.
+
 ## 2.2.0
 
 The remaining blueprint items, except the Shopify connection. Database
