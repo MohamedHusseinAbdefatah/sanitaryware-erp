@@ -18,6 +18,9 @@ class CustomerInput {
     this.discountBp = 0,
     this.notes,
     this.isActive = true,
+    this.email,
+    this.taxNumber,
+    this.paymentTermsDays,
   });
 
   final String name;
@@ -25,6 +28,14 @@ class CustomerInput {
   final String? address;
   final int openingBalance;
   final int creditLimit;
+
+  /// Null leaves what is saved; empty text clears it.
+  final String? email;
+  final String? taxNumber;
+
+  /// Days from a credit invoice to its due date (0 = due at once); null
+  /// leaves what is saved.
+  final int? paymentTermsDays;
 
   /// The old fixed level; used only to pick the starting category when
   /// [categoryId] is not given.
@@ -47,6 +58,9 @@ class SupplierInput {
     this.openingBalance = 0,
     this.notes,
     this.isActive = true,
+    this.email,
+    this.taxNumber,
+    this.leadTimeDays,
   });
 
   final String name;
@@ -55,6 +69,14 @@ class SupplierInput {
   final int openingBalance;
   final String? notes;
   final bool isActive;
+
+  /// Null leaves what is saved; empty text clears it.
+  final String? email;
+  final String? taxNumber;
+
+  /// Usual days from ordering to delivery (0 = not known); null leaves what
+  /// is saved.
+  final int? leadTimeDays;
 }
 
 /// Customers and suppliers. Balances are calculated from documents
@@ -69,7 +91,7 @@ class PartyService {
         .watch()
         .map((all) => all
             .where((c) => !activeOnly || c.isActive)
-            .where((c) => matchesSearch(search, [c.name, c.phone, c.address]))
+            .where((c) => matchesSearch(search, [c.name, c.phone, c.address, c.email, c.taxNumber]))
             .toList());
   }
 
@@ -94,6 +116,10 @@ class PartyService {
         throw ValidationException('نسبة الخصم يجب أن تكون بين 0 و 100');
       }
       if (input.creditLimit < 0) throw ValidationException('حد الائتمان لا يمكن أن يكون سالباً');
+      final terms = input.paymentTermsDays;
+      if (terms != null && (terms < 0 || terms > 365)) {
+        throw ValidationException('مدة السداد بين 0 و 365 يوماً');
+      }
       final categoryId = input.categoryId ??
           AppDatabase.starterCategories.indexWhere((c) => c.$3 == input.priceLevel) + 1;
       final category =
@@ -110,6 +136,9 @@ class PartyService {
         discountBp: Value(input.discountBp),
         notes: Value(_blankToNull(input.notes)),
         isActive: Value(input.isActive),
+        email: input.email == null ? const Value.absent() : Value(_blankToNull(input.email)),
+        taxNumber: input.taxNumber == null ? const Value.absent() : Value(_blankToNull(input.taxNumber)),
+        paymentTermsDays: terms == null ? const Value.absent() : Value(terms),
       );
       final before = id == null
           ? null
@@ -138,6 +167,9 @@ class PartyService {
         openingBalance: Value(input.openingBalance),
         notes: Value(_blankToNull(input.notes)),
         isActive: Value(input.isActive),
+        email: input.email == null ? const Value.absent() : Value(_blankToNull(input.email)),
+        taxNumber: input.taxNumber == null ? const Value.absent() : Value(_blankToNull(input.taxNumber)),
+        leadTimeDays: input.leadTimeDays == null ? const Value.absent() : Value(input.leadTimeDays!.clamp(0, 365)),
       );
       final before = id == null
           ? null
@@ -175,4 +207,46 @@ class PartyService {
 
   static String? _blankToNull(String? s) =>
       (s == null || s.trim().isEmpty) ? null : s.trim();
+
+  // ------------------------------------------------------------- contacts
+
+  /// The people to deal with at a customer, in the order added.
+  Stream<List<CustomerContact>> watchContacts(int customerId) => (db.select(db.customerContacts)
+        ..where((t) => t.customerId.equals(customerId))
+        ..orderBy([(t) => OrderingTerm(expression: t.id)]))
+      .watch();
+
+  Future<int> saveContact({
+    int? id,
+    required int customerId,
+    required String name,
+    String? role,
+    String? phone,
+    String? email,
+    int? userId,
+  }) async {
+    final companion = CustomerContactsCompanion(
+      customerId: Value(customerId),
+      name: Value(_required(name)),
+      role: Value(_blankToNull(role)),
+      phone: Value(_blankToNull(phone)),
+      email: Value(_blankToNull(email)),
+    );
+    final savedId = id == null
+        ? await db.into(db.customerContacts).insert(companion)
+        : (await (db.update(db.customerContacts)..where((t) => t.id.equals(id))).write(companion), id).$2;
+    await AuditService(db).log(
+      action: id == null ? AuditAction.create : AuditAction.update,
+      entity: 'customer_contact',
+      entityId: savedId,
+      userId: userId,
+      details: '${name.trim()} (عميل $customerId)',
+    );
+    return savedId;
+  }
+
+  Future<void> deleteContact(int id, {int? userId}) async {
+    await (db.delete(db.customerContacts)..where((t) => t.id.equals(id))).go();
+    await AuditService(db).log(action: AuditAction.update, entity: 'customer_contact', entityId: id, userId: userId, details: 'حذف');
+  }
 }

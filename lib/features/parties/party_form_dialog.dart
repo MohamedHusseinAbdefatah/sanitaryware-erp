@@ -44,6 +44,19 @@ class _PartyFormDialogState extends ConsumerState<_PartyFormDialog> {
   late final _creditLimit = TextEditingController(text: _money(_c?.creditLimit));
   late final _discount = TextEditingController(text: _pct(_c?.discountBp));
   late final _notes = TextEditingController(text: _c?.notes ?? _s?.notes);
+  late final _email = TextEditingController(text: _c?.email ?? _s?.email);
+  late final _taxNumber = TextEditingController(text: _c?.taxNumber ?? _s?.taxNumber);
+  late final _days = TextEditingController(text: _days0(widget.isCustomer ? _c?.paymentTermsDays : _s?.leadTimeDays));
+
+  static String _days0(int? d) => d == null || d == 0 ? '' : '$d';
+
+  /// Whole days 0..365; null when not a number.
+  static int? _dayCount(String t) {
+    final s = t.trim();
+    if (s.isEmpty) return 0;
+    final v = int.tryParse(s);
+    return v == null || v < 0 || v > 365 ? null : v;
+  }
   late int _categoryId = _c?.categoryId ?? walkInCategoryId;
   late bool _active = _c?.isActive ?? _s?.isActive ?? true;
 
@@ -68,7 +81,7 @@ class _PartyFormDialogState extends ConsumerState<_PartyFormDialog> {
 
   @override
   void dispose() {
-    for (final c in [_name, _phone, _address, _opening, _creditLimit, _discount, _notes]) {
+    for (final c in [_name, _phone, _address, _opening, _creditLimit, _discount, _notes, _email, _taxNumber, _days]) {
       c.dispose();
     }
     super.dispose();
@@ -91,6 +104,9 @@ class _PartyFormDialogState extends ConsumerState<_PartyFormDialog> {
             discountBp: _bp(_discount.text) ?? 0,
             notes: _notes.text,
             isActive: _active,
+            email: _email.text,
+            taxNumber: _taxNumber.text,
+            paymentTermsDays: _dayCount(_days.text) ?? 0,
           ),
           id: _c?.id,
           userId: user?.id,
@@ -104,6 +120,9 @@ class _PartyFormDialogState extends ConsumerState<_PartyFormDialog> {
           openingBalance: moneyOrZero(_opening),
           notes: _notes.text,
           isActive: _active,
+          email: _email.text,
+          taxNumber: _taxNumber.text,
+          leadTimeDays: _dayCount(_days.text) ?? 0,
         ),
         id: _s?.id,
         userId: user?.id,
@@ -142,6 +161,28 @@ class _PartyFormDialogState extends ConsumerState<_PartyFormDialog> {
                 TextFormField(
                   controller: _address,
                   decoration: const InputDecoration(labelText: Strings.address),
+                ),
+                TextFormField(
+                  controller: _email,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: const InputDecoration(labelText: 'البريد الإلكتروني (اختياري)'),
+                  validator: (v) {
+                    final t = (v ?? '').trim();
+                    return t.isEmpty || RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(t) ? null : 'بريد غير صحيح';
+                  },
+                ),
+                TextFormField(
+                  controller: _taxNumber,
+                  decoration: const InputDecoration(labelText: 'الرقم الضريبي (اختياري)'),
+                ),
+                TextFormField(
+                  controller: _days,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: widget.isCustomer ? 'مدة السداد بالأيام (للفواتير الآجلة)' : 'مدة التوريد المعتادة بالأيام',
+                    hintText: widget.isCustomer ? 'فارغ = مستحقة فوراً' : 'تُستخدم في تخطيط الشراء',
+                  ),
+                  validator: (v) => _dayCount(v ?? '') == null ? 'من 0 إلى 365' : null,
                 ),
                 if (widget.isCustomer)
                   DropdownButtonFormField<int>(

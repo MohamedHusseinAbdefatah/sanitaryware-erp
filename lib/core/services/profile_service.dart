@@ -290,6 +290,7 @@ class ProfileService {
             total: r.read<int>('total'),
             paid: r.read<int>('paid'),
             status: r.read<String>('status'),
+            dueDate: db.salesInvoices.map(r.data).dueDate,
           ),
       ],
       payments: await _payments(PartyType.customer, id),

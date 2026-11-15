@@ -537,7 +537,7 @@ class SalesOrderService {
       await (db.update(db.salesOrders)..where((t) => t.id.equals(id))).write(
           SalesOrdersCompanion(status: const Value(SoStatus.cancelled), updatedAt: Value(DateTime.now())));
       final lines = await (db.select(db.salesOrderLines)..where((t) => t.orderId.equals(id))).get();
-      await ReservationService(db).releaseLines(lines.map((l) => l.id), userId: user.id);
+      await ReservationService(db).releaseLines(lines.map((l) => l.id), userId: user.id, status: ReservationStatus.cancelled);
       await AuditService(db).log(action: AuditAction.cancel, entity: 'sales_order', entityId: id, userId: user.id);
     });
   }

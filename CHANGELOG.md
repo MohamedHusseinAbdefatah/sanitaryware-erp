@@ -2,6 +2,32 @@
 
 Versions follow `version:` in `pubspec.yaml` and `lib/core/version.dart`.
 
+## 2.3.0
+
+The last blueprint items; everything except the Shopify connection is in.
+Database schema 19 (new columns and two tables; nothing removed).
+
+- Purchase planning (4.1), from the purchase orders screen: per product the
+  sellable stock, reserved, on order, minimum, sales over 30 / 60 / 90 days
+  and a suggested quantity covering sales over the supplier's lead time plus
+  safety days. Every supplier with a recorded discount on the brand is
+  listed with its net cost and lead time, cheapest first. The chosen lines
+  are saved as one draft purchase order per supplier, approved as usual.
+- Suppliers: email, tax number and usual lead time.
+- Customer file (6.1): email, tax number, payment terms and contacts
+  (name, role, phone, email). A credit invoice gets its due date from the
+  terms; it shows on the invoice and its print, and aging counts from it.
+  The customer and supplier Excel import reads the new columns.
+- Expenses (9.1): payee, receipt number, recoverable input VAT (posted to
+  input VAT, kept out of the expense, the profit and project costs, shown in
+  the VAT report) and a scan or PDF of the receipt kept inside the database.
+- Reservations (5.3): cancelled when their order is cancelled; an active
+  hold past its day shows as expired; states shown on the customer page.
+- Backups (9.3): a timed backup every two hours while the program is open;
+  the newest 10 timed and the newest 10 other backups are kept.
+- Guides: the user guide, the application guide, the customer demo and the
+  handover checklist describe this version.
+
 ## 2.2.1
 
 No database change.

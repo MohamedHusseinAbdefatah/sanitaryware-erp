@@ -17,6 +17,11 @@ class ExpenseInput {
     this.date,
     this.description,
     this.projectId,
+    this.payee,
+    this.vatAmount = 0,
+    this.docNumber,
+    this.attachmentName,
+    this.attachmentBytes,
   });
 
   final int categoryId;
@@ -27,12 +32,28 @@ class ExpenseInput {
 
   /// Spent for this project, if any.
   final int? projectId;
+
+  /// Who was paid (a landlord, a carrier, the electricity company).
+  final String? payee;
+
+  /// The recoverable input VAT inside [amount]; 0 when there is none.
+  final int vatAmount;
+
+  /// The receipt or invoice number.
+  final String? docNumber;
+
+  /// A scan or photo of the receipt.
+  final String? attachmentName;
+  final List<int>? attachmentBytes;
 }
 
 class ExpenseRow {
-  const ExpenseRow(this.expense, this.categoryName);
+  const ExpenseRow(this.expense, this.categoryName, {this.hasFile = false});
   final Expense expense;
   final String categoryName;
+
+  /// A receipt is kept with it.
+  final bool hasFile;
 }
 
 /// Shop expenses: rent, transport, salaries, electricity... Admin only.
@@ -69,11 +90,27 @@ class ExpenseService {
     return id;
   }
 
+  /// The largest receipt scan kept with an expense.
+  static const maxAttachmentBytes = 10 * 1024 * 1024;
+
+  static String? _clean(String? s) => (s ?? '').trim().isEmpty ? null : s!.trim();
+
+  /// The receipt kept with an expense, if any.
+  Future<ExpenseAttachment?> attachment(int expenseId) =>
+      (db.select(db.expenseAttachments)..where((t) => t.expenseId.equals(expenseId))).getSingleOrNull();
+
   Future<Expense> add(ExpenseInput input, {required User user}) {
     return db.transaction(() async {
       if (!user.can(Perm.expenses)) throw ValidationException('المصروفات لصلاحية المحاسبة');
       await refuseSoftClosed(db, input.date ?? DateTime.now(), user.id);
       if (input.amount <= 0) throw ValidationException('المبلغ يجب أن يكون أكبر من صفر');
+      if (input.vatAmount < 0 || input.vatAmount >= input.amount) {
+        throw ValidationException('الضريبة يجب أن تكون أقل من إجمالي المصروف');
+      }
+      final bytes = input.attachmentBytes;
+      if (bytes != null && bytes.length > maxAttachmentBytes) {
+        throw ValidationException('المرفق أكبر من 10 ميجا؛ اختر صورة أو ملفاً أصغر');
+      }
       if (input.method != PaymentMethod.cash && input.method != PaymentMethod.bank) {
         throw ArgumentError.value(input.method, 'method');
       }
@@ -88,7 +125,17 @@ class ExpenseService {
             description: Value((input.description ?? '').trim().isEmpty ? null : input.description!.trim()),
             createdBy: Value(user.id),
             projectId: Value(input.projectId),
+            payee: Value(_clean(input.payee)),
+            vatAmount: Value(input.vatAmount),
+            docNumber: Value(_clean(input.docNumber)),
           ));
+      if (bytes != null && bytes.isNotEmpty) {
+        await db.into(db.expenseAttachments).insert(ExpenseAttachmentsCompanion.insert(
+              expenseId: Value(id),
+              fileName: (input.attachmentName ?? 'مرفق').trim(),
+              bytes: Uint8List.fromList(bytes),
+            ));
+      }
       await AuditService(db).log(
         action: AuditAction.create,
         entity: 'expense',
@@ -130,7 +177,8 @@ class ExpenseService {
   Stream<List<ExpenseRow>> watchList({DateTime? from, DateTime? to, int? categoryId}) {
     return db.customSelect(
       '''
-      SELECT e.*, c.name_ar AS category_name
+      SELECT e.*, c.name_ar AS category_name,
+        EXISTS (SELECT 1 FROM expense_attachments a WHERE a.expense_id = e.id) AS has_file
       FROM expenses e JOIN expense_categories c ON c.id = e.category_id
       WHERE (? IS NULL OR e.date >= ?) AND (? IS NULL OR e.date < ?)
         AND (? IS NULL OR e.category_id = ?)
@@ -141,9 +189,9 @@ class ExpenseService {
         Variable<int>(categoryId),
         Variable<int>(categoryId),
       ],
-      readsFrom: {db.expenses, db.expenseCategories},
+      readsFrom: {db.expenses, db.expenseCategories, db.expenseAttachments},
     ).watch().map((rows) => [
-          for (final r in rows) ExpenseRow(db.expenses.map(r.data), r.read<String>('category_name')),
+          for (final r in rows) ExpenseRow(db.expenses.map(r.data), r.read<String>('category_name'), hasFile: r.read<bool>('has_file')),
         ]);
   }
 }

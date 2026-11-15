@@ -296,7 +296,7 @@ class ProjectService {
       collected: collected,
       revenue: invoiced - vat - returnedNet,
       goodsCost: items.fold(0, (s, i) => s + i.costTotal) - returnCost,
-      expenses: expenses.fold(0, (s, e) => s + e.amount),
+      expenses: expenses.fold(0, (s, e) => s + e.amount - e.vatAmount),
       purchases: purchases.fold(0, (s, p) => s + p.total),
       ordered: ordered < 0 ? 0 : ordered,
     );

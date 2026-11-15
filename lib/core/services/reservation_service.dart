@@ -9,6 +9,20 @@ abstract final class ReservationStatus {
   static const active = 'active';
   static const released = 'released';
   static const fulfilled = 'fulfilled';
+
+  /// Its order was cancelled (schema 19 and later).
+  static const cancelled = 'cancelled';
+
+  /// Blueprint 5.3: Active, Consumed, Released, Cancelled, Expired. Expired
+  /// is an active hold whose day has passed: it no longer holds stock.
+  static String label(Reservation r, {DateTime? now}) => switch (r.status) {
+        active when r.expiresAt != null && r.expiresAt!.isBefore(now ?? DateTime.now()) => 'منتهي',
+        active => 'نشط',
+        fulfilled => 'مُستهلك',
+        released => 'مُحرَّر',
+        cancelled => 'ملغي',
+        _ => r.status,
+      };
 }
 
 class ReservationRow {
@@ -157,14 +171,15 @@ class ReservationService {
   }
 
   /// Gives back everything still held for these order lines.
-  Future<void> releaseLines(Iterable<int> salesOrderLineIds, {int? userId}) async {
+  Future<void> releaseLines(Iterable<int> salesOrderLineIds,
+      {int? userId, String status = ReservationStatus.released}) async {
     final ids = salesOrderLineIds.toList();
     if (ids.isEmpty) return;
     final rows = await (db.select(db.reservations)
           ..where((r) => r.salesOrderLineId.isIn(ids) & r.status.equals(ReservationStatus.active)))
         .get();
     for (final r in rows) {
-      await _close(r.id, ReservationStatus.released, userId);
+      await _close(r.id, status, userId);
     }
   }
 

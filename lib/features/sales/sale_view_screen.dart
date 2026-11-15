@@ -96,6 +96,7 @@ class _SaleViewScreenState extends ConsumerState<SaleViewScreen> {
           partyDetail: d.customer?.phone,
           facts: [
             (Strings.date, formatDateTime(inv.date)),
+            if (inv.dueDate != null) ('يستحق الباقي', formatDate(inv.dueDate!)),
             if (d.createdByName != null) (Strings.createdBy, d.createdByName!),
             if (inv.deliveryMethod != null)
               ('التسليم', '${DeliveryMethod.label(inv.deliveryMethod)} — ${DeliveryStatus.label(inv.deliveryStatus)}'),

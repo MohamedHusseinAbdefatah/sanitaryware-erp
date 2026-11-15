@@ -90,7 +90,16 @@ Future<Uint8List> salesInvoicePdf(SalesInvoiceDetail d, PrintCompany company, Pd
     date: inv.date,
     cancelled: inv.status == DocStatus.cancelled,
     body: [
-      _partyBlock('العميل', d.customer?.name ?? 'نقدي', phone: d.customer?.phone, address: d.customer?.address),
+      _partyBlock(
+        'العميل',
+        d.customer?.name ?? 'نقدي',
+        phone: d.customer?.phone,
+        address: d.customer?.address,
+        extra: [
+          if (d.customer?.taxNumber != null) 'الرقم الضريبي: ${d.customer!.taxNumber}',
+          if (inv.dueDate != null) 'تاريخ الاستحقاق: ${formatDate(inv.dueDate!)}',
+        ].join('    '),
+      ),
       pw.SizedBox(height: 10),
       rtlTable(
         columns: const [
@@ -365,7 +374,7 @@ pw.Widget _partyBlock(String label, String name, {String? phone, String? address
         pw.Text('$label: $name', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
         if (phone != null && phone.isNotEmpty) pw.Text('تليفون: $phone'),
         if (address != null && address.isNotEmpty) pw.Text('العنوان: $address'),
-        if (extra != null) pw.Text(extra),
+        if (extra != null && extra.isNotEmpty) pw.Text(extra),
       ],
     ),
   );

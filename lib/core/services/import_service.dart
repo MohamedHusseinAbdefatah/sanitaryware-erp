@@ -51,12 +51,18 @@ const _fields = {
     _Field('opening', ['رصيد أول المدة', 'الرصيد']),
     _Field('creditLimit', ['حد الائتمان']),
     _Field('priceLevel', ['فئة العميل', 'فئة السعر', 'الفئة']),
+    _Field('email', ['البريد الإلكتروني', 'البريد', 'email']),
+    _Field('taxNumber', ['الرقم الضريبي', 'tax number']),
+    _Field('days', ['مدة السداد', 'مدة السداد بالأيام', 'payment terms']),
   ],
   ImportKind.suppliers: [
     _Field('name', ['اسم المورد', 'الاسم', 'المورد', 'name'], required: true),
     _Field('phone', ['التليفون', 'تليفون', 'الهاتف', 'الموبايل', 'phone']),
     _Field('address', ['العنوان', 'address']),
     _Field('opening', ['رصيد أول المدة', 'الرصيد']),
+    _Field('email', ['البريد الإلكتروني', 'البريد', 'email']),
+    _Field('taxNumber', ['الرقم الضريبي', 'tax number']),
+    _Field('days', ['مدة التوريد', 'مدة التوريد بالأيام', 'lead time']),
   ],
 };
 
@@ -320,6 +326,7 @@ class ImportService {
       if (categoryId == null) {
         row.errors.add('فئة العميل "${v['priceLevel']}" غير معروفة (${categories.map((c) => c.name).join('، ')})');
       }
+      final days = _days(row, v['days'], 'مدة السداد');
       if (row.ok) {
         row.input = CustomerInput(
           name: name,
@@ -328,6 +335,9 @@ class ImportService {
           openingBalance: opening,
           creditLimit: limit,
           categoryId: categoryId,
+          email: v['email'],
+          taxNumber: v['taxNumber'],
+          paymentTermsDays: days,
         );
       }
     }
@@ -341,10 +351,31 @@ class ImportService {
       final name = (v['name'] ?? '').trim();
       _checkName(row, name, existing, seen);
       final opening = _money(row, v['opening'], 'رصيد أول المدة', allowNegative: true);
+      final days = _days(row, v['days'], 'مدة التوريد');
       if (row.ok) {
-        row.input = SupplierInput(name: name, phone: _phone(v['phone']), address: v['address'], openingBalance: opening);
+        row.input = SupplierInput(
+          name: name,
+          phone: _phone(v['phone']),
+          address: v['address'],
+          openingBalance: opening,
+          email: v['email'],
+          taxNumber: v['taxNumber'],
+          leadTimeDays: days,
+        );
       }
     }
+  }
+
+  /// Whole days 0..365 (empty = 0).
+  int _days(ImportRow row, String? text, String label) {
+    final t = (text ?? '').trim();
+    if (t.isEmpty) return 0;
+    final v = int.tryParse(t);
+    if (v == null || v < 0 || v > 365) {
+      row.errors.add('$label غير صحيحة: "$t" (عدد أيام من 0 إلى 365)');
+      return 0;
+    }
+    return v;
   }
 
   void _checkName(ImportRow row, String name, Set<String> existing, Set<String> seen) {

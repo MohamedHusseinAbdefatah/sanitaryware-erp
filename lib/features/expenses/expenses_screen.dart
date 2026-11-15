@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -42,8 +45,22 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
     if (reason == null || !mounted) return;
     await runGuarded(
       context,
-      () => ref.read(expenseServiceProvider).cancel(row.expense.id, reason: reason, user: ref.read(currentUserProvider)!),
+      () =>
+          ref.read(expenseServiceProvider).cancel(row.expense.id, reason: reason, user: ref.read(currentUserProvider)!),
     );
+  }
+
+  /// Writes the kept receipt to a temporary file and opens it with Windows.
+  Future<void> _openFile(ExpenseRow row) async {
+    await runGuarded(context, () async {
+      final a = await ref.read(expenseServiceProvider).attachment(row.expense.id);
+      if (a == null) return;
+      final dir = await Directory.systemTemp.createTemp('erp-expense-');
+      final safe = a.fileName.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+      final file = File('${dir.path}${Platform.pathSeparator}EX-${row.expense.id}-$safe');
+      await file.writeAsBytes(a.bytes);
+      await Process.run('explorer', [file.path]);
+    });
   }
 
   @override
@@ -98,47 +115,102 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
                 byCategory[r.categoryName] = (byCategory[r.categoryName] ?? 0) + r.expense.amount;
               }
               final top = byCategory.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
-              final purchaseCosts =
-                  active.where((r) => r.expense.purchaseInvoiceId != null).fold(0, (s, r) => s + r.expense.amount);
+              final purchaseCosts = active
+                  .where((r) => r.expense.purchaseInvoiceId != null)
+                  .fold(0, (s, r) => s + r.expense.amount);
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  SummaryStrip(items: [
-                    SummaryItem(Strings.totalExpenses, formatMoney(total), icon: Icons.money_off_outlined, tone: AppColors.bad),
-                    SummaryItem('عدد المصروفات', '${active.length}', icon: Icons.numbers),
-                    for (final e in top.take(2))
-                      SummaryItem(e.key, formatMoney(e.value), icon: Icons.label_outline),
-                    if (purchaseCosts > 0)
-                      SummaryItem('نقل مشتريات (ضمن التكلفة)', formatMoney(purchaseCosts), icon: Icons.local_shipping_outlined),
-                  ]),
+                  SummaryStrip(
+                    items: [
+                      SummaryItem(
+                        Strings.totalExpenses,
+                        formatMoney(total),
+                        icon: Icons.money_off_outlined,
+                        tone: AppColors.bad,
+                      ),
+                      SummaryItem('عدد المصروفات', '${active.length}', icon: Icons.numbers),
+                      for (final e in top.take(2)) SummaryItem(e.key, formatMoney(e.value), icon: Icons.label_outline),
+                      if (purchaseCosts > 0)
+                        SummaryItem(
+                          'نقل مشتريات (ضمن التكلفة)',
+                          formatMoney(purchaseCosts),
+                          icon: Icons.local_shipping_outlined,
+                        ),
+                    ],
+                  ),
                   Expanded(
                     child: DataList<ExpenseRow>(
                       rows: list,
                       emptyText: Strings.noExpenses,
                       rowColor: (r) => r.expense.status == DocStatus.cancelled ? AppColors.canvas : null,
-                      trailing: (r) => r.expense.status == DocStatus.active && r.expense.purchaseInvoiceId == null
-                          ? IconButton(
+                      trailing: (r) => Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (r.hasFile)
+                            IconButton(
+                              tooltip: 'فتح الإيصال المرفق',
+                              icon: const Icon(Icons.attach_file),
+                              onPressed: () => _openFile(r),
+                            ),
+                          if (r.expense.status == DocStatus.active && r.expense.purchaseInvoiceId == null)
+                            IconButton(
                               tooltip: Strings.cancelExpense,
                               icon: const Icon(Icons.block),
                               onPressed: () => _cancel(r),
-                            )
-                          : const SizedBox(),
+                            ),
+                        ],
+                      ),
                       columns: [
                         DataListColumn(Strings.date, (r) => Text(formatDate(r.expense.date))),
                         DataListColumn(Strings.expenseCategory, flex: 2, (r) => Text(r.categoryName)),
-                        DataListColumn(Strings.amount, numeric: true,
-                            (r) => Text(formatMoney(r.expense.amount), style: const TextStyle(fontWeight: FontWeight.w700))),
-                        DataListColumn(Strings.method, numeric: true, (r) => Text(paymentMethodLabel(r.expense.method))),
-                        DataListColumn(Strings.description, flex: 3, (r) => r.expense.purchaseInvoiceId == null
-                            ? Text(r.expense.description ?? '')
-                            : InkWell(
-                                onTap: () => context.go('/purchases/${r.expense.purchaseInvoiceId}'),
-                                child: Text(r.expense.description ?? '',
-                                    style: const TextStyle(color: AppColors.brand, fontWeight: FontWeight.w600)),
-                              )),
-                        DataListColumn(Strings.status, numeric: true, (r) => r.expense.status == DocStatus.cancelled
-                            ? const StatusPill.bad(Strings.cancelled)
-                            : const StatusPill.good('ساري')),
+                        DataListColumn(
+                          Strings.amount,
+                          numeric: true,
+                          (r) =>
+                              Text(formatMoney(r.expense.amount), style: const TextStyle(fontWeight: FontWeight.w700)),
+                        ),
+                        DataListColumn(
+                          Strings.method,
+                          numeric: true,
+                          (r) => Text(paymentMethodLabel(r.expense.method)),
+                        ),
+                        DataListColumn(
+                          'المستفيد / الإيصال',
+                          flex: 2,
+                          (r) => Text(
+                            [
+                              r.expense.payee,
+                              if (r.expense.docNumber != null) 'إيصال ${r.expense.docNumber}',
+                            ].whereType<String>().join(' · '),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        DataListColumn(
+                          'منها ضريبة',
+                          numeric: true,
+                          (r) => Text(r.expense.vatAmount == 0 ? '—' : formatMoney(r.expense.vatAmount)),
+                        ),
+                        DataListColumn(
+                          Strings.description,
+                          flex: 3,
+                          (r) => r.expense.purchaseInvoiceId == null
+                              ? Text(r.expense.description ?? '')
+                              : InkWell(
+                                  onTap: () => context.go('/purchases/${r.expense.purchaseInvoiceId}'),
+                                  child: Text(
+                                    r.expense.description ?? '',
+                                    style: const TextStyle(color: AppColors.brand, fontWeight: FontWeight.w600),
+                                  ),
+                                ),
+                        ),
+                        DataListColumn(
+                          Strings.status,
+                          numeric: true,
+                          (r) => r.expense.status == DocStatus.cancelled
+                              ? const StatusPill.bad(Strings.cancelled)
+                              : const StatusPill.good('ساري'),
+                        ),
                       ],
                     ),
                   ),
@@ -163,6 +235,11 @@ class _ExpenseDialogState extends ConsumerState<_ExpenseDialog> {
   final _form = GlobalKey<FormState>();
   final _amount = TextEditingController();
   final _description = TextEditingController();
+  final _payee = TextEditingController();
+  final _vat = TextEditingController();
+  final _docNumber = TextEditingController();
+  String? _fileName;
+  List<int>? _fileBytes;
   int? _categoryId;
   String _method = PaymentMethod.cash;
   DateTime _date = DateTime.now();
@@ -172,6 +249,9 @@ class _ExpenseDialogState extends ConsumerState<_ExpenseDialog> {
   void dispose() {
     _amount.dispose();
     _description.dispose();
+    _payee.dispose();
+    _vat.dispose();
+    _docNumber.dispose();
     super.dispose();
   }
 
@@ -188,10 +268,28 @@ class _ExpenseDialogState extends ConsumerState<_ExpenseDialog> {
     }
   }
 
+  Future<void> _attach() async {
+    final picked = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png', 'webp'],
+      withData: true,
+    );
+    final f = picked?.files.single;
+    if (f == null || !mounted) return;
+    final bytes = f.bytes ?? (f.path == null ? null : await File(f.path!).readAsBytes());
+    if (bytes == null || !mounted) return;
+    setState(() {
+      _fileName = f.name;
+      _fileBytes = bytes;
+    });
+  }
+
   Future<void> _save() async {
     if (!_form.currentState!.validate()) return;
     final ok = await runGuarded(context, () async {
-      await ref.read(expenseServiceProvider).add(
+      await ref
+          .read(expenseServiceProvider)
+          .add(
             ExpenseInput(
               categoryId: _categoryId ?? -1,
               amount: moneyOrZero(_amount),
@@ -199,6 +297,11 @@ class _ExpenseDialogState extends ConsumerState<_ExpenseDialog> {
               date: _date,
               description: _description.text,
               projectId: _projectId,
+              payee: _payee.text,
+              vatAmount: moneyOrZero(_vat),
+              docNumber: _docNumber.text,
+              attachmentName: _fileName,
+              attachmentBytes: _fileBytes,
             ),
             user: ref.read(currentUserProvider)!,
           );
@@ -213,57 +316,83 @@ class _ExpenseDialogState extends ConsumerState<_ExpenseDialog> {
     return AlertDialog(
       title: const Text(Strings.newExpense),
       content: SizedBox(
-        width: 440,
-        child: Form(
-          key: _form,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              DropdownButtonFormField<int>(
-                key: ValueKey(categories.length),
-                initialValue: _categoryId,
-                decoration: const InputDecoration(labelText: Strings.expenseCategory),
-                items: [for (final c in categories) DropdownMenuItem(value: c.id, child: Text(c.nameAr))],
-                validator: (v) => v == null ? Strings.required : null,
-                onChanged: (v) => setState(() => _categoryId = v),
-              ),
-              MoneyField(controller: _amount, label: Strings.amount, required: true),
-              const SizedBox(height: 12),
-              SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(value: PaymentMethod.cash, label: Text(Strings.methodCash)),
-                  ButtonSegment(value: PaymentMethod.bank, label: Text(Strings.methodBank)),
-                ],
-                selected: {_method},
-                onSelectionChanged: (s) => setState(() => _method = s.single),
-              ),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text(Strings.date),
-                subtitle: Text(formatDate(_date)),
-                trailing: const Icon(Icons.calendar_month),
-                onTap: _pickDate,
-              ),
-              TextFormField(
-                controller: _description,
-                decoration: const InputDecoration(labelText: Strings.description),
-              ),
-              FutureBuilder<List<Project>>(
-                future: ref.read(projectServiceProvider).open(),
-                builder: (context, snap) => (snap.data ?? const []).isEmpty
-                    ? const SizedBox()
-                    : DropdownButtonFormField<int?>(
-                        initialValue: _projectId,
-                        decoration: const InputDecoration(labelText: 'على مشروع (اختياري)'),
-                        items: [
-                          const DropdownMenuItem<int?>(value: null, child: Text('بدون مشروع')),
-                          for (final p in snap.data!) DropdownMenuItem<int?>(value: p.id, child: Text(p.name)),
-                        ],
-                        onChanged: (v) => _projectId = v,
+        width: 480,
+        child: SingleChildScrollView(
+          child: Form(
+            key: _form,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                DropdownButtonFormField<int>(
+                  key: ValueKey(categories.length),
+                  initialValue: _categoryId,
+                  decoration: const InputDecoration(labelText: Strings.expenseCategory),
+                  items: [for (final c in categories) DropdownMenuItem(value: c.id, child: Text(c.nameAr))],
+                  validator: (v) => v == null ? Strings.required : null,
+                  onChanged: (v) => setState(() => _categoryId = v),
+                ),
+                MoneyField(controller: _amount, label: 'المبلغ الإجمالي (شامل الضريبة إن وجدت)', required: true),
+                MoneyField(controller: _vat, label: 'منه ضريبة قيمة مضافة قابلة للاسترداد (اختياري)'),
+                TextFormField(
+                  controller: _payee,
+                  decoration: const InputDecoration(labelText: 'المستفيد (المدفوع له)'),
+                ),
+                TextFormField(
+                  controller: _docNumber,
+                  decoration: const InputDecoration(labelText: 'رقم الإيصال / الفاتورة'),
+                ),
+                const SizedBox(height: 12),
+                SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(value: PaymentMethod.cash, label: Text(Strings.methodCash)),
+                    ButtonSegment(value: PaymentMethod.bank, label: Text(Strings.methodBank)),
+                  ],
+                  selected: {_method},
+                  onSelectionChanged: (s) => setState(() => _method = s.single),
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text(Strings.date),
+                  subtitle: Text(formatDate(_date)),
+                  trailing: const Icon(Icons.calendar_month),
+                  onTap: _pickDate,
+                ),
+                TextFormField(
+                  controller: _description,
+                  decoration: const InputDecoration(labelText: Strings.description),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Flexible(
+                      child: OutlinedButton.icon(
+                        onPressed: _attach,
+                        icon: const Icon(Icons.attach_file),
+                        label: Text(_fileName == null ? 'إرفاق صورة الإيصال (PDF أو صورة)' : 'تغيير المرفق',
+                            overflow: TextOverflow.ellipsis),
                       ),
-              ),
-            ],
+                    ),
+                    const SizedBox(width: 8),
+                    if (_fileName != null) Expanded(child: Text(_fileName!, overflow: TextOverflow.ellipsis)),
+                  ],
+                ),
+                FutureBuilder<List<Project>>(
+                  future: ref.read(projectServiceProvider).open(),
+                  builder: (context, snap) => (snap.data ?? const []).isEmpty
+                      ? const SizedBox()
+                      : DropdownButtonFormField<int?>(
+                          initialValue: _projectId,
+                          decoration: const InputDecoration(labelText: 'على مشروع (اختياري)'),
+                          items: [
+                            const DropdownMenuItem<int?>(value: null, child: Text('بدون مشروع')),
+                            for (final p in snap.data!) DropdownMenuItem<int?>(value: p.id, child: Text(p.name)),
+                          ],
+                          onChanged: (v) => _projectId = v,
+                        ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

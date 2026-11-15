@@ -555,6 +555,21 @@ class Customers extends Table with Timestamps {
   IntColumn get discountBp => integer().withDefault(const Constant(0))();
   TextColumn get notes => text().nullable()();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+  // Schema 19 (blueprint 6.1): email, tax number and payment terms (days
+  // from the invoice to its due date; 0 = due at once).
+  TextColumn get email => text().nullable()();
+  TextColumn get taxNumber => text().nullable()();
+  IntColumn get paymentTermsDays => integer().withDefault(const Constant(0))();
+}
+
+/// Schema 19: the people to deal with at a customer (a company or contractor).
+class CustomerContacts extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get customerId => integer().references(Customers, #id)();
+  TextColumn get name => text()();
+  TextColumn get role => text().nullable()();
+  TextColumn get phone => text().nullable()();
+  TextColumn get email => text().nullable()();
 }
 
 class Suppliers extends Table with Timestamps {
@@ -565,6 +580,11 @@ class Suppliers extends Table with Timestamps {
   IntColumn get openingBalance => integer().withDefault(const Constant(0))();
   TextColumn get notes => text().nullable()();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+  // Schema 19: email, tax number, and the usual days from order to delivery
+  // (used by purchase planning; 0 = not known).
+  TextColumn get email => text().nullable()();
+  TextColumn get taxNumber => text().nullable()();
+  IntColumn get leadTimeDays => integer().withDefault(const Constant(0))();
 }
 
 @TableIndex(name: 'idx_sales_invoices_customer_date', columns: {#customerId, #date})
@@ -594,6 +614,8 @@ class SalesInvoices extends Table with Timestamps {
   TextColumn get deliveryStatus => text().nullable()();
   DateTimeColumn get deliveredAt => dateTime().nullable()();
   TextColumn get deliveryProof => text().nullable()();
+  // Schema 19: the day a credit invoice is due, from the customer's terms.
+  DateTimeColumn get dueDate => dateTime().nullable()();
 }
 
 class SalesInvoiceItems extends Table {
@@ -765,6 +787,23 @@ class Expenses extends Table with Timestamps {
   IntColumn get purchaseInvoiceId => integer().nullable()();
   // Schema 17: a direct cost of this project.
   IntColumn get projectId => integer().nullable()();
+  // Schema 19 (blueprint 9.1): who was paid, the recoverable input VAT inside
+  // [amount] (posted apart from the expense), and the receipt number.
+  TextColumn get payee => text().nullable()();
+  IntColumn get vatAmount => integer().withDefault(const Constant(0))();
+  TextColumn get docNumber => text().nullable()();
+}
+
+/// Schema 19: the receipt or invoice scanned for an expense, kept inside the
+/// database so backups carry it.
+class ExpenseAttachments extends Table {
+  IntColumn get expenseId => integer().references(Expenses, #id)();
+  TextColumn get fileName => text()();
+  BlobColumn get bytes => blob()();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {expenseId};
 }
 
 class AuditLogs extends Table {

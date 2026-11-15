@@ -7,6 +7,7 @@ import '../../core/l10n/strings.dart';
 String backupReasonLabel(String reason) => switch (reason) {
       BackupReason.manual => Strings.backupReasonManual,
       BackupReason.onClose => Strings.backupReasonAuto,
+      BackupReason.scheduled => Strings.backupReasonScheduled,
       BackupReason.beforeMigration => Strings.backupReasonMigration,
       BackupReason.beforeRestore => Strings.backupReasonRestore,
       BackupReason.beforeReset => Strings.backupReasonReset,

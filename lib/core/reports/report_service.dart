@@ -370,7 +370,7 @@ class ReportService {
     }
     // Extra costs of a purchase are already in the cost of the goods.
     final expenses =
-        (await _expenses(from, to)).where((e) => e.purchaseInvoiceId == null).fold(0, (s, e) => s + e.amount);
+        (await _expenses(from, to)).where((e) => e.purchaseInvoiceId == null).fold(0, (s, e) => s + e.amount - e.vatAmount);
     final netSales = salesTotal - returnsTotal;
     final netCost = cost - returnedCost;
     final gross = netSales - netCost;
@@ -402,7 +402,7 @@ class ReportService {
     for (final e in await _expenses(from, to)) {
       final x = v.putIfAbsent(e.categoryId, () => [0, 0]);
       x[0]++;
-      x[1] += e.amount;
+      x[1] += e.amount - e.vatAmount;
     }
     final list = [
       for (final e in v.entries)

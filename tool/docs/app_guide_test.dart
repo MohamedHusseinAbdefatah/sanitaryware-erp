@@ -92,7 +92,7 @@ final _content = <_B>[
     'Purchase invoices and purchase orders with a cost lock, received in parts into a chosen place.',
     'Returns both ways, payments and cheques, advances on orders, account statements, expenses.',
     'Fourteen reports with Excel and PDF output, a dashboard, approvals log, audit trail with before and after values.',
-    'Users with two roles, automatic backups with a second folder, restore, Excel import of products, customers, suppliers.',
+    'Six user roles, automatic and timed backups with a second folder, restore, Excel import of products, customers, suppliers.',
   ]),
   const _Page(),
   const _H('2. Users, roles and sign-in'),
@@ -111,6 +111,10 @@ final _content = <_B>[
     ['Customer over the credit limit', 'Allowed, logged', 'Refused'],
     ['Cost, profit and margin on screen', 'Shown', 'Hidden'],
   ], widths: [2.4, 1.4, 1.2]),
+  const _P('Six roles share these rights: Owner (everything, approvals and reopening closed periods), Accountant '
+      '(accounting, expenses, payments, reports; sees cost and profit), Purchasing (suppliers, purchases, price lists; '
+      'sees cost), Warehouse (stock, transfers, counts), Sales / Cashier (the Cashier column above) and Read-only '
+      '(sees, records nothing).'),
   const _P('A cashier who types an admin address is sent back to the dashboard. If nobody can sign in, the '
       'developer runs reset_password.bat with the program closed: it backs up the database, sets a new password '
       'and re-activates the user.'),
@@ -238,6 +242,13 @@ final _content = <_B>[
         'chosen place; each receipt is an ordinary purchase invoice. Advances to suppliers move to the invoice.',
     'Cancel (admin, with a reason): empties the lots it made, place by place; refused if the goods were sold. Its '
         'cheque and its transport expense are cancelled with it.',
+    'Receiving a purchase order records accepted and rejected quantities with a reason; rejected goods never enter '
+        'stock or the supplier\'s account and stay open on the order. Input VAT on a supplier\'s tax invoice is owed '
+        'to the supplier, kept out of the goods\' cost and reported.',
+    'Purchase planning (blueprint 4.1): per product the sellable stock, reserved, on order, minimum, sales over 30 / '
+        '60 / 90 days and a suggested quantity that covers sales over the supplier\'s lead time plus safety days. '
+        'Every supplier with a recorded discount on the brand is listed with its net cost and lead time, cheapest '
+        'first. The chosen lines are saved as one draft purchase order per supplier (the requisition), approved as usual.',
   ]),
   const _S('17_purchase_entry', 'Purchase invoice: list price, agreed discount, extra %, transport'),
   const _H('Supplier advance locked to a price list', level: 2),
@@ -260,7 +271,26 @@ final _content = <_B>[
         'account. Cheques: pending, cleared, bounced or cancelled.',
     'Balances are always calculated from documents: opening balance + invoices - returns + refunds - payments.',
     'Statements for any date range with a running balance; uncleared cheques listed apart.',
-    'Expenses by category with date and note; cancelled with a reason, never deleted.',
+    'Expenses by category with date, payee, receipt number, recoverable input VAT (posted to input VAT, not to the '
+        'expense) and an attached scan or PDF kept inside the database; cancelled with a reason, never deleted. '
+        'Recurring expense plans remind and record once; past expenses import from Excel with their dates.',
+    'Customers: category, credit limit, email, tax number, payment terms (a credit invoice gets its due date; aging '
+        'counts from it), and contacts (engineer, site manager, accountant). Leads with source, stage and follow-up '
+        'convert to customers. Suppliers: email, tax number and usual lead time.',
+    'Reservations come from confirmed orders: active, expired (its day passed; it no longer holds stock), used, '
+        'released or cancelled with the order.',
+  ]),
+  const _H('Accounting, projects and delivery', level: 2),
+  const _L([
+    'Double-entry books built from the documents: every invoice, payment, cheque, return, expense, adjustment and '
+        'opening balance posts its own balanced entry. Manual entries only for what has no document.',
+    'Trial balance, profit and loss, balance sheet, cash flow, VAT report and customer / supplier aging (not due, '
+        '1-30, 31-60, 61-90, over 90 days), all to Excel. Period closing: open, soft close, closed; reopening by the '
+        'owner with a reason in the audit trail.',
+    'Projects with a bill of quantities (required, quoted, ordered, delivered, remaining), a quotation for what is '
+        'left, purchase orders for shortages, and project profitability.',
+    'Quotations with validity and revisions; sales orders with reservations and partial delivery; delivery method, '
+        'carrier, fee and proof; direct supply from the supplier, also mixed with stock on one sale.',
   ]),
   const _S('05_sale_view', 'An invoice: print, take a payment, return, cancel'),
   const _Page(),
@@ -282,8 +312,9 @@ final _content = <_B>[
   const _S('11_reports', 'Reports: on screen, to Excel, to PDF'),
   const _H('10. Backup, settings and safety'),
   const _L([
-    'Backups: on demand, on closing the program, and before a restore or upgrade. The newest 10 are kept, plus a '
-        'copy in an optional second folder (USB or synced). The dashboard warns when that copy is missing or old.',
+    'Backups: on demand, on closing the program, every two hours while it is open, and before a restore or upgrade. '
+        'The newest 10 of the timed ones and the newest 10 of the others are kept, plus a copy in an optional second '
+        'folder (USB or synced). The dashboard warns when that copy is missing or old.',
     'Restore checks the zip, swaps it in at the next start, and backs up the current data first.',
     'Settings: company details and logo, negative stock, pending cheques, users, Excel import, audit trail, printer test.',
     'Audit trail: every create, update (with before and after for products, customers and suppliers), cancel, '
@@ -292,17 +323,16 @@ final _content = <_B>[
   ]),
   const _Page(),
   const _H('11. What this version does not include'),
-  const _P('Measured against the Instalux ERP Business Blueprint, these are not built yet and must be agreed in '
-      'writing at delivery:'),
+  const _P('Measured against the Instalux ERP Business Blueprint, every section is built except the following, '
+      'agreed at delivery:'),
   const _L([
-    'Double-entry accounting: chart of accounts, journal entries, trial balance, balance sheet, cash flow, VAT report.',
-    'VAT added to invoice totals (it is verified per list, shown and stored per line).',
-    'Purchase requisitions, supplier comparison, goods receipts with accepted and rejected quantities.',
-    'Customer and supplier aging, due dates and payment terms.',
-    'Month closing and reopening; roles beyond Admin and Cashier.',
-    'Projects and BOQ; CRM leads; quotation validity and revisions; separate delivery notes and shipping.',
-    'Supplier Direct and Mixed Source sales; In Transit stock; numbered stock counts.',
-    'Shopify connection.',
+    'Shopify connection (blueprint 11.1): left out of this phase by agreement. Sales orders already keep the channel '
+        'and the outside order number for it.',
+    'Goods are received as a purchase invoice "from a purchase order" rather than a separate goods-receipt document '
+        'without prices; stock, FIFO and the books come out the same.',
+    'Decisions the owner and the accountant make before going live (blueprint 11.3): the VAT basis of each list, '
+        'price-lock terms, negative stock, revenue timing, and discount, credit and margin limits. The program '
+        'supports each choice; none is assumed.',
   ]),
   const _H('12. Technical reference'),
   const _T(['Item', 'Detail'], [

@@ -369,6 +369,7 @@ class Strings {
 
   static const backupReasonManual = 'يدوي';
   static const backupReasonAuto = 'عند الإغلاق';
+  static const backupReasonScheduled = 'تلقائي كل ساعتين';
   static const backupReasonMigration = 'قبل التحديث';
   static const backupReasonRestore = 'قبل الاستعادة';
   static const backupReasonReset = 'قبل تغيير كلمة المرور';

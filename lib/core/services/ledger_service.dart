@@ -476,8 +476,10 @@ class LedgerService {
         final e = await (db.select(db.expenses)..where((t) => t.id.equals(id))).getSingleOrNull();
         if (e == null || e.status != DocStatus.active) return null;
         final account = e.purchaseInvoiceId != null ? 'purchase_costs' : 'id:${await expenseAccount(e.categoryId)}';
-        return (e.date, 'EX-$id', e.description ?? 'مصروف', e.projectId, [
-          PostLine(account, debit: e.amount),
+        // Recoverable input VAT on the receipt goes to its own account.
+        return (e.date, 'EX-$id', e.description ?? e.payee ?? 'مصروف', e.projectId, [
+          PostLine(account, debit: e.amount - e.vatAmount),
+          if (e.vatAmount > 0) PostLine('vat_in', debit: e.vatAmount),
           PostLine(e.method == PaymentMethod.bank ? 'bank' : 'cash', credit: e.amount),
         ]);
       case 'stock_movement':
@@ -929,7 +931,7 @@ class LedgerService {
 
   /// Open balances by age. A party's balance is matched to its newest
   /// invoices (payments settle the oldest first), so each row adds up to the
-  /// balance on its statement. Suppliers age by due date when one is set.
+  /// balance on its statement. Both age by due date when one is set.
   Future<List<AgingRow>> aging({required bool customers, DateTime? asOf}) async {
     await catchUp();
     final today = asOf ?? DateTime.now();
@@ -956,7 +958,7 @@ class LedgerService {
                     ..where((s) => s.customerId.equals(party) & s.status.equals(DocStatus.active))
                     ..orderBy([(s) => OrderingTerm.desc(s.date)]))
                   .get())
-              .map((s) => (s.date, s.total))
+              .map((s) => (s.dueDate ?? s.date, s.total))
           : (await (db.select(db.purchaseInvoices)
                     ..where((s) => s.supplierId.equals(party) & s.status.equals(DocStatus.active))
                     ..orderBy([(s) => OrderingTerm.desc(s.date)]))

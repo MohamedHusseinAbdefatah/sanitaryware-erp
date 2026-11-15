@@ -13,6 +13,7 @@ import '../../core/theme.dart';
 import '../../core/widgets/data_list.dart';
 import '../../core/widgets/list_kit.dart';
 import '../purchases/purchase_orders_dialog.dart';
+import '../purchases/purchase_plan_dialog.dart';
 import 'sales_orders_dialog.dart';
 
 final _salesOrdersProvider =
@@ -172,6 +173,11 @@ class _PurchaseOrdersScreenState extends ConsumerState<PurchaseOrdersScreen> {
               label: const Text(Strings.purchases),
             ),
             SearchBox(hint: 'بحث برقم الأمر أو المورد', onChanged: (v) => setState(() => _search = v)),
+            OutlinedButton.icon(
+              onPressed: () => showPurchasePlan(context),
+              icon: const Icon(Icons.insights_outlined),
+              label: const Text('تخطيط الشراء'),
+            ),
             FilledButton.icon(
               onPressed: () => showNewPurchaseOrder(context),
               icon: const Icon(Icons.add),

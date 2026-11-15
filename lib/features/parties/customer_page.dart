@@ -19,6 +19,7 @@ import '../../core/widgets/record_page.dart';
 import '../payments/payment_dialog.dart';
 import '../sales/sales_orders_dialog.dart';
 import 'party_form_dialog.dart';
+import 'contacts_tab.dart';
 import 'party_tabs.dart';
 import 'statement_dialog.dart';
 
@@ -114,10 +115,14 @@ class CustomerPage extends ConsumerWidget {
                 count: p.reservations.length, icon: Icons.bookmark_outline),
             RecordTab('المرتجعات', ReturnsTab(returns: p.returns), count: p.returns.length, icon: Icons.assignment_return_outlined),
             RecordTab('أكثر الأصناف', TopProductsTab(products: p.topProducts), icon: Icons.leaderboard_outlined),
+            RecordTab('جهات الاتصال', ContactsTab(customerId: c.id), icon: Icons.contacts_outlined),
             RecordTab('البيانات', RecordDetails(rows: [
               (Strings.name, c.name),
               (Strings.phone, c.phone ?? ''),
               (Strings.address, c.address ?? ''),
+              ('البريد الإلكتروني', c.email ?? ''),
+              ('الرقم الضريبي', c.taxNumber ?? ''),
+              ('مدة السداد', c.paymentTermsDays == 0 ? 'فوراً' : '${c.paymentTermsDays} يوم'),
               ('الفئة', p.categoryName),
               ('خصم إضافي لهذا العميل', c.discountBp == 0 ? '' : _pct(c.discountBp)),
               if (isAdmin) ('حد الائتمان', limit == 0 ? 'بدون حد' : formatMoney(limit)),
@@ -180,6 +185,8 @@ class _ReservationsTab extends StatelessWidget {
         DataListColumn(Strings.qty, flex: 2, numeric: true, (r) => Text(formatQty(r.reservation.qty))),
         DataListColumn('أمر البيع', flex: 2, (r) => Text(r.orderNumber ?? '')),
         DataListColumn(Strings.date, flex: 2, (r) => Text(formatDate(r.reservation.createdAt))),
+        DataListColumn('الحالة', flex: 2, (r) => Text(ReservationStatus.label(r.reservation))),
+        DataListColumn('ينتهي', flex: 2, (r) => Text(r.reservation.expiresAt == null ? '—' : formatDate(r.reservation.expiresAt!))),
       ],
     );
   }

@@ -9,6 +9,7 @@ import '../db/database.dart';
 abstract final class BackupReason {
   static const manual = 'manual';
   static const onClose = 'auto';
+  static const scheduled = 'scheduled';
   static const beforeMigration = 'before-migration';
   static const beforeRestore = 'before-restore';
   static const beforeReset = 'before-reset';
@@ -120,9 +121,13 @@ class BackupService {
     return result;
   }
 
+  /// Keeps the newest [keep] backups, and apart from them the newest [keep]
+  /// timed ones, so a day of timed backups never pushes out the rest.
   Future<void> prune() async {
     final all = await list();
-    for (final old in all.skip(keep)) {
+    final timed = all.where((b) => b.reason == BackupReason.scheduled).toList();
+    final rest = all.where((b) => b.reason != BackupReason.scheduled).toList();
+    for (final old in [...timed.skip(keep), ...rest.skip(keep)]) {
       await old.file.delete();
     }
   }

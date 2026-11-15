@@ -56,6 +56,8 @@ part 'database.g.dart';
   PurchaseRejections,
   Leads,
   ExpensePlans,
+  CustomerContacts,
+  ExpenseAttachments,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
@@ -63,7 +65,7 @@ class AppDatabase extends _$AppDatabase {
   @override
   int get schemaVersion => latestSchemaVersion;
 
-  static const latestSchemaVersion = 18;
+  static const latestSchemaVersion = 19;
 
   /// The categories every shop starts with. The first three are the old
   /// price levels; discounts start at 0 until the owner sets them.
@@ -423,6 +425,19 @@ class AppDatabase extends _$AppDatabase {
   /// Schema 17: the double-entry ledger and projects. The chart of accounts
   /// is seeded, the triggers installed, and every existing document queued so
   /// the ledger is built from the shop's history the first time it is opened.
+  /// Schema 19: the customer file (email, tax number, terms, contacts), the
+  /// supplier's lead time, the invoice due date, and the expense details
+  /// (payee, input VAT, receipt number and attachment). New columns only.
+  Future<void> _upgradeToV19(Migrator m) async {
+    for (final TableInfo t in [customerContacts, expenseAttachments]) {
+      if (!await _tableExists(t.actualTableName)) await m.createTable(t);
+    }
+    await _addColumns(m, customers, [customers.email, customers.taxNumber, customers.paymentTermsDays]);
+    await _addColumns(m, suppliers, [suppliers.email, suppliers.taxNumber, suppliers.leadTimeDays]);
+    await _addColumns(m, salesInvoices, [salesInvoices.dueDate]);
+    await _addColumns(m, expenses, [expenses.payee, expenses.vatAmount, expenses.docNumber]);
+  }
+
   Future<void> _upgradeToV18(Migrator m) async {
     for (final TableInfo t in [purchaseRejections, leads, expensePlans]) {
       if (!await _tableExists(t.actualTableName)) await m.createTable(t);
@@ -573,6 +588,7 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 17) await _upgradeToV17(m);
           if (from < 18) await _upgradeToV18(m);
+          if (from < 19) await _upgradeToV19(m);
         },
         beforeOpen: (details) async {
           // Make SQLite enforce references between tables.

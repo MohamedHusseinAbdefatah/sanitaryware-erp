@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
@@ -13,6 +15,9 @@ import 'core/error_log.dart';
 import 'core/l10n/strings.dart';
 import 'core/providers.dart';
 import 'features/startup/startup_error_app.dart';
+
+/// How often the open program takes a timed backup.
+const scheduledBackupEvery = Duration(hours: 2);
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -64,6 +69,15 @@ Future<void> main() async {
   );
   await windowManager.setPreventClose(true);
   windowManager.addListener(_BackupOnClose(db, actions));
+  // A timed backup while the program is open (blueprint 9.3), so a power cut
+  // or a crash loses at most two hours of work.
+  Timer.periodic(scheduledBackupEvery, (_) async {
+    try {
+      if (await AuthService(db).hasAnyUser()) await actions.backupNow(reason: BackupReason.scheduled);
+    } catch (e, stack) {
+      ErrorLog.record(e, stack, where: 'scheduled backup');
+    }
+  });
 
   runApp(
     ProviderScope(

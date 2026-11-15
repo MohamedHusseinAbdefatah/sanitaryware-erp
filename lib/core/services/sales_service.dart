@@ -395,6 +395,10 @@ class SalesService {
               notes: Value(_blankToNull(input.notes)),
               projectId: Value(input.projectId),
               createdBy: Value(userId),
+              // A credit sale falls due after the customer's payment terms.
+              dueDate: Value(customer != null && customer.paymentTermsDays > 0 && input.paidAmount < total
+                  ? DateTime(date.year, date.month, date.day).add(Duration(days: customer.paymentTermsDays))
+                  : null),
               deliveryMethod: Value(input.deliveryMethod),
               deliveryAddress: Value(_blankToNull(input.deliveryAddress)),
               carrier: Value(_blankToNull(input.carrier)),
