@@ -756,6 +756,9 @@ class _ImportDialogState extends ConsumerState<_ImportDialog> {
                   if (p.arabicNameCount > 0)
                     Text('أصناف موجودة بلا اسم عربي يُضاف لها الاسم العربي من الملف: ${p.arabicNameCount}',
                         style: TextStyle(color: scheme.primary, fontWeight: FontWeight.bold)),
+                  if (p.categoryCount > 0)
+                    Text('أصناف موجودة بلا تصنيف تأخذ التصنيف من الملف: ${p.categoryCount}',
+                        style: TextStyle(color: scheme.primary, fontWeight: FontWeight.bold)),
                   if (p.reviewCount > 0)
                     Text('صفوف متوقفة للمراجعة: ${p.reviewCount}', style: TextStyle(color: scheme.error)),
                   for (final r in stopped)

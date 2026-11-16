@@ -7,12 +7,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sanitaryware_erp/core/auth/session.dart';
 import 'package:sanitaryware_erp/core/providers.dart';
 import 'package:sanitaryware_erp/core/quantity.dart';
+import 'package:sanitaryware_erp/core/services/catalog_service.dart';
 import 'package:sanitaryware_erp/core/services/party_service.dart';
 import 'package:sanitaryware_erp/core/services/purchase_service.dart';
 import 'package:sanitaryware_erp/core/services/sales_service.dart';
 import 'package:sanitaryware_erp/features/expenses/expenses_screen.dart';
 import 'package:sanitaryware_erp/features/parties/customer_page.dart';
 import 'package:sanitaryware_erp/features/parties/party_form_dialog.dart';
+import 'package:sanitaryware_erp/features/products/products_screen.dart';
 import 'package:sanitaryware_erp/features/purchases/purchase_plan_dialog.dart';
 
 import '../support/fixture.dart';
@@ -115,6 +117,32 @@ void main() {
     expect(find.text('منه ضريبة قيمة مضافة قابلة للاسترداد (اختياري)'), findsOneWidget);
     expect(find.text('رقم الإيصال / الفاتورة'), findsOneWidget);
     expect(find.text('إرفاق صورة الإيصال (PDF أو صورة)'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await unmount(tester);
+  });
+
+  testWidgets('products: show those with no category, select all, give them a category', (tester) async {
+    final cat = await CatalogService(shop.db).saveCategory(name: 'خلاطات');
+    await pump(tester, const ProductsScreen());
+    await tester.tap(find.text('تحديد وتصنيف'));
+    await settle(tester);
+    await tester.tap(find.text('كل التصنيفات'));
+    await settle(tester);
+    await tester.tap(find.text('بدون تصنيف (2)').last);
+    await settle(tester);
+    await tester.tap(find.text('تحديد كل الظاهر (2)'));
+    await settle(tester);
+    expect(find.text('محدد 2 صنف'), findsOneWidget);
+    await tester.tap(find.text('تعيين التصنيف…'));
+    await settle(tester);
+    await tester.tap(find.widgetWithText(DropdownButtonFormField<int>, 'التصنيف'));
+    await settle(tester);
+    await tester.tap(find.text('خلاطات').last);
+    await settle(tester);
+    await tester.tap(find.text('تطبيق'));
+    await settle(tester);
+    final products = await shop.db.select(shop.db.products).get();
+    expect(products.every((p) => p.categoryId == cat), isTrue);
     expect(tester.takeException(), isNull);
     await unmount(tester);
   });

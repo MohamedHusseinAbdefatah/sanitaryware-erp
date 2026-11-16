@@ -2,6 +2,22 @@
 
 Versions follow `version:` in `pubspec.yaml` and `lib/core/version.dart`.
 
+## 2.3.1
+
+No database change.
+
+- Products: "تحديد وتصنيف" (select and categorise). Tick products one by
+  one, or filter and search (for example a brand + "بدون تصنيف" + the word
+  "حوض") and "select all shown", then give them all one category and
+  subcategory in one step. A new category or subcategory can be made from
+  the same window. Each changed product is in the audit log with its old and
+  new category. Buying and selling discounts on that category apply at once.
+- Products: the category filter has "بدون تصنيف" (no category), with the
+  count, to find what still needs one.
+- Price list import: a known product with no category takes the category
+  (and subcategory) from the file's columns; a category already chosen is
+  never changed. The preview shows how many products get one.
+
 ## 2.3.0
 
 The last blueprint items; everything except the Shopify connection is in.

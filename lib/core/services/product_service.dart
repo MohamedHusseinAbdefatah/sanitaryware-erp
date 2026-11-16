@@ -279,6 +279,45 @@ class ProductService {
     });
   }
 
+  /// Gives many products the same category (and subcategory, which must sit
+  /// under it; null clears it) in one step. Each changed product is in the
+  /// audit log with its old and new category. Returns how many changed.
+  Future<int> setCategory(Iterable<int> productIds, {required int categoryId, int? subcategoryId, int? userId}) {
+    return db.transaction(() async {
+      final ids = productIds.toSet().toList();
+      if (ids.isEmpty) throw ValidationException('اختر صنفاً واحداً على الأقل');
+      final category = await (db.select(db.categories)..where((t) => t.id.equals(categoryId))).getSingleOrNull();
+      if (category == null || category.parentId != null) throw ValidationException('اختر التصنيف الرئيسي');
+      if (subcategoryId != null) {
+        final sub = await (db.select(db.categories)..where((t) => t.id.equals(subcategoryId))).getSingleOrNull();
+        if (sub == null || sub.parentId != categoryId) {
+          throw ValidationException('التصنيف الفرعي ليس تحت "${category.nameAr}"');
+        }
+      }
+      final names = {for (final c in await db.select(db.categories).get()) c.id: c.nameAr};
+      String label(int? cat, int? sub) =>
+          cat == null ? 'بدون' : (sub == null ? names[cat] ?? '' : '${names[cat]} › ${names[sub]}');
+      var changed = 0;
+      for (final p in await (db.select(db.products)..where((t) => t.id.isIn(ids))).get()) {
+        if (p.categoryId == categoryId && p.subcategoryId == subcategoryId) continue;
+        await (db.update(db.products)..where((t) => t.id.equals(p.id))).write(ProductsCompanion(
+              categoryId: Value(categoryId),
+              subcategoryId: Value(subcategoryId),
+              updatedAt: Value(DateTime.now()),
+            ));
+        await AuditService(db).log(
+          action: AuditAction.update,
+          entity: 'product',
+          entityId: p.id,
+          userId: userId,
+          details: 'التصنيف: ${label(p.categoryId, p.subcategoryId)} ← ${label(categoryId, subcategoryId)} (تعديل جماعي)',
+        );
+        changed++;
+      }
+      return changed;
+    });
+  }
+
   /// Products with this maker's code under this brand, in any variant.
   Future<List<Product>> withMatchKey(String manufacturerCode, int? brandId) {
     final key = matchKeyOf(manufacturerCode);

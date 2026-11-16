@@ -1,4 +1,4 @@
-import 'package:drift/drift.dart' show Value;
+import 'package:drift/drift.dart' show BooleanExpressionOperators, Value;
 import 'package:excel/excel.dart';
 
 import '../auth/auth_service.dart';
@@ -36,6 +36,9 @@ class PriceImportRow {
 
   /// A known product whose name has no Arabic yet: the Arabic name is filled in.
   bool fillArabicName = false;
+
+  /// A known product with no category: it takes the list's category.
+  bool fillCategory = false;
 
   /// As Excel numbers it (header is row 1).
   final int rowNumber;
@@ -108,6 +111,9 @@ class PriceImportPreview {
 
   /// Known products that get their Arabic name from this list.
   int get arabicNameCount => rows.where((r) => r.ok && r.fillArabicName).length;
+
+  /// Known products with no category that get one from this list.
+  int get categoryCount => {for (final r in rows.where((r) => r.ok && r.fillCategory)) r.productId}.length;
   bool get canImport => missingColumns.isEmpty && rows.isNotEmpty;
 }
 
@@ -380,6 +386,7 @@ class PriceListImportService {
     for (final r in rows) {
       final p = r.productId == null ? null : byProductId[r.productId];
       r.fillArabicName = p != null && r.arabicName.isNotEmpty && !hasArabic(p.nameAr);
+      r.fillCategory = p != null && p.categoryId == null && (r.details['category'] ?? '').trim().isNotEmpty;
     }
   }
 
@@ -399,6 +406,7 @@ class PriceListImportService {
       var created = 0;
       final inputs = <PriceRowInput>[];
       final named = <int>{};
+      final categorized = <int>{};
       for (final r in preview.rows) {
         int? productId = r.productId;
         if (r.action == PriceRowAction.create) {
@@ -417,6 +425,23 @@ class PriceListImportService {
             userId: user.id,
             details: 'الاسم العربي من قائمة الأسعار: ${before.nameAr} -> ${r.arabicName}',
           );
+        }
+        // A known product with no category takes the list's. A category
+        // someone already chose is never changed.
+        if (r.ok && r.fillCategory && productId != null && categorized.add(productId)) {
+          final (cat, sub) = await _categoriesOf(r);
+          if (cat != null) {
+            await (db.update(db.products)..where((t) => t.id.equals(productId!) & t.categoryId.isNull())).write(
+                ProductsCompanion(categoryId: Value(cat), subcategoryId: Value(sub), updatedAt: Value(DateTime.now())));
+            await AuditService(db).log(
+              action: AuditAction.update,
+              entity: 'product',
+              entityId: productId,
+              userId: user.id,
+              details: 'التصنيف من قائمة الأسعار: ${r.details['category']}'
+                  '${(r.details['subcategory'] ?? '').trim().isEmpty ? '' : ' › ${r.details['subcategory']}'}',
+            );
+          }
         }
         inputs.add(PriceRowInput(
           name: r.name,
@@ -524,31 +549,34 @@ class PriceListImportService {
     await _classify(preview.rows, preview.brandId!);
   }
 
-  Future<Product> _createProduct(PriceImportRow r, int brandId, User user) async {
+  /// The row's category and subcategory by name, made when missing.
+  Future<(int?, int?)> _categoriesOf(PriceImportRow r) async {
     final catalog = CatalogService(db);
+    final categoryName = (r.details['category'] ?? '').trim();
+    final subName = (r.details['subcategory'] ?? '').trim();
+    if (categoryName.isEmpty) return (null, null);
+    final categories = await db.select(db.categories).get();
+    final categoryId = categories
+            .where((c) => c.parentId == null && foldForSearch(c.nameAr) == foldForSearch(categoryName))
+            .firstOrNull
+            ?.id ??
+        await catalog.saveCategory(name: categoryName);
+    if (subName.isEmpty) return (categoryId, null);
+    final subcategoryId = categories
+            .where((c) => c.parentId == categoryId && foldForSearch(c.nameAr) == foldForSearch(subName))
+            .firstOrNull
+            ?.id ??
+        await catalog.saveCategory(name: subName, parentId: categoryId);
+    return (categoryId, subcategoryId);
+  }
+
+  Future<Product> _createProduct(PriceImportRow r, int brandId, User user) async {
     String? d(String key) {
       final v = (r.details[key] ?? '').trim();
       return v.isEmpty ? null : v;
     }
 
-    final categories = await db.select(db.categories).get();
-    int? categoryId, subcategoryId;
-    final categoryName = d('category');
-    if (categoryName != null) {
-      categoryId = categories
-              .where((c) => c.parentId == null && foldForSearch(c.nameAr) == foldForSearch(categoryName))
-              .firstOrNull
-              ?.id ??
-          await catalog.saveCategory(name: categoryName);
-    }
-    final subName = d('subcategory');
-    if (subName != null && categoryId != null) {
-      subcategoryId = categories
-              .where((c) => c.parentId == categoryId && foldForSearch(c.nameAr) == foldForSearch(subName))
-              .firstOrNull
-              ?.id ??
-          await catalog.saveCategory(name: subName, parentId: categoryId);
-    }
+    final (categoryId, subcategoryId) = await _categoriesOf(r);
     final units = await db.select(db.units).get();
     final unitName = d('unit');
     final unit = (unitName == null

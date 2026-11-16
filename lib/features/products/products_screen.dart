@@ -14,6 +14,8 @@ import '../../core/services/product_service.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/data_list.dart';
 import '../../core/widgets/list_kit.dart';
+import '../../core/widgets/feedback.dart';
+import 'bulk_category_dialog.dart';
 import 'catalog_dialog.dart';
 import 'price_history_dialog.dart';
 import 'product_form_dialog.dart';
@@ -62,6 +64,23 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   _Show _show = _Show.all;
   bool _cards = false;
 
+  /// Selection mode: tick products, then give them a category at once.
+  bool _selecting = false;
+  final _selected = <int>{};
+
+  /// The category filter's value for products with no category.
+  static const _noCategory = 0;
+
+  Future<void> _setCategory() async {
+    final changed = await showBulkCategory(context, _selected.toList());
+    if (changed == null || !mounted) return;
+    setState(() {
+      _selected.clear();
+      _selecting = false;
+    });
+    showToast(context, 'تم تعيين التصنيف لـ $changed صنف');
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(currentUserProvider);
@@ -76,6 +95,16 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
       PageHeader(title: Strings.products, actions: [
         SearchBox(hint: 'بحث بالكود أو الاسم أو الباركود', onChanged: (v) => setState(() => _search = v)),
         ViewToggle(cards: _cards, onChanged: (v) => setState(() => _cards = v)),
+        if (isAdmin)
+          OutlinedButton.icon(
+            onPressed: () => setState(() {
+              _selecting = !_selecting;
+              _selected.clear();
+              _cards = false;
+            }),
+            icon: Icon(_selecting ? Icons.close : Icons.checklist),
+            label: Text(_selecting ? 'إنهاء التحديد' : 'تحديد وتصنيف'),
+          ),
         if (isAdmin)
           OutlinedButton.icon(
             onPressed: () => showDialog<void>(context: context, builder: (_) => const CatalogDialog()),
@@ -103,7 +132,8 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                   _Show.stopped => !r.product.isActive,
                 };
             final base = list.where((r) =>
-                (_categoryId == null || r.product.categoryId == _categoryId) &&
+                (_categoryId == null ||
+                    (_categoryId == _noCategory ? r.product.categoryId == null : r.product.categoryId == _categoryId)) &&
                 (_brandId == null || r.product.brandId == _brandId) &&
                 matchesSearch(_search, [
                   r.product.code,
@@ -148,7 +178,10 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                     icon: Icons.category_outlined,
                     allLabel: 'كل التصنيفات',
                     value: _categoryId,
-                    options: [for (final c in categories) (c.id, c.nameAr)],
+                    options: [
+                      (_noCategory, 'بدون تصنيف (${list.where((r) => r.product.isActive && r.product.categoryId == null).length})'),
+                      for (final c in categories) (c.id, c.nameAr),
+                    ],
                     onChanged: (v) => setState(() => _categoryId = v),
                   ),
                   FilterMenu(
@@ -160,6 +193,33 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                   ),
                 ]),
               ),
+              if (_selecting)
+                Container(
+                  margin: const EdgeInsets.fromLTRB(24, 0, 24, 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(color: AppColors.infoBg, borderRadius: BorderRadius.circular(8)),
+                  child: Wrap(spacing: 10, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                    Text('محدد ${_selected.length} صنف',
+                        style: const TextStyle(fontWeight: FontWeight.w800)),
+                    TextButton.icon(
+                      onPressed: () => setState(() => _selected.addAll(rows.map((r) => r.product.id))),
+                      icon: const Icon(Icons.select_all),
+                      label: Text('تحديد كل الظاهر (${rows.length})'),
+                    ),
+                    TextButton.icon(
+                      onPressed: _selected.isEmpty ? null : () => setState(_selected.clear),
+                      icon: const Icon(Icons.deselect),
+                      label: const Text('إلغاء التحديد'),
+                    ),
+                    FilledButton.icon(
+                      onPressed: _selected.isEmpty ? null : _setCategory,
+                      icon: const Icon(Icons.category_outlined),
+                      label: const Text('تعيين التصنيف…'),
+                    ),
+                    const Text('ابحث أو صفِّ (مثلاً: الماركة + بدون تصنيف + كلمة "حوض")، ثم حدد الكل وعيّن التصنيف.',
+                        style: TextStyle(fontSize: 12, color: AppColors.muted)),
+                  ]),
+                ),
               Expanded(
                 child: _cards
                     ? CardGrid<ProductRow>(
@@ -172,10 +232,21 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                     : DataList<ProductRow>(
                         rows: rows,
                         emptyText: Strings.noProducts,
-                        onTap: open,
-                        rowColor: (r) => r.product.isActive ? null : AppColors.canvas,
+                        onTap: _selecting
+                            ? (r) => setState(() =>
+                                _selected.contains(r.product.id) ? _selected.remove(r.product.id) : _selected.add(r.product.id))
+                            : open,
+                        rowColor: (r) => _selecting && _selected.contains(r.product.id)
+                            ? AppColors.infoBg
+                            : (r.product.isActive ? null : AppColors.canvas),
                         trailing: (r) => _ProductMenu(row: r, isAdmin: isAdmin, canStock: canStock),
                         columns: [
+                          if (_selecting)
+                            DataListColumn('', width: 44, (r) => Checkbox(
+                                  value: _selected.contains(r.product.id),
+                                  onChanged: (v) => setState(() =>
+                                      v == true ? _selected.add(r.product.id) : _selected.remove(r.product.id)),
+                                )),
                           DataListColumn('', width: 60, (r) => ProductThumb(productId: r.product.id, size: 44)),
                           DataListColumn(Strings.productName, flex: 5, (r) => TitleCell(
                                 r.product.nameAr,
