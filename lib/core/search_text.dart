@@ -30,3 +30,11 @@ bool matchesSearch(String query, Iterable<String?> fields) {
   final haystack = foldForSearch(fields.whereType<String>().join(' '));
   return words.every(haystack.contains);
 }
+
+/// A column heading folded for matching: [foldForSearch], with punctuation
+/// taken out and spaces collapsed, so "Model No.", "model no" and
+/// "MODEL-NO" are one heading.
+String foldHeader(String input) => foldForSearch(input)
+    .replaceAll(RegExp(r'[.:#_\-/\\()\[\]*،,;]+'), ' ')
+    .replaceAll(RegExp(r'\s+'), ' ')
+    .trim();

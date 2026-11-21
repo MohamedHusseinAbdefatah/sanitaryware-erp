@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'auth/auth_service.dart';
+import 'auth/remember_service.dart';
 import 'backup/backup_actions.dart';
 import 'backup/backup_service.dart';
 import 'db/database.dart';
@@ -27,6 +28,7 @@ import 'services/price_list_import_service.dart';
 import 'services/price_list_service.dart';
 import 'services/product_service.dart';
 import 'services/project_service.dart';
+import 'services/project_task_service.dart';
 import 'services/purchase_service.dart';
 import 'services/purchase_order_service.dart';
 import 'services/reservation_service.dart';
@@ -35,6 +37,7 @@ import 'services/sales_order_service.dart';
 import 'services/sales_service.dart';
 import 'services/settings_service.dart';
 import 'services/statement_service.dart';
+import 'services/stock_entry_service.dart';
 import 'services/stock_service.dart';
 
 /// Overridden in main.dart with the opened database.
@@ -54,6 +57,16 @@ final backupServiceProvider = Provider<BackupService>(
 
 final authServiceProvider =
     Provider<AuthService>((ref) => AuthService(ref.watch(databaseProvider)));
+
+final rememberServiceProvider =
+    Provider<RememberService>((ref) => RememberService(ref.watch(databaseProvider)));
+
+/// Overridden in main.dart with the file in the data folder.
+final rememberStoreProvider = Provider<RememberStore>((ref) => RememberStore(null));
+
+/// Whether "remember me" is allowed (the owner's setting).
+final rememberEnabledProvider =
+    FutureProvider.autoDispose<bool>((ref) => ref.watch(rememberServiceProvider).enabled());
 
 final settingsServiceProvider =
     Provider<SettingsService>((ref) => SettingsService(ref.watch(databaseProvider)));
@@ -154,6 +167,12 @@ final salePreviewServiceProvider =
 
 final ledgerServiceProvider =
     Provider<LedgerService>((ref) => LedgerService(ref.watch(databaseProvider)));
+
+final projectTaskServiceProvider =
+    Provider<ProjectTaskService>((ref) => ProjectTaskService(ref.watch(databaseProvider)));
+
+final stockEntryServiceProvider =
+    Provider<StockEntryService>((ref) => StockEntryService(ref.watch(databaseProvider)));
 
 final projectServiceProvider =
     Provider<ProjectService>((ref) => ProjectService(ref.watch(databaseProvider)));

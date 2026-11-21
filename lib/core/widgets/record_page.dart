@@ -66,11 +66,12 @@ class RecordPage extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 10, 24, 0),
             child: Row(
               children: [
-                TextButton.icon(
+                FilledButton.tonalIcon(
                   onPressed: () => context.go(backPath),
-                  icon: const Icon(Icons.arrow_forward, size: 18),
+                  icon: const Icon(Icons.arrow_forward, size: 20),
                   label: Text(backLabel),
                 ),
+                const SizedBox(width: 6),
                 const Icon(Icons.chevron_left, size: 18, color: AppColors.muted),
                 Flexible(
                   child: Text(title, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.muted)),
@@ -192,10 +193,21 @@ class _Stat extends StatelessWidget {
           children: [
             Row(
               children: [
-                if (s.icon != null) ...[Icon(s.icon, size: 16, color: AppColors.muted), const SizedBox(width: 6)],
+                if (s.icon != null) ...[
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: (s.tone ?? AppColors.brand).withValues(alpha: .10),
+                      borderRadius: AppRadius.smAll,
+                    ),
+                    child: Icon(s.icon, size: 15, color: s.tone ?? AppColors.brand),
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 Expanded(
                   child: Text(s.label,
-                      overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.muted, fontSize: 13)),
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: AppColors.muted, fontSize: 13, fontWeight: FontWeight.w600)),
                 ),
               ],
             ),
@@ -203,7 +215,7 @@ class _Stat extends StatelessWidget {
             Text(
               s.value,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: s.tone ?? AppColors.ink),
+              style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: s.tone ?? AppColors.ink),
             ),
             if (s.hint != null)
               Text(s.hint!, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.muted, fontSize: 12)),

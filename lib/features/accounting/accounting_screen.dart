@@ -55,7 +55,7 @@ class _AccountingScreenState extends State<AccountingScreen> with SingleTickerPr
   @override
   Widget build(BuildContext context) {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      const PageHeader(title: 'المحاسبة'),
+      const PageHeader(title: 'المحاسبة', icon: Icons.account_balance_outlined, subtitle: 'الدفاتر والقيود والتقارير المالية وإقفال الفترات'),
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: TabBar(

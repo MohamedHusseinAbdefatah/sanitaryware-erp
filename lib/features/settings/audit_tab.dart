@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/dates.dart';
+import '../../core/db/database.dart';
 import '../../core/l10n/strings.dart';
 import '../../core/providers.dart';
 import '../../core/search_text.dart';
@@ -18,6 +19,9 @@ String auditActionLabel(String action) => switch (action) {
       AuditAction.cancel => 'إلغاء',
       AuditAction.backup => 'نسخة احتياطية',
       AuditAction.restore => 'استعادة نسخة',
+      AuditAction.correct => 'تصحيح',
+      AuditAction.activate => 'تفعيل',
+      AuditAction.deactivate => 'إيقاف',
       _ => action,
     };
 
@@ -36,6 +40,13 @@ String auditEntityLabel(String entity) => switch (entity) {
       'expense' => 'مصروف',
       'database' => 'قاعدة البيانات',
       'import' => 'استيراد',
+      'price_list' => 'قائمة أسعار',
+      'buying_policy' => 'سياسة شراء',
+      'selling_policy' => 'سياسة بيع',
+      'supplier_advance' => 'دفعة مقدمة لمورد',
+      'advance_allocation' => 'خصم من دفعة مقدمة',
+      'stock_entry' => 'إدخال مخزون يدوي',
+      'project_task' => 'مهمة مشروع',
       _ => entity,
     };
 
@@ -81,18 +92,23 @@ class _AuditTabState extends ConsumerState<AuditTab> {
                         auditActionLabel(r.log.action),
                         auditEntityLabel(r.log.entity),
                         r.log.details,
+                        r.log.oldValue,
+                        r.log.newValue,
+                        r.log.reason,
                       ]))
                   .toList(),
               emptyText: Strings.noData,
               rowColor: (r) => r.log.action == AuditAction.cancel || r.log.action == AuditAction.loginFailed
                   ? scheme.errorContainer.withValues(alpha: 0.25)
-                  : null,
+                  : r.log.action == AuditAction.correct
+                      ? scheme.tertiaryContainer.withValues(alpha: 0.3)
+                      : null,
               columns: [
                 DataListColumn(Strings.date, flex: 2, (r) => Text(formatDateTime(r.log.at))),
                 DataListColumn(Strings.user, flex: 2, (r) => Text(r.userName ?? '—')),
                 DataListColumn(Strings.action, flex: 2, (r) => Text(auditActionLabel(r.log.action))),
                 DataListColumn(Strings.onWhat, flex: 2, (r) => Text(auditEntityLabel(r.log.entity))),
-                DataListColumn(Strings.details, flex: 5, (r) => Text(r.log.details ?? '')),
+                DataListColumn(Strings.details, flex: 5, (r) => _AuditDetails(r.log)),
               ],
             ),
           ),
@@ -105,3 +121,27 @@ class _AuditTabState extends ConsumerState<AuditTab> {
 final _auditProvider = StreamProvider.autoDispose.family<List<AuditRow>, DayRange>(
   (ref, range) => AuditService(ref.watch(databaseProvider)).watch(from: range.from, to: range.to),
 );
+
+/// The details, and for a correction the value before, after and why.
+class _AuditDetails extends StatelessWidget {
+  const _AuditDetails(this.log);
+
+  final AuditLog log;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasChange = log.oldValue != null || log.newValue != null;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+      if ((log.details ?? '').isNotEmpty) Text(log.details!),
+      if (hasChange)
+        Text.rich(TextSpan(children: [
+          const TextSpan(text: 'قبل: ', style: TextStyle(fontWeight: FontWeight.bold)),
+          TextSpan(text: log.oldValue ?? '—'),
+          const TextSpan(text: '   ←   بعد: ', style: TextStyle(fontWeight: FontWeight.bold)),
+          TextSpan(text: log.newValue ?? '—'),
+        ])),
+      if ((log.reason ?? '').isNotEmpty)
+        Text('السبب: ${log.reason}', style: const TextStyle(fontStyle: FontStyle.italic)),
+    ]);
+  }
+}

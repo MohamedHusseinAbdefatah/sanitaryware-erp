@@ -92,7 +92,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     final all = ref.watch(_allProductsProvider);
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      PageHeader(title: Strings.products, actions: [
+      PageHeader(title: Strings.products, icon: Icons.inventory_2_outlined, subtitle: 'دليل الأصناف: الأكواد والموديلات والماركات والصور', actions: [
         SearchBox(hint: 'بحث بالكود أو الاسم أو الباركود', onChanged: (v) => setState(() => _search = v)),
         ViewToggle(cards: _cards, onChanged: (v) => setState(() => _cards = v)),
         if (isAdmin)
@@ -138,6 +138,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                 matchesSearch(_search, [
                   r.product.code,
                   r.product.manufacturerCode,
+                  r.product.modelNo,
                   r.product.barcode,
                   r.product.nameAr,
                   r.brandName,
@@ -248,12 +249,13 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                                       v == true ? _selected.add(r.product.id) : _selected.remove(r.product.id)),
                                 )),
                           DataListColumn('', width: 60, (r) => ProductThumb(productId: r.product.id, size: 44)),
-                          DataListColumn(Strings.productName, flex: 5, (r) => TitleCell(
+                          DataListColumn(Strings.productName, sortValue: (r) => r.product.nameAr, flex: 5, (r) => TitleCell(
                                 r.product.nameAr,
                                 subtitle: [
                                   r.product.code,
                                   if (r.product.manufacturerCode.isNotEmpty && r.product.manufacturerCode != r.product.code)
                                     'كود الشركة ${r.product.manufacturerCode}',
+                                  if ((r.product.modelNo ?? '').isNotEmpty) 'موديل ${r.product.modelNo}',
                                 ].join('  ·  '),
                                 muted: !r.product.isActive,
                               )),
@@ -261,13 +263,13 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                                 r.categoryName ?? '—',
                                 subtitle: r.brandName,
                               )),
-                          DataListColumn('سعر القائمة', numeric: true, flex: 2, (r) {
+                          DataListColumn('سعر القائمة', sortValue: (r) => prices[r.product.id], numeric: true, flex: 2, (r) {
                             final p = prices[r.product.id];
                             return Text(p == null ? 'بدون سعر' : formatMoney(p),
                                 style: TextStyle(
                                     fontWeight: FontWeight.w700, color: p == null ? AppColors.muted : AppColors.ink));
                           }),
-                          DataListColumn(Strings.stock, numeric: true, flex: 2, stockPill),
+                          DataListColumn(Strings.stock, sortValue: (r) => r.stock, numeric: true, flex: 2, stockPill),
                         ],
                       ),
               ),

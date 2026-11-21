@@ -210,12 +210,11 @@ Future<(Shop, SalesInvoice)> _shopWithData() async {
     BuyingPolicyInput(supplierId: supplier, brandId: shop.brandId, priceListId: inForce, baseDiscountBp: 2000),
     user: shop.admin,
   );
-  // Money paid ahead, locked to that day's list.
+  // Money paid ahead: the supplier's advance balance, for any brand or list.
   await SupplierAdvanceService(db).create(
     supplierId: supplier,
     amount: 30000000,
-    brandIds: [shop.brandId],
-    note: 'حجز أسعار قبل الزيادة',
+    note: 'دفعة مقدمة تحت حساب المشتريات',
     user: shop.admin,
   );
   // A customer order bigger than the stock: part held, the rest short.
@@ -417,17 +416,15 @@ void main() {
     await settle(tester);
     await shot(tester, '17_purchase_entry');
 
-    // The same supplier's advance: lines at the locked prices.
-    await tester.tap(find.byType(DropdownButtonFormField<int?>).first);
-    await settle(tester);
-    await tester.tap(find.textContaining('SA-000001').last);
+    // The same supplier's advance balance pays part of the invoice.
+    await tester.tap(find.textContaining('المتاح').first);
     await settle(tester);
     await shot(tester, '19_purchase_from_advance');
 
     await go(tester, '/suppliers');
     await tester.tap(find.byType(PopupMenuButton<VoidCallback>).first);
     await settle(tester);
-    await tester.tap(find.text('دفعات مقدمة بسعر قائمة').last);
+    await tester.tap(find.text('الدفعات المقدمة').last);
     await settle(tester);
     await shot(tester, '18_supplier_advances');
     await tester.tap(find.text(Strings.close).last);

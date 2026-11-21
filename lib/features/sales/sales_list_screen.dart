@@ -36,6 +36,8 @@ class _SalesListScreenState extends ConsumerState<SalesListScreen> {
       children: [
         PageHeader(
           title: Strings.sales,
+          icon: Icons.receipt_long_outlined,
+          subtitle: 'كل فواتير البيع، وما حُصّل منها وما بقي',
           actions: [
             SearchBox(hint: Strings.searchInvoices, onChanged: (v) => setState(() => _search = v)),
             SegmentedButton<_Range>(
@@ -109,9 +111,9 @@ class _SalesListScreenState extends ConsumerState<SalesListScreen> {
                       onTap: (r) => context.go('/sales/${r.invoice.id}'),
                       rowColor: (r) => r.invoice.status == DocStatus.cancelled ? AppColors.canvas : null,
                       columns: [
-                        DataListColumn(Strings.invoiceNo, flex: 2, (r) => Text(r.invoice.number,
+                        DataListColumn(Strings.invoiceNo, sortValue: (r) => r.invoice.number, flex: 2, (r) => Text(r.invoice.number,
                             style: const TextStyle(fontWeight: FontWeight.w700))),
-                        DataListColumn(Strings.date, flex: 2, (r) => Text(formatDateTime(r.invoice.date))),
+                        DataListColumn(Strings.date, sortValue: (r) => r.invoice.date, flex: 2, (r) => Text(formatDateTime(r.invoice.date))),
                         DataListColumn(Strings.customer, flex: 3, (r) => r.invoice.customerId == null
                             ? const Text(Strings.cashCustomer, style: TextStyle(color: AppColors.muted))
                             : InkWell(
@@ -119,9 +121,9 @@ class _SalesListScreenState extends ConsumerState<SalesListScreen> {
                                 child: Text(r.customerName ?? '',
                                     style: const TextStyle(color: AppColors.brand, fontWeight: FontWeight.w600)),
                               )),
-                        DataListColumn(Strings.total, flex: 2, numeric: true, (r) => Text(formatMoney(r.invoice.total))),
-                        DataListColumn(Strings.paid, flex: 2, numeric: true, (r) => Text(formatMoney(r.paid))),
-                        DataListColumn(Strings.remaining, flex: 2, numeric: true, (r) {
+                        DataListColumn(Strings.total, sortValue: (r) => r.invoice.total, flex: 2, numeric: true, (r) => Text(formatMoney(r.invoice.total))),
+                        DataListColumn(Strings.paid, sortValue: (r) => r.paid, flex: 2, numeric: true, (r) => Text(formatMoney(r.paid))),
+                        DataListColumn(Strings.remaining, sortValue: (r) => r.invoice.status == DocStatus.cancelled ? 0 : r.invoice.total - r.paid, flex: 2, numeric: true, (r) {
                           final left = r.invoice.status == DocStatus.cancelled ? 0 : r.invoice.total - r.paid;
                           return Text(formatMoney(left),
                               style: left > 0 ? const TextStyle(fontWeight: FontWeight.w700) : null);

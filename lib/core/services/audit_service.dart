@@ -12,6 +12,11 @@ abstract final class AuditAction {
   static const cancel = 'cancel';
   static const backup = 'backup';
   static const restore = 'restore';
+
+  /// A correction of a saved record by the owner (old, new and reason kept).
+  static const correct = 'correct';
+  static const activate = 'activate';
+  static const deactivate = 'deactivate';
 }
 
 /// "field: before ← after" for every field that changed, for the audit log.
@@ -37,6 +42,9 @@ class AuditService {
     int? userId,
     int? entityId,
     String? details,
+    String? oldValue,
+    String? newValue,
+    String? reason,
   }) {
     return db.into(db.auditLogs).insert(
           AuditLogsCompanion.insert(
@@ -45,6 +53,9 @@ class AuditService {
             userId: Value(userId),
             entityId: Value(entityId),
             details: Value(details),
+            oldValue: Value(oldValue),
+            newValue: Value(newValue),
+            reason: Value(reason),
           ),
         );
   }

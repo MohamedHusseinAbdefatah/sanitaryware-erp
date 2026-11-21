@@ -31,6 +31,7 @@ import '../settings/settings_tabs.dart';
 import 'coming_soon_page.dart';
 import '../accounting/accounting_books.dart';
 import '../accounting/accounting_screen.dart';
+import '../projects/project_plan.dart';
 import '../projects/projects_screen.dart';
 
 /// One sidebar entry and its page. Cashiers do not see [adminOnly] sections
@@ -167,6 +168,7 @@ final appSections = <AppSection>[
         builder: (_, state) => PurchaseEntryScreen(
           key: ValueKey(state.uri.query),
           supplierId: int.tryParse(state.uri.queryParameters['supplier'] ?? ''),
+          correctInvoiceId: int.tryParse(state.uri.queryParameters['correct'] ?? ''),
         ),
       ),
       GoRoute(path: 'orders', builder: (_, _) => const PurchaseOrdersScreen()),
@@ -229,6 +231,13 @@ final appSections = <AppSection>[
     roles: {UserRole.accountant, UserRole.purchasing, UserRole.viewer},
     builder: (_) => const ProjectsScreen(),
     routes: [
+      GoRoute(
+        path: 'calendar',
+        builder: (_, state) => ProjectCalendarScreen(
+          key: ValueKey(state.uri.query),
+          projectId: int.tryParse(state.uri.queryParameters['project'] ?? ''),
+        ),
+      ),
       GoRoute(
         path: ':id',
         builder: (_, state) {

@@ -79,7 +79,7 @@ class _DeliveriesScreenState extends ConsumerState<DeliveriesScreen> {
           ),
         ]),
       ),
-      const PageHeader(title: 'التوصيلات'),
+      const PageHeader(title: 'التوصيلات', icon: Icons.local_shipping_outlined, subtitle: 'ما يُسلَّم للعملاء بالتوصيل أو التوريد المباشر، ومتابعة حالته'),
       Expanded(
         child: async.when(
           loading: () => const Center(child: CircularProgressIndicator()),

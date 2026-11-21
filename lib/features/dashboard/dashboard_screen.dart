@@ -13,6 +13,8 @@ import '../../core/quantity.dart';
 import '../../core/reports/report_service.dart';
 import '../../core/services/purchase_service.dart';
 import '../../core/theme.dart';
+import '../../core/widgets/states.dart';
+import '../projects/project_plan.dart';
 
 final _supplierDuesProvider = StreamProvider.autoDispose<List<SupplierDue>>(
     (ref) => ref.watch(purchaseServiceProvider).watchDue());
@@ -81,9 +83,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             const SizedBox(height: 14),
             _QuickActions(isAdmin: isAdmin),
             const SizedBox(height: 16),
-            if (snap.hasError) Text('${snap.error}'),
-            if (d == null && !snap.hasError)
-              const Padding(padding: EdgeInsets.all(40), child: Center(child: CircularProgressIndicator())),
+            if (snap.hasError)
+              ErrorState(message: '${snap.error}', onRetry: () => setState(() => _summary = _load())),
+            if (d == null && !snap.hasError) const LoadingState(label: 'جارٍ تجهيز الملخص…'),
             if (d != null) ...[
               _Attention(
                 items: [
@@ -109,6 +111,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         '/inventory'),
                 ],
               ),
+              if (user != null && user.can(Perm.projects)) ...[
+                const ProjectDeadlinesCard(),
+                const SizedBox(height: 14),
+              ],
               LayoutBuilder(builder: (context, c) {
                 final perRow = c.maxWidth > 780 ? 4 : (c.maxWidth > 560 ? 3 : 2);
                 final w = (c.maxWidth - 14 * (perRow - 1)) / perRow;
@@ -310,7 +316,8 @@ class _AttentionItem {
   final bool bad;
 }
 
-/// What needs someone's attention, as a strip of tappable chips.
+/// What needs someone's attention: a titled card of tappable items, each
+/// opening the page where it is dealt with.
 class _Attention extends StatelessWidget {
   const _Attention({required this.items});
 
@@ -321,42 +328,61 @@ class _Attention extends StatelessWidget {
     if (items.isEmpty) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
-      child: Wrap(
-        spacing: 10,
-        runSpacing: 10,
-        children: [
-          for (final it in items)
-            FutureBuilder<String?>(
-              future: it.text,
-              builder: (context, snap) {
-                final text = snap.data;
-                if (text == null) return const SizedBox.shrink();
-                final color = it.bad ? AppColors.bad : AppColors.warn;
-                return Material(
-                  color: it.bad ? AppColors.badBg : AppColors.warnBg,
-                  borderRadius: BorderRadius.circular(8),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(8),
-                    onTap: () => context.go(it.path),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(it.icon, size: 18, color: color),
-                          const SizedBox(width: 8),
-                          ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 520),
-                            child: Text(text, style: TextStyle(color: color, fontWeight: FontWeight.w700)),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: AppRadius.lgAll,
+          border: Border.all(color: AppColors.warn.withValues(alpha: .35)),
+          boxShadow: AppShadows.card,
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const Row(children: [
+            Icon(Icons.notifications_active_outlined, size: 20, color: AppColors.warn),
+            SizedBox(width: 8),
+            Text('يحتاج انتباهك', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+          ]),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              for (final it in items)
+                FutureBuilder<String?>(
+                  future: it.text,
+                  builder: (context, snap) {
+                    final text = snap.data;
+                    if (text == null) return const SizedBox.shrink();
+                    final color = it.bad ? AppColors.bad : AppColors.warn;
+                    return Material(
+                      color: it.bad ? AppColors.badBg : AppColors.warnBg,
+                      borderRadius: AppRadius.mdAll,
+                      child: InkWell(
+                        borderRadius: AppRadius.mdAll,
+                        onTap: () => context.go(it.path),
+                        child: Padding(
+                          padding: const EdgeInsetsDirectional.fromSTEB(12, 8, 6, 8),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(it.icon, size: 18, color: color),
+                              const SizedBox(width: 8),
+                              ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: 520),
+                                child: Text(text, style: TextStyle(color: color, fontWeight: FontWeight.w700)),
+                              ),
+                              const SizedBox(width: 4),
+                              Icon(Icons.chevron_left, size: 18, color: color),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
-                    ),
-                  ),
-                );
-              },
-            ),
-        ],
+                    );
+                  },
+                ),
+            ],
+          ),
+        ]),
       ),
     );
   }
@@ -387,6 +413,10 @@ class _Kpi extends StatelessWidget {
       width: width,
       child: Card(
         clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: AppRadius.lgAll,
+          side: BorderSide(color: tone == null ? AppColors.border : tone!.withValues(alpha: .4)),
+        ),
         child: InkWell(
           onTap: onTap,
           child: Padding(
@@ -397,21 +427,24 @@ class _Kpi extends StatelessWidget {
                 Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(color: AppColors.canvas, borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.all(7),
+                      decoration: const BoxDecoration(color: AppColors.brandSoft, borderRadius: AppRadius.mdAll),
                       child: Icon(icon, size: 18, color: AppColors.brand),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 10),
                     Expanded(
-                      child: Text(title, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.muted)),
+                      child: Text(title,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: AppColors.muted, fontWeight: FontWeight.w600)),
                     ),
+                    const Icon(Icons.chevron_left, size: 18, color: AppColors.subtle),
                   ],
                 ),
                 const SizedBox(height: 10),
                 FittedBox(
                   fit: BoxFit.scaleDown,
                   alignment: AlignmentDirectional.centerStart,
-                  child: Text(value, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w700)),
+                  child: Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.ink)),
                 ),
                 if (detail != null)
                   Text(
@@ -442,7 +475,15 @@ class _Panel extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(title, style: Theme.of(context).textTheme.titleMedium),
+            Row(children: [
+              Container(
+                width: 3,
+                height: 18,
+                decoration: BoxDecoration(color: AppColors.brand, borderRadius: BorderRadius.circular(2)),
+              ),
+              const SizedBox(width: 8),
+              Expanded(child: Text(title, style: Theme.of(context).textTheme.titleMedium)),
+            ]),
             const SizedBox(height: 12),
             child,
           ],
@@ -460,7 +501,11 @@ class _Empty extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 16),
-        child: Text(text, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.muted)),
+        child: Column(children: [
+          const Icon(Icons.check_circle_outline, color: AppColors.good, size: 26),
+          const SizedBox(height: 6),
+          Text(text, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.muted)),
+        ]),
       );
 }
 

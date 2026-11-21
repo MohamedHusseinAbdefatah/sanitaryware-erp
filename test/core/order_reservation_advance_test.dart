@@ -1,10 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sanitaryware_erp/core/db/database.dart';
 import 'package:sanitaryware_erp/core/quantity.dart';
-import 'package:sanitaryware_erp/core/services/buying_policy_service.dart';
 import 'package:sanitaryware_erp/core/services/errors.dart';
 import 'package:sanitaryware_erp/core/services/payment_service.dart';
-import 'package:sanitaryware_erp/core/services/price_list_service.dart';
 import 'package:sanitaryware_erp/core/services/purchase_order_service.dart';
 import 'package:sanitaryware_erp/core/services/purchase_service.dart';
 import 'package:sanitaryware_erp/core/services/reservation_service.dart';
@@ -112,110 +110,60 @@ void main() {
     });
   });
 
-  group('supplier advance locked to the price list of the day', () {
+  group('supplier advance by supplier (2.4)', () {
     late SupplierAdvanceService advances;
 
-    setUp(() async {
-      advances = SupplierAdvanceService(shop.db);
-      // The supplier gives 20% on the list in force today (mixer 500 -> 400).
-      await BuyingPolicyService(shop.db).add(
-        BuyingPolicyInput(
-            supplierId: shop.supplierId, brandId: shop.brandId, priceListId: shop.priceListId, baseDiscountBp: 2000),
-        user: shop.admin,
-      );
-    });
+    setUp(() => advances = SupplierAdvanceService(shop.db));
 
     Future<SupplierAdvance> pay(int amount) => advances.create(
           supplierId: shop.supplierId,
           amount: amount,
-          brandIds: [shop.brandId],
           date: DateTime.now().subtract(const Duration(days: 30)),
           user: shop.admin,
         );
 
-    test('it counts in the supplier balance and locks the lists in force that day', () async {
+    Future<PurchaseInvoice> buy(int pieces, {int advanceAmount = 0}) => PurchaseService(shop.db).post(
+          PurchaseInput(
+            supplierId: shop.supplierId,
+            advanceAmount: advanceAmount,
+            lines: [PurchaseLineInput(productId: shop.mixer.id, qty: qtyOf(pieces), unitCost: 40000)],
+          ),
+          user: shop.admin,
+        );
+
+    test('it counts in the supplier balance from the day it is paid, with no price list', () async {
       final a = await pay(300000);
       expect(a.number, startsWith('SA-'));
       expect(await shop.supplierBalance(), -300000);
       final row = await advances.row(a.id);
-      expect(row.lists.single.list.id, shop.priceListId);
+      expect(row.lists, isEmpty);
       expect(row.remaining, 300000);
+      expect((await advances.balance(shop.supplierId)).remaining, 300000);
     });
 
-    test('later goods are taken at the locked price and discount, even after a new list', () async {
+    test('an invoice takes part of the advance; the invoice shows it as paid', () async {
       final a = await pay(300000);
-      // A new list: mixer 600, and the supplier's discount now 15%.
-      final v2 = (await PriceListService(shop.db).createVersion(
-        PriceListHeader(name: 'جديدة', brandId: shop.brandId, listType: 'عام', effectiveFrom: DateTime.now()),
-        rows: [PriceRowInput(name: 'خلاط', price: 60000, productId: shop.mixer.id)],
-        user: shop.admin,
-      ))
-          .id;
-      final carried = (await shop.db.select(shop.db.buyingPolicies).get()).firstWhere((p) => p.priceListId == v2);
-      await BuyingPolicyService(shop.db).setActive(carried.id, false, user: shop.admin);
-      await BuyingPolicyService(shop.db).add(
-        BuyingPolicyInput(supplierId: shop.supplierId, brandId: shop.brandId, priceListId: v2, baseDiscountBp: 1500),
-        user: shop.admin,
-      );
-      final today = (await BuyingPolicyService(shop.db).quotes(shop.mixer.id, supplierId: shop.supplierId))
-          .firstWhere((q) => !q.missingPolicy);
-      expect(today.netCost, 51000, reason: 'today: 600 less 15%');
-      final locked = await advances.quote(a.id, shop.mixer.id);
-      expect(locked!.listPrice, 50000);
-      expect(locked.netCost, 40000, reason: 'locked: 500 less 20%');
-
-      final inv = await PurchaseService(shop.db).post(
-        PurchaseInput(
-          supplierId: shop.supplierId,
-          advanceId: a.id,
-          lines: [
-            PurchaseLineInput(
-                productId: shop.mixer.id, qty: qtyOf(5), unitCost: locked.netCost!, priceListId: locked.quote.priceListId,
-                listPrice: locked.listPrice, buyingPolicyId: locked.policy?.id, baseDiscountBp: 2000),
-          ],
-        ),
-        user: shop.admin,
-      );
+      final inv = await buy(5, advanceAmount: 150000);
       expect(inv.total, 200000);
-      expect(inv.advanceUsed, 200000);
-      expect((await advances.row(a.id)).remaining, 100000);
-      expect(await shop.supplierBalance(), -100000, reason: 'the advance less what was taken');
+      final fresh = await (shop.db.select(shop.db.purchaseInvoices)..where((t) => t.id.equals(inv.id))).getSingle();
+      expect(fresh.advanceUsed, 150000);
+      expect((await advances.row(a.id)).remaining, 150000);
+      expect(await shop.supplierBalance(), -100000, reason: '300 paid ahead, 200 bought');
       final detail = await PurchaseService(shop.db).detail(inv.id);
-      expect(detail.paid, 200000, reason: 'the invoice shows as paid from the advance');
+      expect(detail.paid, 150000);
     });
 
-    test('an invoice bigger than what is left, or a product not on the locked lists, is refused', () async {
-      final a = await pay(100000);
-      await expectLater(
-        PurchaseService(shop.db).post(
-          PurchaseInput(
-            supplierId: shop.supplierId,
-            advanceId: a.id,
-            lines: [PurchaseLineInput(productId: shop.mixer.id, qty: qtyOf(3), unitCost: 40000)],
-          ),
-          user: shop.admin,
-        ),
-        throwsA(isA<ValidationException>()),
-      );
-      final other = await PriceListService(shop.db).createVersion(
-        PriceListHeader(name: 'منفصلة', brandId: shop.brandId, listType: 'خاصة', effectiveFrom: DateTime.now()),
-        rows: const [],
-        user: shop.admin,
-      );
-      expect(other.id, isNot(shop.priceListId));
-      expect((await advances.row(a.id)).lists.length, 1, reason: 'only the lists of the payment day');
+    test('more than the advance balance, or than the invoice, is refused', () async {
+      await pay(100000);
+      await expectLater(buy(3, advanceAmount: 110000), throwsA(isA<ValidationException>()));
+      final inv = await buy(1);
+      await expectLater(advances.allocate(invoiceId: inv.id, amount: 50000, user: shop.admin),
+          throwsA(isA<ValidationException>()), reason: 'the invoice is 400 only');
     });
 
-    test('it can be cancelled only while nothing was taken; cancelling the invoice frees it', () async {
+    test('it is cancelled only while nothing was taken; cancelling the invoice frees it', () async {
       final a = await pay(300000);
-      final inv = await PurchaseService(shop.db).post(
-        PurchaseInput(
-          supplierId: shop.supplierId,
-          advanceId: a.id,
-          lines: [PurchaseLineInput(productId: shop.mixer.id, qty: qtyOf(1), unitCost: 40000)],
-        ),
-        user: shop.admin,
-      );
+      final inv = await buy(1, advanceAmount: 40000);
       await expectLater(advances.cancel(a.id, reason: 'خطأ', user: shop.admin), throwsA(isA<ValidationException>()));
       final payment = (await shop.db.select(shop.db.payments).get()).single;
       await expectLater(PaymentService(shop.db).cancel(payment.id, reason: 'خطأ', user: shop.admin),
@@ -225,19 +173,6 @@ void main() {
       await advances.cancel(a.id, reason: 'خطأ', user: shop.admin);
       expect((await advances.row(a.id)).advance.status, DocStatus.cancelled);
       expect(await shop.supplierBalance(), 0);
-    });
-
-    test('a brand with no list in force that day cannot be locked', () async {
-      await expectLater(
-        advances.create(
-          supplierId: shop.supplierId,
-          amount: 1000,
-          brandIds: [shop.brandId],
-          date: DateTime(2019),
-          user: shop.admin,
-        ),
-        throwsA(isA<ValidationException>()),
-      );
     });
   });
 }

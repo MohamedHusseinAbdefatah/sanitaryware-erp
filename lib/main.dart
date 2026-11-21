@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,6 +7,7 @@ import 'package:window_manager/window_manager.dart';
 
 import 'app.dart';
 import 'core/auth/auth_service.dart';
+import 'core/auth/remember_service.dart';
 import 'core/auth/session.dart';
 import 'core/backup/backup_actions.dart';
 import 'core/backup/backup_service.dart';
@@ -62,6 +64,27 @@ Future<void> main() async {
   }
 
   final setupNeeded = !await AuthService(db).hasAnyUser();
+  // "Remember me": a token kept in this Windows user's data folder signs in
+  // without the password (and is replaced at once by a new one).
+  final rememberStore = RememberStore(File('${paths.dataDir.path}${Platform.pathSeparator}login.remember'));
+  User? remembered;
+  if (!setupNeeded) {
+    try {
+      final token = await rememberStore.read();
+      if (token != null) {
+        final resumed = await RememberService(db).resume(token, device: Platform.localHostname);
+        if (resumed == null) {
+          await rememberStore.clear();
+        } else {
+          remembered = resumed.$1;
+          await rememberStore.write(resumed.$2);
+        }
+      }
+    } catch (e, stack) {
+      ErrorLog.record(e, stack, where: 'remembered login');
+      await rememberStore.clear();
+    }
+  }
   final actions = BackupActions(
     db: db,
     backups: backups,
@@ -86,6 +109,8 @@ Future<void> main() async {
         databaseFileProvider.overrideWithValue(paths.databaseFile),
         backupServiceProvider.overrideWithValue(backups),
         setupNeededProvider.overrideWith((ref) => setupNeeded),
+        rememberStoreProvider.overrideWithValue(rememberStore),
+        if (remembered != null) currentUserProvider.overrideWith((ref) => remembered),
       ],
       child: const App(),
     ),

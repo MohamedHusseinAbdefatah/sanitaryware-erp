@@ -37,6 +37,10 @@ class BalanceService {
   Future<bool> _countPending() =>
       SettingsService(db).getBool(SettingKey.countPendingCheques);
 
+  /// Whether pending cheques count (the setting), for SQL built elsewhere
+  /// with [countedPayment].
+  Future<bool> countPendingCheques() => _countPending();
+
   static String _customerSql(String where) => '''
     SELECT cu.id AS id, cu.opening_balance
       + COALESCE((SELECT SUM(s.total) FROM sales_invoices s

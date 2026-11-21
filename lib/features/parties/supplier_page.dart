@@ -79,8 +79,8 @@ class SupplierPage extends ConsumerWidget {
                 await showSupplierAdvances(context, s);
                 refresh();
               },
-              icon: const Icon(Icons.lock_clock_outlined),
-              label: const Text('دفعة مقدمة'),
+              icon: const Icon(Icons.account_balance_wallet_outlined),
+              label: const Text('الدفعات المقدمة'),
             ),
             OutlinedButton.icon(
               onPressed: () async {
@@ -178,16 +178,14 @@ class _AdvancesTab extends StatelessWidget {
   Widget build(BuildContext context) {
     return DataList<AdvanceRow>(
       rows: advances,
-      emptyText: 'لا توجد دفعات مقدمة بسعر قائمة',
+      emptyText: 'لا توجد دفعات مقدمة لهذا المورد',
       rowColor: (a) => a.advance.status == DocStatus.cancelled ? AppColors.canvas : null,
       columns: [
         DataListColumn('الرقم', flex: 2, (a) => Text(a.advance.number)),
         DataListColumn(Strings.date, flex: 2, (a) => Text(formatDate(a.advance.date))),
-        DataListColumn('مثبتة على', flex: 4, (a) => Text(
-            a.lists.map((l) => '${l.brandName} PL-${l.list.id} V${l.list.versionNo}').join('، '),
-            overflow: TextOverflow.ellipsis)),
+        DataListColumn(Strings.notes, flex: 4, (a) => Text(a.advance.note ?? '', overflow: TextOverflow.ellipsis)),
         DataListColumn('المبلغ', flex: 2, numeric: true, (a) => Text(formatMoney(a.advance.amount))),
-        DataListColumn('المسحوب', flex: 2, numeric: true, (a) => Text(formatMoney(a.used))),
+        DataListColumn('المخصوم على فواتير', flex: 2, numeric: true, (a) => Text(formatMoney(a.used))),
         DataListColumn('المتبقي', flex: 2, numeric: true,
             (a) => Text(formatMoney(a.remaining), style: const TextStyle(fontWeight: FontWeight.w700))),
         DataListColumn(Strings.status, flex: 2, numeric: true, (a) => a.advance.status == DocStatus.cancelled

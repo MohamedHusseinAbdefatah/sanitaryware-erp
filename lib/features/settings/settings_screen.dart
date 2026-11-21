@@ -15,6 +15,7 @@ import '../../core/printing/test_page.dart';
 import '../../core/providers.dart';
 import '../../core/version.dart';
 import '../../core/services/settings_service.dart';
+import '../../core/widgets/feedback.dart';
 import 'backup_list.dart';
 
 class GeneralSettingsTab extends ConsumerStatefulWidget {
@@ -78,8 +79,7 @@ class _SettingsScreenState extends ConsumerState<GeneralSettingsTab> {
     if (mounted) setState(() => _backups = backups);
   }
 
-  void _toast(String text) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  void _toast(String text) => showToast(context, text, kind: ToastKind.info);
 
   /// Runs [action] with the buttons disabled and any error shown as a toast.
   Future<void> _run(Future<void> Function() action) async {

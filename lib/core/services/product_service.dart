@@ -66,7 +66,11 @@ class ProductInput {
     this.minStock = 0,
     this.isActive = true,
     this.notes,
+    this.modelNo,
   });
+
+  /// The maker's model number, kept apart from the code and the name.
+  final String? modelNo;
 
   final String code;
   final String nameAr;
@@ -140,7 +144,15 @@ class ProductService {
         .where((r) => categoryId == null || r.product.categoryId == categoryId)
         .where((r) => !lowStockOnly || r.isLowStock)
         .where((r) => matchesSearch(
-            search, [r.product.code, r.product.manufacturerCode, r.product.barcode, r.product.nameAr, r.brandName, r.categoryName]))
+            search, [
+              r.product.code,
+              r.product.manufacturerCode,
+              r.product.modelNo,
+              r.product.barcode,
+              r.product.nameAr,
+              r.brandName,
+              r.categoryName,
+            ]))
         .toList());
   }
 
@@ -149,11 +161,13 @@ class ProductService {
     final rows = await _rows(where: 'WHERE p.is_active = 1').get();
     final folded = foldForSearch(query);
     final hits = rows
-        .where((r) => matchesSearch(query, [r.product.code, r.product.manufacturerCode, r.product.barcode, r.product.nameAr, r.brandName]))
+        .where((r) => matchesSearch(
+            query, [r.product.code, r.product.manufacturerCode, r.product.modelNo, r.product.barcode, r.product.nameAr, r.brandName]))
         .toList()
       ..sort((a, b) {
         int rank(ProductRow r) => foldForSearch(r.product.code) == folded ||
                 foldForSearch(r.product.manufacturerCode) == folded ||
+                foldForSearch(r.product.modelNo ?? '') == folded ||
                 foldForSearch(r.product.barcode ?? '') == folded
             ? 0
             : 1;
@@ -209,6 +223,7 @@ class ProductService {
             technicalSpecs: Value(_blankToNull(input.technicalSpecs)),
             vatBasis: Value(_blankToNull(input.vatBasis)),
             vatRateBp: Value(input.vatRateBp),
+            modelNo: Value(_blankToNull(input.modelNo)),
           ));
       if (openingQty > 0) {
         await StockService(db).record(
@@ -266,6 +281,7 @@ class ProductService {
             technicalSpecs: Value(_blankToNull(input.technicalSpecs)),
             vatBasis: Value(_blankToNull(input.vatBasis)),
             vatRateBp: Value(input.vatRateBp),
+            modelNo: Value(_blankToNull(input.modelNo)),
             updatedAt: Value(DateTime.now()),
           ));
       final fresh = await (db.select(db.products)..where((t) => t.id.equals(id))).getSingle();

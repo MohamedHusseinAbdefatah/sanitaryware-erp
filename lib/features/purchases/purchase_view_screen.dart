@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/auth/auth_service.dart';
 import '../../core/auth/session.dart';
 import '../../core/dates.dart';
 import '../../core/db/database.dart';
@@ -12,6 +13,7 @@ import '../../core/providers.dart';
 import '../../core/quantity.dart';
 import '../../core/services/doc_types.dart';
 import '../../core/services/purchase_service.dart';
+import '../../core/services/supplier_advance_service.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/document_view.dart';
 import '../../core/widgets/feedback.dart';
@@ -36,12 +38,58 @@ class PurchaseViewScreen extends ConsumerStatefulWidget {
 }
 
 class _PurchaseViewScreenState extends ConsumerState<PurchaseViewScreen> {
-  late Future<(PurchaseInvoiceDetail, List<Payment>)> _detail = _load();
+  late Future<(PurchaseInvoiceDetail, List<Payment>, List<AllocationRow>, AdvanceBalance)> _detail = _load();
 
-  Future<(PurchaseInvoiceDetail, List<Payment>)> _load() async => (
-        await ref.read(purchaseServiceProvider).detail(widget.invoiceId),
-        await ref.read(paymentServiceProvider).onInvoice(RefType.purchaseInvoice, widget.invoiceId),
-      );
+  Future<(PurchaseInvoiceDetail, List<Payment>, List<AllocationRow>, AdvanceBalance)> _load() async {
+    final d = await ref.read(purchaseServiceProvider).detail(widget.invoiceId);
+    final advances = ref.read(supplierAdvanceServiceProvider);
+    return (
+      d,
+      await ref.read(paymentServiceProvider).onInvoice(RefType.purchaseInvoice, widget.invoiceId),
+      await advances.allocations(invoiceId: widget.invoiceId),
+      await advances.balance(d.supplier.id),
+    );
+  }
+
+  /// Pays part of the invoice from the supplier's advance balance.
+  Future<void> _fromAdvance(PurchaseInvoiceDetail d, AdvanceBalance b) async {
+    final left = d.invoice.total - d.paid;
+    final most = left < b.remaining ? left : b.remaining;
+    final amount = await askAmount(
+      context,
+      title: 'خصم من الدفعات المقدمة على ${d.invoice.number}',
+      hint: 'المتاح ${formatMoney(b.remaining)} · المتبقي على الفاتورة ${formatMoney(left)}',
+      initial: most,
+    );
+    if (amount == null || !mounted) return;
+    final ok = await runGuarded(context, () async {
+      await ref
+          .read(supplierAdvanceServiceProvider)
+          .allocate(invoiceId: d.invoice.id, amount: amount, user: ref.read(currentUserProvider)!);
+      return true;
+    });
+    if (ok == true && mounted) _reload();
+  }
+
+  /// Owner: changes how much the invoice takes from advances.
+  Future<void> _correctAdvance(PurchaseInvoiceDetail d) async {
+    final amount = await askAmount(
+      context,
+      title: 'تصحيح المخصوم من الدفعات المقدمة',
+      hint: 'الحالي ${formatMoney(d.invoice.advanceUsed)} — اكتب المبلغ الصحيح (0 لإلغائه)',
+      initial: d.invoice.advanceUsed,
+      allowZero: true,
+    );
+    if (amount == null || !mounted) return;
+    final reason = await askReason(context, title: 'سبب التصحيح');
+    if (reason == null || !mounted) return;
+    final ok = await runGuarded(context, () async {
+      await ref.read(supplierAdvanceServiceProvider).correctInvoiceAllocation(
+          d.invoice.id, amount, reason: reason, user: ref.read(currentUserProvider)!);
+      return true;
+    });
+    if (ok == true && mounted) _reload();
+  }
 
   void _reload() => setState(() {
         _detail = _load();
@@ -73,13 +121,15 @@ class _PurchaseViewScreenState extends ConsumerState<PurchaseViewScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return FutureBuilder<(PurchaseInvoiceDetail, List<Payment>)>(
+    final owner = ref.watch(currentUserProvider)?.isAdmin ?? false;
+    return FutureBuilder<(PurchaseInvoiceDetail, List<Payment>, List<AllocationRow>, AdvanceBalance)>(
       future: _detail,
       builder: (context, snap) {
         if (snap.hasError) return Center(child: Text('${snap.error}'));
         final data = snap.data;
         if (data == null) return const Center(child: CircularProgressIndicator());
-        final (d, payments) = data;
+        final (d, payments, allocations, advanceBalance) = data;
+        final activeAllocations = allocations.where((a) => a.active).toList();
         final inv = d.invoice;
         final cancelled = inv.status == DocStatus.cancelled;
         final remaining = inv.total - d.paid;
@@ -100,6 +150,11 @@ class _PurchaseViewScreenState extends ConsumerState<PurchaseViewScreen> {
             (Strings.date, formatDateTime(inv.date)),
             if (inv.supplierInvoiceNo != null) (Strings.supplierInvoiceNo, inv.supplierInvoiceNo!),
             if (inv.dueDate != null) ('يستحق الباقي', formatDate(inv.dueDate!)),
+            if (activeAllocations.isNotEmpty)
+              (
+                'من الدفعات المقدمة',
+                activeAllocations.map((a) => '${a.advanceNumber}: ${formatMoney(a.allocation.amount)}').join(' · ')
+              ),
           ],
           columns: const [
             DocColumn('#'),
@@ -140,12 +195,19 @@ class _PurchaseViewScreenState extends ConsumerState<PurchaseViewScreen> {
           ],
           totals: [
             (Strings.subtotal, inv.subtotal, false),
-            if (inv.discount != 0) (Strings.invoiceDiscount, inv.discount, false),
+            if (inv.discount != 0)
+              (
+                inv.discountBp == null
+                    ? '${Strings.invoiceDiscount} (مبلغ)'
+                    : '${Strings.invoiceDiscount} (${(inv.discountBp! / 100).toStringAsFixed(inv.discountBp! % 100 == 0 ? 0 : 2)}%)',
+                inv.discount,
+                false
+              ),
             if (inv.extraCosts != 0)
               (inv.extraCostsOnSupplier ? 'نقل وتحميل (على المورد)' : 'نقل وتحميل (لجهة أخرى، خارج الإجمالي)',
                   inv.extraCosts, false),
             (Strings.total, inv.total, true),
-            if (inv.advanceUsed != 0) ('منها من دفعة مقدمة بسعر مثبت', inv.advanceUsed, false),
+            if (inv.advanceUsed != 0) ('منها من الدفعات المقدمة', inv.advanceUsed, false),
             (Strings.paid, d.paid, false),
             (Strings.remaining, cancelled ? 0 : remaining, true),
           ],
@@ -157,6 +219,24 @@ class _PurchaseViewScreenState extends ConsumerState<PurchaseViewScreen> {
                 onPressed: () => _pay(d),
                 icon: const Icon(Icons.payments_outlined),
                 label: const Text(Strings.payToSupplier),
+              ),
+            if (!cancelled && remaining > 0 && advanceBalance.remaining > 0)
+              FilledButton.tonalIcon(
+                onPressed: () => _fromAdvance(d, advanceBalance),
+                icon: const Icon(Icons.account_balance_wallet_outlined),
+                label: Text('خصم من الدفعات المقدمة (${formatMoney(advanceBalance.remaining)})'),
+              ),
+            if (!cancelled && owner && !inv.isDirect)
+              OutlinedButton.icon(
+                onPressed: () => context.go('/purchases/new?correct=${inv.id}'),
+                icon: const Icon(Icons.edit_note),
+                label: const Text('تصحيح الفاتورة'),
+              ),
+            if (!cancelled && owner && inv.advanceUsed > 0)
+              OutlinedButton.icon(
+                onPressed: () => _correctAdvance(d),
+                icon: const Icon(Icons.tune),
+                label: const Text('تصحيح المخصوم من الدفعات'),
               ),
             if (!cancelled)
               OutlinedButton.icon(

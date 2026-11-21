@@ -1,9 +1,12 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/auth/auth_service.dart';
 import '../../core/auth/session.dart';
 import '../../core/l10n/strings.dart';
+import '../../core/services/errors.dart';
 import '../../core/providers.dart';
 import '../../core/theme.dart';
 import '../../core/version.dart';
@@ -20,6 +23,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _password = TextEditingController();
   final _passwordFocus = FocusNode();
   bool _busy = false;
+  bool _remember = false;
   String? _error;
 
   @override
@@ -38,6 +42,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     });
     try {
       final user = await ref.read(authServiceProvider).login(_username.text, _password.text);
+      if (_remember) {
+        // Only a random token is kept on this computer, never the password.
+        try {
+          final token = await ref.read(rememberServiceProvider).issue(user, device: Platform.localHostname);
+          await ref.read(rememberStoreProvider).write(token);
+        } on ValidationException {
+          // Turned off by the owner meanwhile: sign in without remembering.
+        }
+      }
       ref.read(currentUserProvider.notifier).state = user;
     } on AuthException catch (e) {
       _password.clear();
@@ -139,7 +152,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           const SizedBox(height: 16),
                           Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
                         ],
-                        const SizedBox(height: 24),
+                        if (ref.watch(rememberEnabledProvider).valueOrNull ?? false) ...[
+                          const SizedBox(height: 8),
+                          CheckboxListTile(
+                            contentPadding: EdgeInsets.zero,
+                            controlAffinity: ListTileControlAffinity.leading,
+                            value: _remember,
+                            onChanged: (v) => setState(() => _remember = v ?? false),
+                            title: const Text('تذكرني على هذا الجهاز'),
+                            subtitle: const Text('لمدة 30 يوماً. لا تستخدمه على جهاز مشترك.', style: TextStyle(fontSize: 12)),
+                          ),
+                        ],
+                        const SizedBox(height: 16),
                         FilledButton(
                           onPressed: _busy ? null : _submit,
                           child: _busy

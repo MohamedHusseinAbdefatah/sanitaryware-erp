@@ -35,6 +35,9 @@ class ProductImageBox extends ConsumerWidget {
   }
 
   Future<void> _remove(BuildContext context, WidgetRef ref) async {
+    final sure = await confirmAction(context,
+        title: 'حذف صورة الصنف؟', message: 'ستُحذف الصورة من بطاقة الصنف ومن الكتالوج.', confirmLabel: 'حذف', destructive: true);
+    if (!sure || !context.mounted) return;
     final ok = await runGuarded(context, () async {
       await ref.read(productImageServiceProvider).remove(productId, user: ref.read(currentUserProvider)!);
       return true;

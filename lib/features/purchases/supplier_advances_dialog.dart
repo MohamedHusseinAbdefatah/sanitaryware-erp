@@ -1,7 +1,7 @@
-import 'package:drift/drift.dart' show OrderingTerm;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/auth/auth_service.dart';
 import '../../core/auth/session.dart';
 import '../../core/dates.dart';
 import '../../core/db/database.dart';
@@ -11,10 +11,12 @@ import '../../core/providers.dart';
 import '../../core/services/doc_types.dart';
 import '../../core/services/payment_service.dart';
 import '../../core/services/supplier_advance_service.dart';
+import '../../core/theme.dart';
 import '../../core/widgets/feedback.dart';
 import '../../core/widgets/number_fields.dart';
 
-/// A supplier's advances locked to price lists, and a new one.
+/// A supplier's advances: the balance, each advance with what was taken from
+/// it and on which invoices, and a new one.
 Future<void> showSupplierAdvances(BuildContext context, Supplier supplier) =>
     showDialog<void>(context: context, builder: (_) => _AdvancesDialog(supplier: supplier));
 
@@ -27,12 +29,24 @@ class _AdvancesDialog extends ConsumerStatefulWidget {
   ConsumerState<_AdvancesDialog> createState() => _AdvancesDialogState();
 }
 
+class _AdvancesData {
+  const _AdvancesData(this.balance, this.rows, this.allocations);
+
+  final AdvanceBalance balance;
+  final List<AdvanceRow> rows;
+  final List<AllocationRow> allocations;
+}
+
 class _AdvancesDialogState extends ConsumerState<_AdvancesDialog> {
-  late Future<List<AdvanceRow>> _rows = _load();
+  late Future<_AdvancesData> _data = _load();
 
-  Future<List<AdvanceRow>> _load() => ref.read(supplierAdvanceServiceProvider).rows(supplierId: widget.supplier.id);
+  Future<_AdvancesData> _load() async {
+    final s = ref.read(supplierAdvanceServiceProvider);
+    final id = widget.supplier.id;
+    return _AdvancesData(await s.balance(id), await s.rows(supplierId: id), await s.allocations(supplierId: id));
+  }
 
-  void _reload() => setState(() => _rows = _load());
+  void _reload() => setState(() => _data = _load());
 
   Future<void> _new() async {
     final saved = await showDialog<bool>(context: context, builder: (_) => _NewAdvanceDialog(supplier: widget.supplier));
@@ -49,59 +63,140 @@ class _AdvancesDialogState extends ConsumerState<_AdvancesDialog> {
     if (ok == true) _reload();
   }
 
+  /// Owner: a wrong amount typed for the advance itself.
+  Future<void> _correctAmount(AdvanceRow r) async {
+    final amount = await askAmount(
+      context,
+      title: 'تصحيح مبلغ الدفعة ${r.advance.number}',
+      hint: 'المسجل ${formatMoney(r.advance.amount)} · المخصوم منها ${formatMoney(r.used)}',
+      initial: r.advance.amount,
+    );
+    if (amount == null || !mounted) return;
+    final reason = await askReason(context, title: 'سبب التصحيح');
+    if (reason == null || !mounted) return;
+    final ok = await runGuarded(context, () async {
+      await ref
+          .read(paymentServiceProvider)
+          .correct(r.advance.paymentId, amount: amount, reason: reason, user: ref.read(currentUserProvider)!);
+      return true;
+    });
+    if (ok == true) _reload();
+  }
+
+  /// Owner: undoes one use of an advance on an invoice.
+  Future<void> _cancelAllocation(AllocationRow a) async {
+    final reason = await askReason(context,
+        title: 'إلغاء خصم ${formatMoney(a.allocation.amount)} من ${a.advanceNumber} على ${a.invoiceNumber}');
+    if (reason == null || !mounted) return;
+    final ok = await runGuarded(context, () async {
+      await ref
+          .read(supplierAdvanceServiceProvider)
+          .cancelAllocation(a.allocation.id, reason: reason, user: ref.read(currentUserProvider)!);
+      return true;
+    });
+    if (ok == true) _reload();
+  }
+
+  Widget _figure(String label, int amount, Color color) => Expanded(
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: color.withValues(alpha: 0.3)),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(label, style: const TextStyle(color: AppColors.muted)),
+            const SizedBox(height: 4),
+            Text(formatMoney(amount), style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: color)),
+          ]),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final owner = ref.watch(currentUserProvider)?.isAdmin ?? false;
     return AlertDialog(
-      title: Text('دفعات مقدمة بسعر قائمة — ${widget.supplier.name}'),
+      title: Text('الدفعات المقدمة — ${widget.supplier.name}'),
       content: SizedBox(
-        width: 720,
-        height: 460,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              color: theme.colorScheme.surfaceContainerHighest,
-              child: const Text(
-                'مبلغ يُدفع للمورد مقدماً ويُثبت على قوائم أسعار الماركات المختارة السارية يوم الدفع، وعلى خصم المورد '
-                'في ذلك اليوم. تُسحب البضاعة لاحقاً من فاتورة شراء باختيار الدفعة، بالأسعار المثبتة حتى لو صدرت قوائم أغلى.',
+        width: 820,
+        height: 540,
+        child: FutureBuilder<_AdvancesData>(
+          future: _data,
+          builder: (context, snap) {
+            if (snap.hasError) return Center(child: Text('${snap.error}'));
+            if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+            final d = snap.data!;
+            return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Row(children: [
+                _figure('إجمالي الدفعات المقدمة', d.balance.paid, AppColors.info),
+                const SizedBox(width: 10),
+                _figure('المخصوم على فواتير', d.balance.allocated, AppColors.warn),
+                const SizedBox(width: 10),
+                _figure('المتبقي للمورد عندنا', d.balance.remaining, AppColors.good),
+              ]),
+              const SizedBox(height: 10),
+              const InfoNote(
+                'الدفعة المقدمة رصيد للمورد، وليست مرتبطة بقائمة أسعار. عند تسجيل أي فاتورة شراء لهذا المورد '
+                '(أي ماركة أو قائمة) يمكن خصم جزء منها، ويُحفظ كل خصم مرتبطاً بفاتورته.',
               ),
-            ),
-            const SizedBox(height: 12),
-            Expanded(
-              child: FutureBuilder<List<AdvanceRow>>(
-                future: _rows,
-                builder: (context, snap) {
-                  if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-                  final rows = snap.data!;
-                  if (rows.isEmpty) return const Center(child: Text('لا توجد دفعات مقدمة لهذا المورد'));
-                  return ListView.separated(
-                    itemCount: rows.length,
-                    separatorBuilder: (_, _) => const Divider(height: 1),
-                    itemBuilder: (context, i) {
-                      final r = rows[i];
-                      final cancelled = r.advance.status == DocStatus.cancelled;
-                      return ListTile(
-                        leading: Icon(Icons.lock_clock_outlined,
-                            color: cancelled ? theme.disabledColor : theme.colorScheme.primary),
-                        title: Text('${r.advance.number} · ${formatDate(r.advance.date)} · ${formatMoney(r.advance.amount)}'
-                            '${cancelled ? ' (ملغاة)' : ''}'),
-                        subtitle: Text(
-                          'مثبتة على: ${r.lists.map((l) => '${l.brandName} PL-${l.list.id} ${l.list.listType} V${l.list.versionNo}').join('، ')}\n'
-                          'المسحوب ${formatMoney(r.used)} · المتبقي ${formatMoney(r.remaining)}',
+              const SizedBox(height: 10),
+              Expanded(
+                child: d.rows.isEmpty
+                    ? const Center(child: Text('لا توجد دفعات مقدمة لهذا المورد', style: TextStyle(color: AppColors.muted)))
+                    : ListView.separated(
+                          itemCount: d.rows.length,
+                          separatorBuilder: (_, _) => const Divider(height: 1),
+                          itemBuilder: (context, i) {
+                            final r = d.rows[i];
+                            final cancelled = r.advance.status == DocStatus.cancelled;
+                            final uses = d.allocations.where((a) => a.allocation.advanceId == r.advance.id).toList();
+                            return ExpansionTile(
+                              leading: Icon(Icons.account_balance_wallet_outlined,
+                                  color: cancelled ? AppColors.muted : AppColors.brand),
+                              title: Text(
+                                '${r.advance.number} · ${formatDate(r.advance.date)} · ${formatMoney(r.advance.amount)}'
+                                '${cancelled ? ' (ملغاة)' : ''}',
+                                style: const TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                              subtitle: Text(
+                                'المخصوم ${formatMoney(r.used)} · المتبقي ${formatMoney(cancelled ? 0 : r.remaining)}'
+                                '${r.advance.note == null ? '' : ' · ${r.advance.note}'}'
+                                '${r.lists.isEmpty ? '' : '\nقبل 2.4 كانت مثبتة على: ${r.lists.map((l) => l.brandName).toSet().join('، ')}'}',
+                              ),
+                              trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                                if (!cancelled && owner)
+                                  IconButton(
+                                    tooltip: 'تصحيح المبلغ',
+                                    onPressed: () => _correctAmount(r),
+                                    icon: const Icon(Icons.edit_outlined),
+                                  ),
+                                if (!cancelled && r.used == 0)
+                                  TextButton(onPressed: () => _cancel(r), child: const Text('إلغاء')),
+                                const Icon(Icons.expand_more),
+                              ]),
+                              children: [
+                                if (uses.isEmpty)
+                                  const ListTile(dense: true, title: Text('لم يُخصم منها شيء بعد')),
+                                for (final a in uses)
+                                  ListTile(
+                                    dense: true,
+                                    leading: Icon(a.active ? Icons.receipt_long_outlined : Icons.block,
+                                        size: 18, color: a.active ? null : AppColors.muted),
+                                    title: Text('${a.invoiceNumber} · ${formatDate(a.invoiceDate)} · ${formatMoney(a.allocation.amount)}'
+                                        '${a.active ? '' : ' (ملغى)'}'),
+                                    subtitle: a.allocation.note == null ? null : Text(a.allocation.note!),
+                                    trailing: a.active && owner
+                                        ? TextButton(onPressed: () => _cancelAllocation(a), child: const Text('تصحيح / إلغاء'))
+                                        : null,
+                                  ),
+                              ],
+                            );
+                          },
                         ),
-                        isThreeLine: true,
-                        trailing: cancelled || r.used > 0
-                            ? null
-                            : TextButton(onPressed: () => _cancel(r), child: const Text('إلغاء')),
-                      );
-                    },
-                  );
-                },
               ),
-            ),
-          ],
+            ]);
+          },
         ),
       ),
       actions: [
@@ -127,17 +222,9 @@ class _NewAdvanceDialogState extends ConsumerState<_NewAdvanceDialog> {
   final _note = TextEditingController();
   final _chequeNo = TextEditingController();
   final _bank = TextEditingController();
-  final _brands = <int>{};
   String _method = PaymentMethod.cash;
+  DateTime _date = DateTime.now();
   DateTime _chequeDue = DateTime.now();
-  late final Future<List<(Brand, List<PriceList>)>> _options = _loadBrands();
-
-  Future<List<(Brand, List<PriceList>)>> _loadBrands() async {
-    final db = ref.read(databaseProvider);
-    final svc = ref.read(supplierAdvanceServiceProvider);
-    final brands = await (db.select(db.brands)..orderBy([(b) => OrderingTerm.asc(b.name)])).get();
-    return [for (final b in brands) (b, await svc.listsInForce(b.id, DateTime.now()))];
-  }
 
   @override
   void dispose() {
@@ -149,19 +236,15 @@ class _NewAdvanceDialogState extends ConsumerState<_NewAdvanceDialog> {
 
   Future<void> _save() async {
     if (!_form.currentState!.validate()) return;
-    if (_brands.isEmpty) {
-      await showMessage(context, 'اختر الماركات التي تثبت الدفعة على قوائمها');
-      return;
-    }
     final ok = await runGuarded(context, () async {
       await ref.read(supplierAdvanceServiceProvider).create(
             supplierId: widget.supplier.id,
             amount: parseMoney(_amount.text)!,
-            brandIds: _brands.toList(),
             method: _method,
             cheque: _method == PaymentMethod.cheque
                 ? ChequeInput(number: _chequeNo.text, bank: _bank.text, dueDate: _chequeDue)
                 : null,
+            date: _date,
             note: _note.text,
             user: ref.read(currentUserProvider)!,
           );
@@ -170,12 +253,19 @@ class _NewAdvanceDialogState extends ConsumerState<_NewAdvanceDialog> {
     if (ok == true && mounted) Navigator.pop(context, true);
   }
 
+  Future<DateTime?> _pick(DateTime initial, {bool past = true}) => showDatePicker(
+        context: context,
+        initialDate: initial,
+        firstDate: DateTime(2000),
+        lastDate: past ? DateTime.now() : DateTime.now().add(const Duration(days: 3650)),
+      );
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text('دفعة مقدمة بسعر قائمة — ${widget.supplier.name}'),
+      title: Text('دفعة مقدمة جديدة — ${widget.supplier.name}'),
       content: SizedBox(
-        width: 560,
+        width: 480,
         child: Form(
           key: _form,
           child: SingleChildScrollView(
@@ -185,31 +275,15 @@ class _NewAdvanceDialogState extends ConsumerState<_NewAdvanceDialog> {
               children: [
                 MoneyField(controller: _amount, label: 'المبلغ', required: true),
                 const SizedBox(height: 12),
-                const Text('الماركات (تُثبت قوائمها السارية اليوم):', style: TextStyle(fontWeight: FontWeight.bold)),
-                FutureBuilder<List<(Brand, List<PriceList>)>>(
-                  future: _options,
-                  builder: (context, snap) {
-                    if (!snap.hasData) return const LinearProgressIndicator();
-                    return Column(
-                      children: [
-                        for (final (b, lists) in snap.data!)
-                          CheckboxListTile(
-                            dense: true,
-                            contentPadding: EdgeInsets.zero,
-                            value: _brands.contains(b.id),
-                            onChanged: lists.isEmpty
-                                ? null
-                                : (v) => setState(() => v == true ? _brands.add(b.id) : _brands.remove(b.id)),
-                            title: Text(b.name),
-                            subtitle: Text(lists.isEmpty
-                                ? 'لا توجد قائمة سارية اليوم'
-                                : lists.map((l) => 'PL-${l.id} ${l.listType} V${l.versionNo} — ${l.name}').join('، ')),
-                          ),
-                      ],
-                    );
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final d = await _pick(_date);
+                    if (d != null) setState(() => _date = d);
                   },
+                  icon: const Icon(Icons.event),
+                  label: Text('تاريخ الدفع ${formatDate(_date)}'),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
                   initialValue: _method,
                   decoration: const InputDecoration(labelText: 'طريقة الدفع'),
@@ -230,19 +304,17 @@ class _NewAdvanceDialogState extends ConsumerState<_NewAdvanceDialog> {
                   const SizedBox(height: 8),
                   OutlinedButton.icon(
                     onPressed: () async {
-                      final d = await showDatePicker(
-                        context: context,
-                        initialDate: _chequeDue,
-                        firstDate: DateTime.now().subtract(const Duration(days: 365)),
-                        lastDate: DateTime.now().add(const Duration(days: 3650)),
-                      );
+                      final d = await _pick(_chequeDue, past: false);
                       if (d != null) setState(() => _chequeDue = d);
                     },
                     icon: const Icon(Icons.event),
                     label: Text('استحقاق الشيك ${formatDate(_chequeDue)}'),
                   ),
                 ],
+                const SizedBox(height: 8),
                 TextField(controller: _note, decoration: const InputDecoration(labelText: Strings.notes)),
+                const SizedBox(height: 12),
+                const InfoNote('لا يُطلب اختيار قائمة أسعار: الدفعة تُخصم لاحقاً من أي فاتورة شراء لهذا المورد.'),
               ],
             ),
           ),
@@ -250,7 +322,7 @@ class _NewAdvanceDialogState extends ConsumerState<_NewAdvanceDialog> {
       ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text(Strings.cancel)),
-        FilledButton(onPressed: _save, child: const Text('دفع وتثبيت السعر')),
+        FilledButton(onPressed: _save, child: const Text('حفظ الدفعة')),
       ],
     );
   }

@@ -304,6 +304,136 @@ class SellingPolicyService {
     });
   }
 
+  /// Owner only: corrects a saved selling discount. Invoices already saved
+  /// keep the discount they were sold at (each line holds its own copy).
+  Future<void> correct(
+    int id, {
+    required int discountBp,
+    int? maxDiscountBp,
+    int? minMarginBp,
+    DateTime? validFrom,
+    DateTime? validTo,
+    String? note,
+    required String reason,
+    required User user,
+  }) {
+    return db.transaction(() async {
+      _admin(user);
+      if (reason.trim().isEmpty) throw ValidationException('اكتب سبب التعديل');
+      _checkPercent(discountBp);
+      _checkPercent(maxDiscountBp);
+      _checkPercent(minMarginBp);
+      if (maxDiscountBp != null && maxDiscountBp < discountBp) {
+        throw ValidationException('الحد الأقصى للخصم أقل من الخصم نفسه');
+      }
+      if (validFrom != null && validTo != null && validTo.isBefore(validFrom)) {
+        throw ValidationException('نهاية الخصم قبل بدايته');
+      }
+      final p = await (db.select(db.sellingPolicies)..where((t) => t.id.equals(id))).getSingleOrNull();
+      if (p == null) throw ValidationException('الخصم غير موجود');
+      await (db.update(db.sellingPolicies)..where((t) => t.id.equals(id))).write(SellingPoliciesCompanion(
+            discountBp: Value(discountBp),
+            maxDiscountBp: Value(maxDiscountBp),
+            minMarginBp: Value(minMarginBp),
+            validFrom: Value(validFrom),
+            validTo: Value(validTo),
+            note: Value((note ?? '').trim().isEmpty ? null : note!.trim()),
+            updatedAt: Value(DateTime.now()),
+          ));
+      String show(int d, int? max, int? margin) =>
+          '${d / 100}%${max == null ? '' : ' (حد أقصى ${max / 100}%)'}${margin == null ? '' : ' (هامش أدنى ${margin / 100}%)'}';
+      await AuditService(db).log(
+        action: AuditAction.correct,
+        entity: 'selling_policy',
+        entityId: id,
+        userId: user.id,
+        oldValue: show(p.discountBp, p.maxDiscountBp, p.minMarginBp),
+        newValue: show(discountBp, maxDiscountBp, minMarginBp),
+        reason: reason.trim(),
+      );
+    });
+  }
+
+  /// The discount of one customer category on one brand (a rule on every
+  /// product of that brand), or null when the category's usual discount
+  /// applies to it.
+  Future<Map<(int, int), SellingPolicy>> brandGrid() async {
+    final rules = await (db.select(db.sellingPolicies)
+          ..where((r) =>
+              r.isActive.equals(true) &
+              r.brandId.isNotNull() &
+              r.scope.equals(PolicyScope.all) &
+              r.validFrom.isNull() &
+              r.validTo.isNull())
+          ..orderBy([(r) => OrderingTerm.asc(r.id)]))
+        .get();
+    return {for (final r in rules) (r.customerCategoryId, r.brandId!): r};
+  }
+
+  /// Sets the discount of a customer category on a brand (owner). Null
+  /// [discountBp] removes the brand's own discount: the category's usual one
+  /// applies again. Saved sales keep the discount they were sold at.
+  Future<void> setBrandDiscount({
+    required int customerCategoryId,
+    required int brandId,
+    required int? discountBp,
+    String reason = '',
+    required User user,
+  }) {
+    return db.transaction(() async {
+      _admin(user);
+      _checkPercent(discountBp);
+      final existing = (await brandGrid())[(customerCategoryId, brandId)];
+      final category =
+          await (db.select(db.customerCategories)..where((c) => c.id.equals(customerCategoryId))).getSingle();
+      final brand = await (db.select(db.brands)..where((b) => b.id.equals(brandId))).getSingle();
+      final label = '${category.name} · ${brand.name}';
+      if (existing == null) {
+        if (discountBp == null) return;
+        final id = await add(
+          SellingPolicyInput(customerCategoryId: customerCategoryId, brandId: brandId, discountBp: discountBp),
+          user: user,
+        );
+        await AuditService(db).log(
+          action: AuditAction.update,
+          entity: 'selling_policy',
+          entityId: id,
+          userId: user.id,
+          details: label,
+          oldValue: 'خصم الفئة ${category.discountBp / 100}%',
+          newValue: '${discountBp / 100}%',
+          reason: reason.trim().isEmpty ? null : reason.trim(),
+        );
+        return;
+      }
+      if (discountBp == null) {
+        await (db.update(db.sellingPolicies)..where((t) => t.id.equals(existing.id)))
+            .write(SellingPoliciesCompanion(isActive: const Value(false), updatedAt: Value(DateTime.now())));
+        await AuditService(db).log(
+          action: AuditAction.update,
+          entity: 'selling_policy',
+          entityId: existing.id,
+          userId: user.id,
+          details: label,
+          oldValue: '${existing.discountBp / 100}%',
+          newValue: 'خصم الفئة ${category.discountBp / 100}%',
+          reason: reason.trim().isEmpty ? null : reason.trim(),
+        );
+        return;
+      }
+      if (existing.discountBp == discountBp) return;
+      await correct(
+        existing.id,
+        discountBp: discountBp,
+        maxDiscountBp: existing.maxDiscountBp != null && existing.maxDiscountBp! < discountBp ? discountBp : existing.maxDiscountBp,
+        minMarginBp: existing.minMarginBp,
+        note: existing.note,
+        reason: reason.trim().isEmpty ? 'تعديل خصم الماركة $label' : reason.trim(),
+        user: user,
+      );
+    });
+  }
+
   Future<List<SellingPolicyRow>> rows() async {
     final groups = {for (final c in await categories()) c.id: c.name};
     final brands = {for (final b in await db.select(db.brands).get()) b.id: b.name};

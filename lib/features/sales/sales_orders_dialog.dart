@@ -14,6 +14,7 @@ import '../../core/services/product_service.dart';
 import '../../core/services/sales_service.dart';
 import '../../core/services/selling_policy_service.dart';
 import '../../core/services/sales_order_service.dart';
+import '../../core/theme.dart';
 import '../../core/widgets/feedback.dart';
 import 'order_lines_editor.dart';
 import 'sale_preview_dialog.dart';
@@ -510,7 +511,7 @@ class _SoDetailDialogState extends ConsumerState<_SoDetailDialog> {
                     if (d.order.revision > 0) Chip(label: Text('المراجعة رقم ${d.order.revision}')),
                     if (d.order.validUntil != null)
                       Chip(
-                        backgroundColor: SalesOrderService.isExpired(d.order) ? Colors.red.shade50 : null,
+                        backgroundColor: SalesOrderService.isExpired(d.order) ? AppColors.badBg : null,
                         label: Text(SalesOrderService.isExpired(d.order)
                             ? 'انتهت صلاحيته ${formatDate(d.order.validUntil!)}'
                             : 'صالح حتى ${formatDate(d.order.validUntil!)}'),

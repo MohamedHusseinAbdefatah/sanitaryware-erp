@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
+import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
 
 import '../db/database.dart';
@@ -44,7 +45,13 @@ Future<void> printDocument(
   await runGuarded(context, () async {
     final company = await loadPrintCompany(ref);
     final fonts = await PdfFonts.load();
-    await Printing.layoutPdf(name: name, onLayout: (_) => build(company, fonts));
+    // The printer's paper and printable area go into the layout, so the foot
+    // of the page (signatures, date) is never in the part it cannot print.
+    await Printing.layoutPdf(
+      name: name,
+      format: PdfPageFormat.a4,
+      onLayout: (format) => build(company.forPrinter(format), fonts),
+    );
   });
 }
 

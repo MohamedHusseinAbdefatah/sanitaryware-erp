@@ -39,6 +39,7 @@ class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {
   late final _code = TextEditingController(text: _p?.code);
   late final _name = TextEditingController(text: _p?.nameAr);
   late final _manufacturer = TextEditingController(text: _p?.manufacturerCode);
+  late final _model = TextEditingController(text: _p?.modelNo);
   late final _description = TextEditingController(text: _p?.description);
   late final _series = TextEditingController(text: _p?.series);
   late final _dimensions = TextEditingController(text: _p?.dimensions);
@@ -92,7 +93,7 @@ class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {
   @override
   void dispose() {
     for (final c in [
-      _code, _name, _manufacturer, _description, _series, _dimensions, _variant, _finish, _barcode, _specs,
+      _code, _name, _manufacturer, _model, _description, _series, _dimensions, _variant, _finish, _barcode, _specs,
       _vatRate, _openingCost, _minStock, _opening, _notes,
     ]) {
       c.dispose();
@@ -109,6 +110,7 @@ class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {
       code: _code.text,
       nameAr: _name.text,
       manufacturerCode: _manufacturer.text,
+      modelNo: _model.text,
       description: _description.text,
       categoryId: _categoryId,
       subcategoryId: _subcategoryId,
@@ -251,6 +253,13 @@ class _ProductFormDialogState extends ConsumerState<ProductFormDialog> {
                     decoration: const InputDecoration(
                       labelText: 'كود الشركة (Manufacturer Code)',
                       helperText: 'يُحفظ كنص كما هو: الأصفار والحروف والشرطات',
+                    ),
+                  ),
+                  TextFormField(
+                    controller: _model,
+                    decoration: const InputDecoration(
+                      labelText: 'رقم الموديل (Model No.)',
+                      helperText: 'حقل مستقل عن الكود والاسم، ويُبحث به',
                     ),
                   ),
                 ]),

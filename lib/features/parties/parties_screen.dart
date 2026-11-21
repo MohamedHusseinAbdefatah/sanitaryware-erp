@@ -109,7 +109,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     final activity = ref.watch(_customerActivityProvider).valueOrNull ?? const <int, PartyActivity>{};
     final categories = ref.watch(customerCategoriesProvider).valueOrNull ?? const <CustomerCategory>[];
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      PageHeader(title: Strings.customers, actions: [
+      PageHeader(title: Strings.customers, icon: Icons.people_outline, subtitle: 'العملاء وأرصدتهم وحدود ائتمانهم', actions: [
         SearchBox(hint: 'بحث بالاسم أو التليفون أو العنوان', onChanged: (v) => setState(() => _search = v)),
         OutlinedButton.icon(
           onPressed: () => context.go('/customers/leads'),
@@ -229,7 +229,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                         rowColor: (c) => over(c) ? AppColors.badBg.withValues(alpha: .5) : null,
                         trailing: menu,
                         columns: [
-                          DataListColumn(Strings.name, flex: 4, (c) => TitleCell(
+                          DataListColumn(Strings.name, sortValue: (c) => c.name, flex: 4, (c) => TitleCell(
                                 c.isActive ? c.name : '${c.name} (${Strings.inactive})',
                                 subtitle:
                                     [c.phone, c.address].whereType<String>().where((s) => s.isNotEmpty).join('  ·  '),
@@ -237,14 +237,14 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                 muted: !c.isActive,
                               )),
                           DataListColumn('الفئة', flex: 2, (c) => StatusPill(categoryNameOf(c, categories))),
-                          DataListColumn('آخر شراء', numeric: true, (c) => Text(sinceText(activity[c.id]?.last),
+                          DataListColumn('آخر شراء', sortValue: (c) => activity[c.id]?.last, numeric: true, (c) => Text(sinceText(activity[c.id]?.last),
                               style: const TextStyle(fontSize: 13, color: AppColors.muted))),
-                          DataListColumn('مبيعات العام', numeric: true,
+                          DataListColumn('مبيعات العام', sortValue: (c) => activity[c.id]?.thisYear ?? 0, numeric: true,
                               (c) => Text(formatMoney(activity[c.id]?.thisYear ?? 0))),
                           if (isAdmin)
                             DataListColumn(Strings.creditLimit, flex: 2,
                                 (c) => UsageBar(used: bal(c), limit: c.creditLimit)),
-                          DataListColumn(Strings.balance, numeric: true, (c) => balanceText(balances[c.id])),
+                          DataListColumn(Strings.balance, sortValue: (c) => balances[c.id] ?? 0, numeric: true, (c) => balanceText(balances[c.id])),
                         ],
                       ),
               ),
@@ -279,7 +279,7 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
     final balances = ref.watch(_supplierBalancesProvider).valueOrNull ?? const <int, int>{};
     final activity = ref.watch(_supplierActivityProvider).valueOrNull ?? const <int, PartyActivity>{};
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      PageHeader(title: Strings.suppliers, actions: [
+      PageHeader(title: Strings.suppliers, icon: Icons.local_shipping_outlined, subtitle: 'الموردون وأرصدتهم والدفعات المقدمة', actions: [
         SearchBox(hint: 'بحث بالاسم أو التليفون أو العنوان', onChanged: (v) => setState(() => _search = v)),
         ViewToggle(cards: _cards, onChanged: (v) => setState(() => _cards = v)),
         FilledButton.icon(
@@ -319,7 +319,7 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
                       () => showPaymentDialog(context, partyType: PartyType.supplier, partyId: s.id)),
                   (Strings.statement, Icons.receipt_long_outlined,
                       () => showStatement(context, partyType: PartyType.supplier, partyId: s.id)),
-                  ('دفعات مقدمة بسعر قائمة', Icons.lock_clock_outlined, () => showSupplierAdvances(context, s)),
+                  ('الدفعات المقدمة', Icons.account_balance_wallet_outlined, () => showSupplierAdvances(context, s)),
                   (Strings.edit, Icons.edit_outlined, () => showSupplierForm(context, existing: s)),
                 ]);
             return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -372,19 +372,19 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
                         onTap: open,
                         trailing: menu,
                         columns: [
-                          DataListColumn(Strings.name, flex: 4, (s) => TitleCell(
+                          DataListColumn(Strings.name, sortValue: (s) => s.name, flex: 4, (s) => TitleCell(
                                 s.isActive ? s.name : '${s.name} (${Strings.inactive})',
                                 subtitle:
                                     [s.phone, s.address].whereType<String>().where((x) => x.isNotEmpty).join('  ·  '),
                                 leading: NameAvatar(s.name),
                                 muted: !s.isActive,
                               )),
-                          DataListColumn('عدد الفواتير', numeric: true, (s) => Text('${activity[s.id]?.count ?? 0}')),
-                          DataListColumn('آخر شراء', numeric: true, (s) => Text(sinceText(activity[s.id]?.last),
+                          DataListColumn('عدد الفواتير', sortValue: (s) => activity[s.id]?.count ?? 0, numeric: true, (s) => Text('${activity[s.id]?.count ?? 0}')),
+                          DataListColumn('آخر شراء', sortValue: (s) => activity[s.id]?.last, numeric: true, (s) => Text(sinceText(activity[s.id]?.last),
                               style: const TextStyle(fontSize: 13, color: AppColors.muted))),
-                          DataListColumn('مشتريات العام', numeric: true,
+                          DataListColumn('مشتريات العام', sortValue: (s) => activity[s.id]?.thisYear ?? 0, numeric: true,
                               (s) => Text(formatMoney(activity[s.id]?.thisYear ?? 0))),
-                          DataListColumn('المستحق له', numeric: true, (s) => balanceText(balances[s.id])),
+                          DataListColumn('المستحق له', sortValue: (s) => balances[s.id] ?? 0, numeric: true, (s) => balanceText(balances[s.id])),
                         ],
                       ),
               ),

@@ -9,6 +9,7 @@ import '../../core/l10n/strings.dart';
 import '../../core/providers.dart';
 import '../../core/services/import_service.dart';
 import '../../core/widgets/feedback.dart';
+import '../../core/theme.dart';
 import '../../core/widgets/report_view.dart';
 
 /// Bring the client's existing lists in from Excel: template, preview with
@@ -158,7 +159,7 @@ class _PreviewDialogState extends ConsumerState<_PreviewDialog> {
                             for (final k in keys) DataCell(Text(r.values[k] ?? '')),
                             DataCell(
                               r.ok
-                                  ? Icon(Icons.check_circle, color: Colors.green.shade700, size: 18)
+                                  ? Icon(Icons.check_circle, color: AppColors.good, size: 18)
                                   : ConstrainedBox(
                                       constraints: const BoxConstraints(maxWidth: 360),
                                       child: Text(r.errors.join('، '), style: TextStyle(color: scheme.error)),

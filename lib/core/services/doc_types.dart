@@ -47,8 +47,11 @@ abstract final class RefType {
   static const purchaseOrder = 'purchase_order';
   static const salesOrder = 'sales_order';
 
-  /// Money paid to a supplier ahead, locked to that day's price lists.
+  /// Money paid to a supplier ahead (by supplier since 2.4).
   static const supplierAdvance = 'supplier_advance';
+
+  /// Stock entered by hand by the owner, without a purchase invoice.
+  static const stockEntry = 'stock_entry';
 }
 
 /// Party id on a payment for a cash sale with no named customer. It never

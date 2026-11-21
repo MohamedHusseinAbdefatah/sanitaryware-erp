@@ -154,7 +154,7 @@ class PurchaseOrderService {
             PurchaseOrderLinesCompanion(
                 priceListId: Value(q.quote.priceListId),
                 listPrice: Value(q.listPrice),
-                buyingPolicyId: Value(q.policy!.id),
+                buyingPolicyId: Value(q.policy?.id),
                 discountBp: Value(q.baseBp),
                 extraDiscountBp: Value(q.extraBp),
                 unitCost: Value(q.netCost!)));

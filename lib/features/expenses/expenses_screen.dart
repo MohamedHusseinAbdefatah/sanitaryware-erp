@@ -71,6 +71,8 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
       children: [
         PageHeader(
           title: Strings.expenses,
+          icon: Icons.money_off_outlined,
+          subtitle: 'مصروفات المحل وبنودها والمصروفات الدورية',
           actions: [
             Badge(
               isLabelVisible: ref.watch(duePlansProvider) > 0,

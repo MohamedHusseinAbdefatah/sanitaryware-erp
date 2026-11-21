@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../money.dart';
+import '../theme.dart';
 
 /// A small label above a bold amount, for totals bars.
 class AmountLabel extends StatelessWidget {
@@ -13,15 +14,29 @@ class AmountLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    final figure = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(label, style: Theme.of(context).textTheme.labelMedium),
+        Text(label,
+            style: TextStyle(
+                fontSize: 12, fontWeight: FontWeight.w600, color: big ? AppColors.brandDark : AppColors.muted)),
         Text(
           formatMoney(value),
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: big ? 22 : 16, color: color),
+          style: TextStyle(
+              fontWeight: FontWeight.w800, fontSize: big ? 22 : 16, color: color ?? (big ? AppColors.brand : AppColors.ink)),
         ),
       ],
+    );
+    if (!big) return figure;
+    // The amount that matters most stands out in a tinted box.
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppColors.brandSoft,
+        borderRadius: AppRadius.mdAll,
+        border: Border.all(color: AppColors.brand.withValues(alpha: .25)),
+      ),
+      child: figure,
     );
   }
 }

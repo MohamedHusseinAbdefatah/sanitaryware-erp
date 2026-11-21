@@ -1,7 +1,8 @@
 @echo off
 title Sanitaryware ERP - check
 cd /d "%~dp0"
-set "FLUTTER_BIN=E:\Apps , Software , 2026\applications\programming\flutter\bin"
+set "FLUTTER_BIN=C:\src\flutter\bin"
+if not exist "%FLUTTER_BIN%\flutter.bat" set "FLUTTER_BIN=E:\Apps , Software , 2026\applications\programming\flutter\bin"
 set "PATH=%FLUTTER_BIN%;%PATH%"
 if exist check_log.txt del check_log.txt
 
@@ -21,4 +22,3 @@ echo ---- FINISHED ---- >> check_log.txt
 type check_log.txt
 echo.
 echo Saved to check_log.txt - tell Claude it is done.
-pause

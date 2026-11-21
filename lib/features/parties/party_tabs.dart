@@ -82,7 +82,7 @@ class PaymentsTab extends StatelessWidget {
   static String _ref(Payment p) => switch (p.invoiceRefType) {
         RefType.salesInvoice || RefType.purchaseInvoice => 'فاتورة',
         RefType.returnDoc => 'مرتجع',
-        RefType.supplierAdvance => 'دفعة مقدمة بسعر قائمة',
+        RefType.supplierAdvance => 'دفعة مقدمة لمورد',
         RefType.purchaseOrder => 'مقدم أمر شراء',
         RefType.salesOrder => 'مقدم أمر بيع',
         _ => 'تحت الحساب',

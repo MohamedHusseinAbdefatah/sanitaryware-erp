@@ -34,6 +34,7 @@ const _fields = {
   ImportKind.products: [
     _Field('code', ['الكود', 'كود', 'كود الصنف', 'code'], required: true),
     _Field('manufacturerCode', ['كود الشركة', 'manufacturer code']),
+    _Field('modelNo', ['رقم الموديل', 'الموديل', 'موديل', 'model no', 'model number', 'model']),
     _Field('name', ['اسم الصنف', 'الاسم', 'الصنف', 'name'], required: true),
     _Field('category', ['التصنيف', 'الفئة', 'category']),
     _Field('brand', ['الماركة', 'brand']),
@@ -148,10 +149,10 @@ class ImportService {
     if (headerIndex >= 0) {
       final header = allRows[headerIndex];
       for (var i = 0; i < header.length; i++) {
-        final h = foldForSearch(_text(header[i]?.value));
+        final h = foldHeader(_text(header[i]?.value));
         if (h.isEmpty) continue;
         for (final f in fields) {
-          if (!columnOf.containsKey(f.key) && f.headers.any((alias) => foldForSearch(alias) == h)) {
+          if (!columnOf.containsKey(f.key) && f.headers.any((alias) => foldHeader(alias) == h)) {
             columnOf[f.key] = i;
             break;
           }
@@ -211,6 +212,7 @@ class ImportService {
               ProductInput(
                 code: p.code,
                 manufacturerCode: p.manufacturerCode,
+                modelNo: p.modelNo,
                 variant: p.variant,
                 nameAr: p.nameAr,
                 categoryId: categoryId,
@@ -278,6 +280,7 @@ class ImportService {
         code: code,
         manufacturerCode: (v['manufacturerCode'] ?? '').trim().isEmpty ? code : v['manufacturerCode']!.trim(),
         variant: (v['variant'] ?? '').trim().isEmpty ? null : v['variant']!.trim(),
+        modelNo: (v['modelNo'] ?? '').trim().isEmpty ? null : v['modelNo']!.trim(),
         nameAr: name,
         unitId: unit?.id,
         minStock: qty('minStock', 'حد الطلب'),

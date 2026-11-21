@@ -2,6 +2,130 @@
 
 Versions follow `version:` in `pubspec.yaml` and `lib/core/version.dart`.
 
+## 2.5.0
+
+Look, navigation and ease of use. No database change, no change to any
+calculation, permission or workflow; every page, button and field is still
+there.
+
+Design system
+- One set of colours, spacing, corner, shadow and type tokens
+  (`lib/core/theme.dart`) used by every screen; component themes for
+  buttons, fields, menus, dialogs, tabs, chips, checkboxes, date picker,
+  tooltips and toasts. A visible focus ring for keyboard users.
+- Status labels carry a dot or icon, so a state is never told by colour
+  alone.
+
+Navigation
+- Sidebar: groups can be folded; the open page is lit with an edge bar; the
+  whole sidebar folds to icons (button or Ctrl+B, remembered); medium
+  windows show icons only and narrow windows a menu button.
+- Top bar: back button and breadcrumb, quick search, a "إنشاء" menu for
+  new documents (by role), keyboard help (F1), new sale (F9).
+- Quick search (Ctrl+K): pages, products (code, model, barcode), customers,
+  suppliers, sale and purchase invoice numbers (also the supplier's own
+  number) and projects. Shows only what the user's role may open.
+
+Lists and feedback
+- Tables: click a heading to sort (again to reverse), row count under each
+  table, hover highlight, clearer empty states.
+- Page headers with an icon and a line saying what the page is for.
+- Toasts with an icon and colour for success, information, warning and
+  error. Deleting a project task, a BOQ line, a price-list category or a
+  product photo now asks first.
+- Dashboard: "يحتاج انتباهك" panel, clearer figure cards, loading and error
+  states with a retry.
+- Price lists: each version shows its state as an icon label and a coloured
+  edge (سارية، تبدأ لاحقاً، تاريخية، موقوفة، مسحوبة، قيد المراجعة).
+- Invoice entry: the total stands out; the amount remaining is coloured.
+
+See docs/ui_upgrade.md for the audit, what changed and what is suggested
+next.
+
+## 2.4.0
+
+Database schema 20 (new columns and tables only; nothing removed). On the
+first start the database is backed up, then upgraded.
+
+Price lists
+- Lists from the past: a 2024 list can be uploaded today. It takes its own
+  place in time and ends the day before the next list of the same type; the
+  newer lists and their prices are never touched. Dates back to 2000. Each
+  list shows when it was in force and when it was entered in the program.
+- Switch a list off and on (owner): a switched-off list prices no new
+  invoice or order and stays readable for every document that used it.
+  "Withdraw" is still there for a list entered by mistake.
+- Filters by brand, list type, category and year; states "سارية",
+  "تاريخية", "موقوفة", "مسحوبة".
+- Model number: its own field on products and list rows, read from columns
+  such as "Model No.", "الموديل", "رقم الموديل" (any case or punctuation, also
+  under a title row), shown and searchable everywhere. A list fills it on a
+  known product that has none and never overwrites one. With no code column
+  the model number stands as the code, as before. CSV files are read too.
+- Categories of lists (فاخر، متوسط، اقتصادي...), made by the owner, each with
+  its buying discount. With no discount recorded for the supplier, the
+  list's category discount prices the purchase; the invoice line keeps the
+  category and discount it used, so changing a category's discount never
+  changes a saved invoice.
+
+Selling
+- Discount by brand and customer type: a grid in "خصومات البيع" (for example
+  Duravit 10%, Ideal Standard 5% for retail). A brand without its own
+  discount takes the customer type's usual one. Saved sales keep their
+  discount.
+
+Suppliers and purchases
+- Supplier advances belong to the supplier, not to a price list. Any
+  purchase invoice of that supplier (any brand or list) can take part of the
+  advance balance, when it is entered or later from the invoice. Each use is
+  an allocation row linking one advance to one invoice; more than is left,
+  or more than the invoice owes, is refused. Advances locked to lists before
+  2.4 become supplier balance with their amounts unchanged.
+- Purchase invoice discount: none, an amount or a percent; the percent is
+  kept with the invoice and shown on it.
+
+Owner corrections (each in the audit log with the value before, after and
+the reason)
+- A supplier or customer payment: amount, date, notes. Balances, the invoice
+  it pays and the books follow.
+- A saved purchase invoice: the corrected one replaces it, its payments and
+  advance amount move over, and the old one stays on record as cancelled.
+- Purchase policies and selling discounts; a use of a supplier advance.
+
+Stock
+- Stock entered by hand (owner), for stock bought before the program: the
+  original purchase date, a historical price list, list price, discount (%
+  or amount per unit) and the resulting cost. No supplier invoice, no
+  payment; the value goes to the opening balance in the books. Duplicates
+  are caught; an entry can be cancelled while its stock is untouched.
+
+Projects
+- A plan for each project: tasks, milestones and deliveries with who is
+  responsible, start and due days, state (لم يبدأ، جاري التنفيذ، مكتمل، متأخر)
+  and progress. Moving a task keeps the day first planned, so planned and
+  real days are compared. Completion, late and delayed milestones at a glance,
+  and a timeline.
+- Weekly and monthly calendar of all projects; drag a task to another day.
+- Reminders: the dashboard shows late tasks and those due soon.
+
+Sign-in
+- "Remember me" on this computer: a random token in the Windows user's data
+  folder, only its hash in the database; 30 days; replaced at every use.
+  Logging out, a new password or a stopped user ends it. The owner can end a
+  user's remembered sign-ins or turn the option off for everyone.
+
+Printing
+- Signature block: for each party a line to sign on and a line for the date.
+- Dates, numbers and codes print as separate runs beside their Arabic labels
+  (they could come out reordered), and the page keeps the printer's own
+  margins so nothing at the foot of the page is cut off.
+
+Screens
+- Scrollbars always shown, wider, draggable, on the right edge.
+- A trail at the top (section › page) with a back button (also Alt + →);
+  clearer back buttons on record and document pages.
+- The audit log shows the value before and after and the reason.
+
 ## 2.3.1
 
 No database change.

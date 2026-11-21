@@ -76,7 +76,7 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen> {
           ),
         ]),
       ),
-      PageHeader(title: 'العملاء المحتملون (الفرص)', actions: [
+      PageHeader(title: 'العملاء المحتملون (الفرص)', icon: Icons.person_search_outlined, subtitle: 'الزوار والاستفسارات حتى يصبحوا عملاء', actions: [
         SearchBox(hint: 'بحث بالاسم أو التليفون', onChanged: (v) => setState(() => _search = v)),
         FilledButton.icon(onPressed: () => _edit(), icon: const Icon(Icons.add), label: const Text('فرصة جديدة')),
       ]),

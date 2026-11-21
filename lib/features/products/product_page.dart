@@ -69,6 +69,7 @@ class ProductPage extends ConsumerWidget {
           backPath: '/products',
           title: pr.nameAr,
           subtitle: 'رقم الصنف ${pr.code}  ·  كود الشركة ${pr.manufacturerCode}'
+              '${(pr.modelNo ?? '').isEmpty ? '' : '  ·  موديل ${pr.modelNo}'}'
               '${pr.variant == null ? '' : '  ·  ${pr.variant}'}',
           leading: hasPhoto
               ? SizedBox(width: 72, height: 72, child: ProductThumb(productId: pr.id, size: 72))
@@ -140,6 +141,7 @@ class ProductPage extends ConsumerWidget {
             RecordTab('البيانات', RecordDetails(rows: [
               ('رقم الصنف', pr.code),
               ('كود الشركة', pr.manufacturerCode),
+              ('رقم الموديل', pr.modelNo ?? ''),
               (Strings.productName, pr.nameAr),
               ('الوصف', pr.description ?? ''),
               (Strings.brand, r.brandName ?? ''),

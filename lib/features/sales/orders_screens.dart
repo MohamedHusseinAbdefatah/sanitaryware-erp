@@ -55,6 +55,8 @@ class _SalesOrdersScreenState extends ConsumerState<SalesOrdersScreen> {
       children: [
         PageHeader(
           title: 'أوامر البيع وعروض الأسعار',
+          icon: Icons.request_quote_outlined,
+          subtitle: 'عروض الأسعار والأوامر قبل أن تصبح فواتير',
           actions: [
             TextButton.icon(
               onPressed: () => context.go('/sales'),
@@ -166,6 +168,8 @@ class _PurchaseOrdersScreenState extends ConsumerState<PurchaseOrdersScreen> {
       children: [
         PageHeader(
           title: 'أوامر الشراء',
+          icon: Icons.assignment_outlined,
+          subtitle: 'ما طُلب من الموردين وما استُلم منه',
           actions: [
             TextButton.icon(
               onPressed: () => context.go('/purchases'),

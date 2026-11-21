@@ -16,6 +16,7 @@ import '../../core/theme.dart';
 import '../../core/widgets/data_list.dart';
 import '../../core/widgets/feedback.dart';
 import '../../core/widgets/list_kit.dart';
+import '../../core/widgets/number_fields.dart';
 import 'payment_dialog.dart';
 
 String paymentMethodLabel(String method) => switch (method) {
@@ -52,6 +53,8 @@ class PaymentsScreen extends ConsumerWidget {
         children: [
           PageHeader(
             title: Strings.payments,
+            icon: Icons.payments_outlined,
+            subtitle: 'المقبوضات والمدفوعات والشيكات',
             actions: [
               FilledButton.icon(
                 onPressed: () => showPaymentDialog(context, partyType: PartyType.customer),
@@ -105,9 +108,15 @@ class _PaymentList extends ConsumerWidget {
     );
   }
 
+  /// Owner: corrects a wrong amount, date or note on a saved payment.
+  Future<void> _correct(BuildContext context, WidgetRef ref, PaymentRow row) async {
+    await showDialog<void>(context: context, builder: (_) => CorrectPaymentDialog(row: row));
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isAdmin = ref.watch(currentUserProvider)?.can(Perm.payOut) ?? false;
+    final owner = ref.watch(currentUserProvider)?.isAdmin ?? false;
     final rows = ref.watch(_paymentsProvider(direction));
     return rows.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -144,14 +153,14 @@ class _PaymentList extends ConsumerWidget {
                 SummaryItem('شيكات (الشهر)', formatMoney(byMethod(PaymentMethod.cheque)), icon: Icons.receipt_outlined),
               ],
             ),
-            Expanded(child: _table(context, ref, list, isAdmin)),
+            Expanded(child: _table(context, ref, list, isAdmin, owner)),
           ],
         );
       },
     );
   }
 
-  Widget _table(BuildContext context, WidgetRef ref, List<PaymentRow> list, bool isAdmin) {
+  Widget _table(BuildContext context, WidgetRef ref, List<PaymentRow> list, bool isAdmin, bool owner) {
     return DataList<PaymentRow>(
       rows: list,
       emptyText: Strings.noPayments,
@@ -160,6 +169,11 @@ class _PaymentList extends ConsumerWidget {
         onSelected: (f) => f(),
         itemBuilder: (_) => [
           PopupMenuItem(value: () => printReceipt(context, ref, r), child: const Text(Strings.printReceipt)),
+          if (owner && r.payment.status == DocStatus.active)
+            PopupMenuItem(
+              value: () => _correct(context, ref, r),
+              child: const ListTile(dense: true, leading: Icon(Icons.edit_outlined), title: Text('تعديل الدفعة (المالك)')),
+            ),
           if (isAdmin && r.payment.status == DocStatus.active)
             PopupMenuItem(value: () => _cancel(context, ref, r), child: const Text(Strings.cancelPayment)),
         ],
@@ -169,7 +183,7 @@ class _PaymentList extends ConsumerWidget {
           Strings.number,
           (r) => Text(r.payment.number, style: const TextStyle(fontWeight: FontWeight.w700)),
         ),
-        DataListColumn(Strings.date, flex: 2, (r) => Text(formatDateTime(r.payment.date))),
+        DataListColumn(Strings.date, sortValue: (r) => r.payment.date, flex: 2, (r) => Text(formatDateTime(r.payment.date))),
         DataListColumn(
           Strings.party,
           flex: 3,
@@ -187,6 +201,7 @@ class _PaymentList extends ConsumerWidget {
         ),
         DataListColumn(
           Strings.amount,
+          sortValue: (r) => r.payment.amount,
           numeric: true,
           (r) => Text(formatMoney(r.payment.amount), style: const TextStyle(fontWeight: FontWeight.w700)),
         ),
@@ -215,7 +230,7 @@ class _PaymentList extends ConsumerWidget {
     RefType.salesInvoice => Strings.salesInvoice,
     RefType.purchaseInvoice => Strings.purchaseInvoice,
     RefType.returnDoc => Strings.returnRefund,
-    RefType.supplierAdvance => 'دفعة مقدمة بسعر قائمة',
+    RefType.supplierAdvance => 'دفعة مقدمة لمورد',
     RefType.purchaseOrder => 'دفعة مقدمة على أمر شراء',
     RefType.salesOrder => 'دفعة مقدمة على أمر بيع',
     _ => Strings.onAccount,
@@ -328,7 +343,7 @@ class _ChequeListState extends ConsumerState<_ChequeList> {
                                 : const SizedBox()
                           : null,
                       columns: [
-                        DataListColumn(Strings.dueDate, (r) => Text(formatDate(r.cheque.dueDate))),
+                        DataListColumn(Strings.dueDate, sortValue: (r) => r.cheque.dueDate, (r) => Text(formatDate(r.cheque.dueDate))),
                         DataListColumn(Strings.chequeNo, (r) => Text(r.cheque.chequeNo)),
                         DataListColumn(Strings.bank, (r) => Text(r.cheque.bank ?? '')),
                         DataListColumn(Strings.party, flex: 2, (r) => Text(r.partyName)),
@@ -365,3 +380,105 @@ final _chequesProvider = StreamProvider.autoDispose.family<List<ChequeRow>, bool
   (ref, pendingOnly) =>
       ref.watch(paymentServiceProvider).watchCheques(status: pendingOnly ? ChequeStatus.pending : null),
 );
+
+/// Owner: corrects a saved payment. The number stays; balances, the invoice
+/// it pays and the books follow. The change and its reason are logged.
+class CorrectPaymentDialog extends ConsumerStatefulWidget {
+  const CorrectPaymentDialog({super.key, required this.row});
+
+  final PaymentRow row;
+
+  @override
+  ConsumerState<CorrectPaymentDialog> createState() => _CorrectPaymentDialogState();
+}
+
+class _CorrectPaymentDialogState extends ConsumerState<CorrectPaymentDialog> {
+  late final Payment _p = widget.row.payment;
+  late final _amount = TextEditingController(text: formatMoney(_p.amount).replaceAll(',', ''));
+  late final _notes = TextEditingController(text: _p.notes ?? '');
+  final _reason = TextEditingController();
+  final _form = GlobalKey<FormState>();
+  late DateTime _date = _p.date;
+
+  @override
+  void dispose() {
+    for (final c in [_amount, _notes, _reason]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (!_form.currentState!.validate()) return;
+    final ok = await runGuarded(context, () async {
+      await ref.read(paymentServiceProvider).correct(
+            _p.id,
+            amount: parseMoney(_amount.text),
+            date: _date,
+            notes: _notes.text,
+            reason: _reason.text,
+            user: ref.read(currentUserProvider)!,
+          );
+      return true;
+    });
+    if (ok == true && mounted) {
+      showToast(context, 'تم تعديل الدفعة ${_p.number}');
+      Navigator.pop(context);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final newAmount = parseMoney(_amount.text);
+    return AlertDialog(
+      title: Text('تعديل الدفعة ${_p.number} — ${widget.row.partyName}'),
+      content: SizedBox(
+        width: 460,
+        child: Form(
+          key: _form,
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text('المسجل: ${formatMoney(_p.amount)} بتاريخ ${formatDate(_p.date)}',
+                style: const TextStyle(color: AppColors.muted)),
+            const SizedBox(height: 12),
+            MoneyField(controller: _amount, label: 'المبلغ الصحيح', required: true, onChanged: (_) => setState(() {})),
+            if (newAmount != null && newAmount != _p.amount)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  'الفرق ${formatMoney(newAmount - _p.amount)}: يتعدل رصيد '
+                  '${_p.partyType == PartyType.supplier ? 'المورد' : 'العميل'} والفاتورة المرتبطة والقيود تلقائياً',
+                  style: const TextStyle(color: AppColors.info),
+                ),
+              ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: () async {
+                final d = await showDatePicker(
+                  context: context,
+                  initialDate: _date,
+                  firstDate: DateTime(2000),
+                  lastDate: DateTime.now().add(const Duration(days: 365)),
+                );
+                if (d != null) setState(() => _date = DateTime(d.year, d.month, d.day, _date.hour, _date.minute));
+              },
+              icon: const Icon(Icons.event),
+              label: Text('التاريخ ${formatDate(_date)}'),
+            ),
+            const SizedBox(height: 12),
+            TextField(controller: _notes, decoration: const InputDecoration(labelText: Strings.notes)),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _reason,
+              decoration: const InputDecoration(labelText: 'سبب التعديل (يُحفظ في سجل العمليات)'),
+              validator: (v) => (v ?? '').trim().isEmpty ? Strings.required : null,
+            ),
+          ]),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text(Strings.cancel)),
+        FilledButton.icon(onPressed: _save, icon: const Icon(Icons.save), label: const Text('حفظ التعديل')),
+      ],
+    );
+  }
+}

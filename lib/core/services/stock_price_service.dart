@@ -80,7 +80,11 @@ class StockPriceService {
       innerJoin(db.priceLists, db.priceLists.id.equalsExp(db.priceListItems.priceListId)),
     ])
           ..where(db.priceListItems.status.equals(PriceRowStatus.ok) & db.priceListItems.productId.isNotNull())
-          ..orderBy([OrderingTerm.desc(db.priceLists.versionNo), OrderingTerm.desc(db.priceLists.id)]))
+          ..orderBy([
+            OrderingTerm.desc(db.priceLists.effectiveFrom),
+            OrderingTerm.desc(db.priceLists.versionNo),
+            OrderingTerm.desc(db.priceLists.id),
+          ]))
         .get();
     final seen = <String>{};
     final out = <int, List<_CurrentPrice>>{};

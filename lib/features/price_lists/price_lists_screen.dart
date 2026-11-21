@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/auth/auth_service.dart';
 import '../../core/auth/session.dart';
 import '../../core/db/database.dart';
 import '../../core/error_log.dart';
@@ -13,6 +14,7 @@ import '../../core/pdf_import/pdf_reader.dart';
 import '../../core/pdf_import/price_table.dart';
 import '../../core/pricing_math.dart';
 import '../../core/providers.dart';
+import '../../core/search_text.dart';
 import '../../core/services/buying_policy_service.dart';
 import '../../core/services/errors.dart';
 import '../../core/services/price_list_import_service.dart';
@@ -48,6 +50,162 @@ final _summariesProvider = StreamProvider.autoDispose<List<PriceListSummary>>(
 final _brandsProvider =
     StreamProvider.autoDispose<List<Brand>>((ref) => ref.watch(catalogServiceProvider).watchBrands());
 
+final _listCategoriesProvider = StreamProvider.autoDispose<List<PriceListCategory>>(
+    (ref) => ref.watch(priceListServiceProvider).watchCategories());
+
+/// Picks a version's category (فاخر، متوسط، اقتصادي...), with its buying
+/// discount shown; the owner can manage the categories from here.
+class _ListCategoryField extends ConsumerWidget {
+  const _ListCategoryField({required this.value, required this.onChanged});
+
+  final int? value;
+  final ValueChanged<int?> onChanged;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final all = ref.watch(_listCategoriesProvider).valueOrNull ?? const <PriceListCategory>[];
+    final shown = all.where((c) => c.isActive || c.id == value).toList();
+    final owner = ref.watch(currentUserProvider)?.isAdmin ?? false;
+    return Row(children: [
+      Expanded(
+        child: DropdownButtonFormField<int?>(
+          isExpanded: true,
+          initialValue: shown.any((c) => c.id == value) ? value : null,
+          decoration: const InputDecoration(
+            labelText: 'تصنيف القائمة (فاخر، متوسط، اقتصادي...)',
+            helperText: 'خصم الشراء المعتاد على القائمة إذا لم يُسجل خصم خاص للمورد',
+          ),
+          items: [
+            const DropdownMenuItem(value: null, child: Text('بدون تصنيف')),
+            for (final c in shown)
+              DropdownMenuItem(value: c.id, child: Text('${c.name} — خصم ${_percent(c.buyingDiscountBp)}')),
+          ],
+          onChanged: onChanged,
+        ),
+      ),
+      if (owner)
+        IconButton(
+          tooltip: 'إدارة التصنيفات',
+          onPressed: () => showDialog<void>(context: context, builder: (_) => const _ListCategoriesDialog()),
+          icon: const Icon(Icons.tune),
+        ),
+    ]);
+  }
+}
+
+/// Owner: the price list categories and their buying discounts.
+class _ListCategoriesDialog extends ConsumerWidget {
+  const _ListCategoriesDialog();
+
+  Future<void> _edit(BuildContext context, WidgetRef ref, [PriceListCategory? c]) async {
+    final name = TextEditingController(text: c?.name ?? '');
+    final pct = TextEditingController(text: c == null ? '' : '${c.buyingDiscountBp / 100}');
+    final reason = TextEditingController();
+    var active = c?.isActive ?? true;
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: Text(c == null ? 'تصنيف جديد' : 'تعديل ${c.name}'),
+          content: SizedBox(
+            width: 380,
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              TextField(controller: name, autofocus: true, decoration: const InputDecoration(labelText: 'الاسم (مثال: فاخر)')),
+              const SizedBox(height: 8),
+              TextField(controller: pct, decoration: const InputDecoration(labelText: 'خصم الشراء %', suffixText: '%')),
+              if (c != null) ...[
+                const SizedBox(height: 8),
+                TextField(controller: reason, decoration: const InputDecoration(labelText: 'سبب التغيير (اختياري)')),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('مفعل'),
+                  value: active,
+                  onChanged: (v) => setState(() => active = v),
+                ),
+              ],
+              const SizedBox(height: 8),
+              const InfoNote('تغيير الخصم يسري على الفواتير الجديدة فقط؛ الفواتير المحفوظة تبقى بخصمها.'),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+            FilledButton(
+              onPressed: () async {
+                final bp = _bp(pct.text.trim().isEmpty ? '0' : pct.text);
+                if (bp == null) {
+                  await showMessage(context, 'الخصم يجب أن يكون رقماً بين 0 و 100');
+                  return;
+                }
+                if (!context.mounted) return;
+                final ok = await runGuarded(context, () async {
+                  await ref.read(priceListServiceProvider).saveCategory(
+                        id: c?.id,
+                        name: name.text,
+                        buyingDiscountBp: bp,
+                        isActive: active,
+                        reason: reason.text,
+                        user: ref.read(currentUserProvider)!,
+                      );
+                  return true;
+                });
+                if (ok == true && context.mounted) Navigator.pop(context, true);
+              },
+              child: const Text('حفظ'),
+            ),
+          ],
+        ),
+      ),
+    );
+    name.dispose();
+    pct.dispose();
+    reason.dispose();
+    if (saved == true && context.mounted) showToast(context, 'تم الحفظ');
+  }
+
+  Future<void> _delete(BuildContext context, WidgetRef ref, PriceListCategory c) async {
+    final sure = await confirmAction(context,
+        title: 'حذف التصنيف؟',
+        message: 'سيُحذف التصنيف "${c.name}". القوائم والفواتير المحفوظة تحتفظ بما سُجل فيها.',
+        confirmLabel: 'حذف',
+        destructive: true);
+    if (!sure || !context.mounted) return;
+    await runGuarded(context, () async {
+      await ref.read(priceListServiceProvider).deleteCategory(c.id, user: ref.read(currentUserProvider)!);
+      return true;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final all = ref.watch(_listCategoriesProvider).valueOrNull ?? const <PriceListCategory>[];
+    return AlertDialog(
+      title: const Text('تصنيفات قوائم الأسعار'),
+      content: SizedBox(
+        width: 520,
+        height: 380,
+        child: all.isEmpty
+            ? const Center(child: Text('لا توجد تصنيفات. أضف مثلاً: فاخر، متوسط، اقتصادي.'))
+            : ListView(children: [
+                for (final c in all)
+                  ListTile(
+                    leading: Icon(Icons.label_outline, color: c.isActive ? AppColors.brand : AppColors.muted),
+                    title: Text(c.name, style: TextStyle(color: c.isActive ? null : AppColors.muted)),
+                    subtitle: Text('خصم الشراء ${_percent(c.buyingDiscountBp)}${c.isActive ? '' : ' · موقوف'}'),
+                    trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                      IconButton(tooltip: 'تعديل', onPressed: () => _edit(context, ref, c), icon: const Icon(Icons.edit_outlined)),
+                      IconButton(tooltip: 'حذف', onPressed: () => _delete(context, ref, c), icon: const Icon(Icons.delete_outline)),
+                    ]),
+                  ),
+              ]),
+      ),
+      actions: [
+        FilledButton.icon(onPressed: () => _edit(context, ref), icon: const Icon(Icons.add), label: const Text('تصنيف جديد')),
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('إغلاق')),
+      ],
+    );
+  }
+}
+
 /// Blueprint section 3: price list versions, the review queue, and the buying
 /// and selling policies, which are kept apart from one another.
 class PriceListsScreen extends StatelessWidget {
@@ -63,7 +221,7 @@ class PriceListsScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const PageHeader(title: 'قوائم الأسعار والخصومات'),
+          const PageHeader(title: 'قوائم الأسعار والخصومات', icon: Icons.price_change_outlined, subtitle: 'إصدارات قوائم الموردين، وخصومات الشراء والبيع'),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: TabBar(
@@ -92,15 +250,21 @@ class PriceListsScreen extends StatelessWidget {
   }
 }
 
-enum _ListShow { all, inForce, review, ended, withdrawn }
+enum _ListShow { all, inForce, review, historical, inactive, withdrawn }
 
-/// Where a version stands today.
-(String, Color, Color) _stateOf(PriceList l) {
-  if (l.status == PriceListStatus.withdrawn) return ('مسحوبة', AppColors.bad, AppColors.badBg);
-  if (l.status == PriceListStatus.pendingReview) return ('قيد المراجعة', AppColors.warn, AppColors.warnBg);
-  if (PriceListService.inForce(l, DateTime.now())) return ('سارية', AppColors.good, AppColors.goodBg);
-  if (l.effectiveFrom.isAfter(DateTime.now())) return ('تبدأ لاحقاً', AppColors.info, AppColors.infoBg);
-  return ('منتهية', AppColors.muted, AppColors.canvas);
+/// Where a version stands today, with a colour and an icon so it is told at
+/// a glance and never by colour alone.
+(String, Color, Color, IconData) _stateOf(PriceList l) {
+  if (l.status == PriceListStatus.withdrawn) return ('مسحوبة', AppColors.bad, AppColors.badBg, Icons.block);
+  if (l.status == PriceListStatus.inactive) {
+    return ('موقوفة', AppColors.neutral, AppColors.neutralBg, Icons.pause_circle_outline);
+  }
+  if (l.status == PriceListStatus.pendingReview) {
+    return ('قيد المراجعة', AppColors.warn, AppColors.warnBg, Icons.rate_review_outlined);
+  }
+  if (PriceListService.inForce(l, DateTime.now())) return ('سارية', AppColors.good, AppColors.goodBg, Icons.check_circle);
+  if (l.effectiveFrom.isAfter(DateTime.now())) return ('تبدأ لاحقاً', AppColors.info, AppColors.infoBg, Icons.schedule);
+  return ('تاريخية', AppColors.muted, AppColors.canvas, Icons.history);
 }
 
 class _VersionsTab extends ConsumerStatefulWidget {
@@ -113,6 +277,10 @@ class _VersionsTab extends ConsumerStatefulWidget {
 class _VersionsTabState extends ConsumerState<_VersionsTab> {
   _ListShow _show = _ListShow.all;
   String _search = '';
+  int? _brand;
+  int? _year;
+  String? _type;
+  int? _category;
 
   bool _pass(PriceListSummary s, _ListShow f) {
     final state = _stateOf(s.list).$1;
@@ -120,9 +288,16 @@ class _VersionsTabState extends ConsumerState<_VersionsTab> {
       _ListShow.all => true,
       _ListShow.inForce => state == 'سارية',
       _ListShow.review => s.review > 0 || state == 'قيد المراجعة',
-      _ListShow.ended => state == 'منتهية',
+      _ListShow.historical => state == 'تاريخية',
+      _ListShow.inactive => state == 'موقوفة',
       _ListShow.withdrawn => state == 'مسحوبة',
     };
+  }
+
+  /// The years a version was in force (from its start to its end or today).
+  static Set<int> _years(PriceList l) {
+    final end = (l.effectiveTo ?? DateTime.now()).year;
+    return {for (var y = l.effectiveFrom.year; y <= end && y <= l.effectiveFrom.year + 30; y++) y};
   }
 
   @override
@@ -155,6 +330,12 @@ class _VersionsTabState extends ConsumerState<_VersionsTab> {
                 icon: const Icon(Icons.edit_note),
                 label: const Text('إدخال صنف أو مجموعة أصناف'),
               ),
+              if (ref.watch(currentUserProvider)?.isAdmin ?? false)
+                OutlinedButton.icon(
+                  onPressed: () => showDialog<void>(context: context, builder: (_) => const _ListCategoriesDialog()),
+                  icon: const Icon(Icons.label_outline),
+                  label: const Text('تصنيفات القوائم'),
+                ),
               OutlinedButton.icon(
                 onPressed: () => saveExcelFile(
                   context,
@@ -174,7 +355,15 @@ class _VersionsTabState extends ConsumerState<_VersionsTab> {
             error: (e, _) => Center(child: Text('$e')),
             data: (all) {
               final q = _search.trim();
-              final base = all.where((s) => q.isEmpty || s.list.name.contains(q) || (s.brandName ?? '').contains(q));
+              final brands = {for (final s in all) if (s.list.brandId != null) s.list.brandId!: s.brandName ?? ''};
+              final years = {for (final s in all) ..._years(s.list)}.toList()..sort((a, b) => b - a);
+              final types = {for (final s in all) s.list.listType}.toList()..sort();
+              final base = all.where((s) =>
+                  matchesSearch(q, [s.list.name, s.brandName, s.list.listType, s.list.sourceFile, 'PL-${s.list.id}']) &&
+                  (_brand == null || s.list.brandId == _brand) &&
+                  (_type == null || s.list.listType == _type) &&
+                  (_category == null || s.list.categoryId == _category) &&
+                  (_year == null || _years(s.list).contains(_year)));
               final rows = base.where((s) => _pass(s, _show)).toList();
               final live = all.where((s) => _stateOf(s.list).$1 == 'سارية');
               return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -187,13 +376,46 @@ class _VersionsTabState extends ConsumerState<_VersionsTab> {
                       icon: Icons.fact_check_outlined, tone: all.any((s) => s.review > 0) ? AppColors.warn : null),
                 ]),
                 Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+                  child: Wrap(spacing: 10, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                    _FilterDrop<int>(
+                      label: 'الماركة',
+                      value: _brand,
+                      items: [for (final e in brands.entries) (e.key, e.value)],
+                      onChanged: (v) => setState(() => _brand = v),
+                    ),
+                    _FilterDrop<String>(
+                      label: 'نوع القائمة',
+                      value: _type,
+                      items: [for (final t in types) (t, t)],
+                      onChanged: (v) => setState(() => _type = v),
+                    ),
+                    _FilterDrop<int>(
+                      label: 'التصنيف',
+                      value: _category,
+                      items: [
+                        for (final c in ref.watch(_listCategoriesProvider).valueOrNull ?? const <PriceListCategory>[])
+                          (c.id, c.name),
+                      ],
+                      onChanged: (v) => setState(() => _category = v),
+                    ),
+                    _FilterDrop<int>(
+                      label: 'سنة السريان',
+                      value: _year,
+                      items: [for (final y in years) (y, '$y')],
+                      onChanged: (v) => setState(() => _year = v),
+                    ),
+                  ]),
+                ),
+                Padding(
                   padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
                   child: Wrap(spacing: 8, runSpacing: 6, children: [
                     for (final (f, label) in const [
                       (_ListShow.all, 'الكل'),
                       (_ListShow.inForce, 'سارية'),
+                      (_ListShow.historical, 'تاريخية'),
                       (_ListShow.review, 'تحتاج مراجعة'),
-                      (_ListShow.ended, 'منتهية'),
+                      (_ListShow.inactive, 'موقوفة'),
                       (_ListShow.withdrawn, 'مسحوبة'),
                     ])
                       ChoiceChip(
@@ -221,6 +443,33 @@ class _VersionsTabState extends ConsumerState<_VersionsTab> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// A small "all / one of these" dropdown for the filters row.
+class _FilterDrop<T> extends StatelessWidget {
+  const _FilterDrop({required this.label, required this.value, required this.items, required this.onChanged});
+
+  final String label;
+  final T? value;
+  final List<(T, String)> items;
+  final ValueChanged<T?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 190,
+      child: DropdownButtonFormField<T?>(
+        isExpanded: true,
+        initialValue: items.any((i) => i.$1 == value) ? value : null,
+        decoration: InputDecoration(labelText: label, isDense: true),
+        items: [
+          const DropdownMenuItem(value: null, child: Text('الكل')),
+          for (final (v, text) in items) DropdownMenuItem(value: v, child: Text(text, overflow: TextOverflow.ellipsis)),
+        ],
+        onChanged: onChanged,
+      ),
     );
   }
 }
@@ -267,6 +516,49 @@ class _VersionCard extends ConsumerWidget {
     });
   }
 
+  /// Owner only: no new document is priced from a switched-off list; every
+  /// document that used it keeps it.
+  Future<void> _setActive(BuildContext context, WidgetRef ref, bool active) async {
+    final reason = await _askText(
+      context,
+      active ? 'تفعيل القائمة' : 'إيقاف القائمة',
+      active ? 'سبب التفعيل' : 'سبب الإيقاف (لن تُستخدم في فواتير أو أوامر جديدة، وتبقى في السجل)',
+    );
+    if (reason == null || !context.mounted) return;
+    final ok = await runGuarded(context, () async {
+      await ref
+          .read(priceListServiceProvider)
+          .setActive(summary.list.id, active, reason: reason, user: ref.read(currentUserProvider)!);
+      return true;
+    });
+    if (ok == true && context.mounted) showToast(context, active ? 'تم تفعيل القائمة' : 'تم إيقاف القائمة');
+  }
+
+  Future<void> _setCategory(BuildContext context, WidgetRef ref) async {
+    int? picked = summary.list.categoryId;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('تصنيف القائمة'),
+        content: SizedBox(
+          width: 420,
+          child: _ListCategoryField(value: picked, onChanged: (v) => picked = v),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('حفظ')),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+    await runGuarded(context, () async {
+      await ref
+          .read(priceListServiceProvider)
+          .setListCategory(summary.list.id, picked, user: ref.read(currentUserProvider)!);
+      return true;
+    });
+  }
+
   /// Opens the PDF this version was read from, kept beside the database.
   Future<void> _openSource(BuildContext context, File pdf) async {
     if (!await pdf.exists()) {
@@ -283,26 +575,41 @@ class _VersionCard extends ConsumerWidget {
         ? _sourcePdf(ref.read(databaseFileProvider), l.id)
         : null;
     final period = 'من ${_date(l.effectiveFrom)}${l.effectiveTo == null ? ' (مفتوحة)' : ' إلى ${_date(l.effectiveTo!)}'}';
-    final (stateText, stateColor, stateBg) = _stateOf(l);
+    final (stateText, stateColor, stateBg, stateIcon) = _stateOf(l);
     final total = summary.matched + summary.review;
+    final owner = ref.watch(currentUserProvider)?.isAdmin ?? false;
+    final category = (ref.watch(_listCategoriesProvider).valueOrNull ?? const <PriceListCategory>[])
+        .where((c) => c.id == l.categoryId)
+        .firstOrNull;
     return TapCard(
       onTap: () => showDialog<void>(context: context, builder: (_) => _ItemsDialog(summary: summary)),
       child: Row(children: [
+        // The list's state, as a coloured edge down the card.
+        Container(
+          width: 4,
+          height: 64,
+          decoration: BoxDecoration(color: stateColor.withValues(alpha: .7), borderRadius: BorderRadius.circular(2)),
+        ),
+        const SizedBox(width: 12),
         NameAvatar(summary.brandName ?? l.name, size: 46),
         const SizedBox(width: 14),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Wrap(spacing: 8, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
               Text(l.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-              StatusPill(stateText, color: stateColor, background: stateBg),
-              StatusPill('${summary.brandName ?? 'بدون ماركة'} · ${l.listType} · V${l.versionNo}'),
+              StatusPill(stateText, color: stateColor, background: stateBg, icon: stateIcon),
+              StatusPill.neutral('${summary.brandName ?? 'بدون ماركة'} · ${l.listType} · V${l.versionNo}',
+                  icon: Icons.sell_outlined),
+              if (category != null)
+                StatusPill('${category.name} · خصم ${_percent(category.buyingDiscountBp)}',
+                    color: AppColors.brand, background: AppColors.brandSoft, icon: Icons.category_outlined),
               l.vatStatus == VatStatus.unverified || l.vatRateBp == null
                   ? StatusPill.warn('الضريبة غير متحقق منها')
                   : StatusPill.good('${VatStatus.label(l.vatStatus)} ${_percent(l.vatRateBp!)}'),
             ]),
             const SizedBox(height: 4),
             Text(
-              'PL-${l.id} · $period · ${l.currency} · استيراد ${_date(l.importDate)}'
+              'PL-${l.id} · سارية $period · ${l.currency} · سُجلت في البرنامج ${_date(l.importDate)}'
               '${l.sourceFile == null ? '' : ' · المصدر: ${l.sourceFile}'}'
               '${l.sourcePages == null ? '' : ' صفحات ${l.sourcePages}'}',
               style: const TextStyle(fontSize: 12, color: AppColors.muted),
@@ -339,9 +646,22 @@ class _VersionCard extends ConsumerWidget {
             if (pdf != null)
               PopupMenuItem(value: () => _openSource(context, pdf), child: const Text('فتح ملف المصدر')),
             PopupMenuItem(value: () => _setVat(context), child: const Text('تسجيل الضريبة بعد التحقق')),
+            PopupMenuItem(value: () => _setCategory(context, ref), child: const Text('تغيير تصنيف القائمة')),
             PopupMenuItem(value: () => _assignStock(context, ref), child: const Text('المخزون غير المحدد من هذه القائمة')),
+            if (owner && l.status == PriceListStatus.active)
+              PopupMenuItem(
+                value: () => _setActive(context, ref, false),
+                child: const ListTile(
+                    dense: true, leading: Icon(Icons.pause_circle_outline), title: Text('إيقاف القائمة')),
+              ),
+            if (owner && l.status == PriceListStatus.inactive)
+              PopupMenuItem(
+                value: () => _setActive(context, ref, true),
+                child: const ListTile(
+                    dense: true, leading: Icon(Icons.play_circle_outline), title: Text('تفعيل القائمة')),
+              ),
             if (l.status != PriceListStatus.withdrawn)
-              PopupMenuItem(value: () => _withdraw(context, ref), child: const Text('سحب القائمة')),
+              PopupMenuItem(value: () => _withdraw(context, ref), child: const Text('سحب القائمة نهائياً (خطأ)')),
           ],
         ),
       ]),
@@ -371,58 +691,93 @@ Future<String?> _askText(BuildContext context, String title, String label) async
   return v;
 }
 
-class _ItemsDialog extends ConsumerWidget {
+class _ItemsDialog extends ConsumerStatefulWidget {
   const _ItemsDialog({required this.summary});
 
   final PriceListSummary summary;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_ItemsDialog> createState() => _ItemsDialogState();
+}
+
+class _ItemsDialogState extends ConsumerState<_ItemsDialog> {
+  late final Future<List<PriceListItem>> _items = ref.read(priceListServiceProvider).items(widget.summary.list.id);
+  String _search = '';
+  bool _withModelOnly = false;
+
+  @override
+  Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    final l = summary.list;
+    final l = widget.summary.list;
     return AlertDialog(
       title: Text('PL-${l.id} — ${l.listType} V${l.versionNo}'),
       content: SizedBox(
         width: size.width * 0.8,
-        height: size.height * 0.65,
+        height: size.height * 0.7,
         child: FutureBuilder<List<PriceListItem>>(
-          future: ref.read(priceListServiceProvider).items(l.id),
+          future: _items,
           builder: (context, snap) {
             if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-            final items = snap.data!;
-            return SingleChildScrollView(
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: DataTable(
-                  columnSpacing: 16,
-                  headingRowHeight: 36,
-                  dataRowMinHeight: 32,
-                  columns: const [
-                    DataColumn(label: Text('كود الشركة')),
-                    DataColumn(label: Text('الاسم')),
-                    DataColumn(label: Text('اللون')),
-                    DataColumn(label: Text('السعر'), numeric: true),
-                    DataColumn(label: Text('الكرتونة'), numeric: true),
-                    DataColumn(label: Text('الحالة')),
-                  ],
-                  rows: [
-                    for (final i in items.take(1000))
-                      DataRow(cells: [
-                        DataCell(Text(i.manufacturerCode)),
-                        DataCell(Text(i.name)),
-                        DataCell(Text(i.variant ?? '')),
-                        DataCell(Text(i.price == null ? '—' : formatMoney(i.price!))),
-                        DataCell(Text(i.packSize == null ? '' : '${i.packSize}')),
-                        DataCell(Text(switch (i.status) {
-                          PriceRowStatus.review => 'مراجعة: ${i.reviewReason ?? ''}',
-                          PriceRowStatus.skipped => 'مستبعد: ${i.reviewReason ?? ''}',
-                          _ => 'معتمد',
-                        })),
-                      ]),
-                  ],
+            final all = snap.data!;
+            final hasModels = all.any((i) => (i.modelNo ?? '').isNotEmpty);
+            final items = all
+                .where((i) => !_withModelOnly || (i.modelNo ?? '').isNotEmpty)
+                .where((i) => matchesSearch(_search, [i.manufacturerCode, i.modelNo, i.name, i.variant]))
+                .toList();
+            return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Wrap(spacing: 12, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                SearchBox(
+                  hint: 'بحث بالكود أو رقم الموديل أو الاسم',
+                  width: 300,
+                  onChanged: (v) => setState(() => _search = v),
                 ),
+                if (hasModels)
+                  FilterChip(
+                    label: const Text('بها رقم موديل فقط'),
+                    selected: _withModelOnly,
+                    onSelected: (v) => setState(() => _withModelOnly = v),
+                  ),
+                Text('${items.length} من ${all.length} صف', style: const TextStyle(color: AppColors.muted)),
+              ]),
+              const SizedBox(height: 8),
+              Expanded(
+                child: SingleChildScrollView(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: DataTable(
+                        columnSpacing: 16,
+                        headingRowHeight: 36,
+                        dataRowMinHeight: 32,
+                        columns: const [
+                          DataColumn(label: Text('كود الشركة')),
+                          DataColumn(label: Text('رقم الموديل')),
+                          DataColumn(label: Text('الاسم')),
+                          DataColumn(label: Text('اللون')),
+                          DataColumn(label: Text('السعر'), numeric: true),
+                          DataColumn(label: Text('الكرتونة'), numeric: true),
+                          DataColumn(label: Text('الحالة')),
+                        ],
+                        rows: [
+                          for (final i in items.take(1500))
+                            DataRow(cells: [
+                              DataCell(Text(i.manufacturerCode)),
+                              DataCell(Text(i.modelNo ?? '')),
+                              DataCell(Text(i.name)),
+                              DataCell(Text(i.variant ?? '')),
+                              DataCell(Text(i.price == null ? '—' : formatMoney(i.price!))),
+                              DataCell(Text(i.packSize == null ? '' : '${i.packSize}')),
+                              DataCell(Text(switch (i.status) {
+                                PriceRowStatus.review => 'مراجعة: ${i.reviewReason ?? ''}',
+                                PriceRowStatus.skipped => 'مستبعد: ${i.reviewReason ?? ''}',
+                                _ => 'معتمد',
+                              })),
+                            ]),
+                        ],
+                      ),
+                    ),
+                  ),
               ),
-            );
+            ]);
           },
         ),
       ),
@@ -603,6 +958,7 @@ class _ImportDialogState extends ConsumerState<_ImportDialog> {
   final _pages = TextEditingController();
   final _rate = TextEditingController();
   int? _brandId;
+  int? _categoryId;
   DateTime _from = DateTime.now();
   DateTime? _to;
   String _vat = VatStatus.unverified;
@@ -623,13 +979,16 @@ class _ImportDialogState extends ConsumerState<_ImportDialog> {
       await showMessage(context, 'اختر الماركة أولاً: الأكواد تُطابق داخل الماركة');
       return;
     }
-    final picked = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['xlsx']);
+    final picked = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['xlsx', 'csv']);
     final path = picked?.files.single.path;
     if (path == null || !mounted) return;
-    final preview = await runGuarded(
-      context,
-      () async => ref.read(priceListImportServiceProvider).preview(await File(path).readAsBytes(), brandId: _brandId!),
-    );
+    final service = ref.read(priceListImportServiceProvider);
+    final preview = await runGuarded(context, () async {
+      final bytes = await File(path).readAsBytes();
+      return path.toLowerCase().endsWith('.csv')
+          ? service.previewCsv(bytes, brandId: _brandId!)
+          : service.preview(bytes, brandId: _brandId!);
+    });
     if (preview == null || !mounted) return;
     setState(() {
       _preview = preview;
@@ -641,8 +1000,9 @@ class _ImportDialogState extends ConsumerState<_ImportDialog> {
     final d = await showDatePicker(
       context: context,
       initialDate: (from ? _from : _to) ?? _from,
-      firstDate: DateTime(2020),
+      firstDate: DateTime(2000),
       lastDate: DateTime(2100),
+      helpText: from ? 'تاريخ سريان القائمة (يمكن أن يكون قديماً)' : 'آخر يوم لسريان القائمة',
     );
     if (d != null) setState(() => from ? _from = d : _to = d);
   }
@@ -670,6 +1030,7 @@ class _ImportDialogState extends ConsumerState<_ImportDialog> {
               vatRateBp: _rate.text.trim().isEmpty ? null : _bp(_rate.text),
               sourceFile: _fileName,
               sourcePages: _pages.text,
+              categoryId: _categoryId,
             ),
             user: ref.read(currentUserProvider)!,
           ),
@@ -712,6 +1073,8 @@ class _ImportDialogState extends ConsumerState<_ImportDialog> {
               const SizedBox(height: 12),
               ListTypeField(brandId: _brandId, controller: _type, onChanged: () => setState(() {})),
               const SizedBox(height: 12),
+              _ListCategoryField(value: _categoryId, onChanged: (v) => setState(() => _categoryId = v)),
+              const SizedBox(height: 12),
               TextField(
                 controller: _name,
                 decoration: const InputDecoration(labelText: 'اسم القائمة (مثال: ديورافيت يوليو 2026)'),
@@ -735,6 +1098,13 @@ class _ImportDialogState extends ConsumerState<_ImportDialog> {
                   const Chip(label: Text('العملة: EGP')),
                 ],
               ),
+              if (dayOf(_from).isBefore(dayOf(DateTime.now()).subtract(const Duration(days: 30)))) ...[
+                const SizedBox(height: 8),
+                const InfoNote(
+                  'قائمة تاريخية: تُحفظ في مكانها بتاريخها. القوائم الأحدث لا تتغير، '
+                  'وتنتهي هذه القائمة تلقائياً قبل بداية القائمة التالية من نفس النوع.',
+                ),
+              ],
               const SizedBox(height: 12),
               _VatFields(status: _vat, rate: _rate, onStatus: (v) => setState(() => _vat = v)),
               const SizedBox(height: 12),
@@ -743,7 +1113,7 @@ class _ImportDialogState extends ConsumerState<_ImportDialog> {
               OutlinedButton.icon(
                 onPressed: _pick,
                 icon: const Icon(Icons.upload_file_outlined),
-                label: Text(_fileName ?? 'اختر ملف Excel'),
+                label: Text(_fileName ?? 'اختر ملف Excel أو CSV'),
               ),
               if (p != null) ...[
                 const SizedBox(height: 12),
@@ -759,6 +1129,13 @@ class _ImportDialogState extends ConsumerState<_ImportDialog> {
                   if (p.categoryCount > 0)
                     Text('أصناف موجودة بلا تصنيف تأخذ التصنيف من الملف: ${p.categoryCount}',
                         style: TextStyle(color: scheme.primary, fontWeight: FontWeight.bold)),
+                  Text(
+                    p.withModel == 0
+                        ? 'لا يوجد عمود رقم الموديل في الملف'
+                        : 'صفوف بها رقم موديل: ${p.withModel}'
+                            '${p.modelCount == 0 ? '' : ' — أصناف موجودة يُضاف لها رقم الموديل: ${p.modelCount}'}',
+                    style: TextStyle(color: p.withModel == 0 ? AppColors.muted : scheme.primary),
+                  ),
                   if (p.reviewCount > 0)
                     Text('صفوف متوقفة للمراجعة: ${p.reviewCount}', style: TextStyle(color: scheme.error)),
                   for (final r in stopped)
@@ -920,7 +1297,7 @@ class _EntryDialogState extends ConsumerState<_EntryDialog> {
                         final d = await showDatePicker(
                           context: context,
                           initialDate: _from,
-                          firstDate: DateTime(2020),
+                          firstDate: DateTime(2000),
                           lastDate: DateTime(2100),
                         );
                         if (d != null) setState(() => _from = d);
@@ -1178,18 +1555,30 @@ class _BuyingTabState extends ConsumerState<_BuyingTab> {
                                 },
                               )
                             : null,
-                        trailing: Switch(
-                          value: r.policy.isActive,
-                          onChanged: (v) async {
-                            final ok = await runGuarded(context, () async {
-                              await ref
-                                  .read(buyingPolicyServiceProvider)
-                                  .setActive(r.policy.id, v, user: ref.read(currentUserProvider)!);
-                              return true;
-                            });
-                            if (ok == true) _reload();
-                          },
-                        ),
+                        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                          if (ref.watch(currentUserProvider)?.isAdmin ?? false)
+                            IconButton(
+                              tooltip: 'تعديل النسب (المالك)',
+                              icon: const Icon(Icons.edit_outlined),
+                              onPressed: () async {
+                                final saved = await showDialog<bool>(
+                                    context: context, builder: (_) => _CorrectBuyingDialog(policy: r.policy));
+                                if (saved == true) _reload();
+                              },
+                            ),
+                          Switch(
+                            value: r.policy.isActive,
+                            onChanged: (v) async {
+                              final ok = await runGuarded(context, () async {
+                                await ref
+                                    .read(buyingPolicyServiceProvider)
+                                    .setActive(r.policy.id, v, user: ref.read(currentUserProvider)!);
+                                return true;
+                              });
+                              if (ok == true) _reload();
+                            },
+                          ),
+                        ]),
                       ),
                   ],
                 );
@@ -1198,6 +1587,84 @@ class _BuyingTabState extends ConsumerState<_BuyingTab> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Owner: corrects the percentages of a saved buying policy. Invoices
+/// already saved keep the discount they used.
+class _CorrectBuyingDialog extends ConsumerStatefulWidget {
+  const _CorrectBuyingDialog({required this.policy});
+
+  final BuyingPolicy policy;
+
+  @override
+  ConsumerState<_CorrectBuyingDialog> createState() => _CorrectBuyingDialogState();
+}
+
+class _CorrectBuyingDialogState extends ConsumerState<_CorrectBuyingDialog> {
+  late final _base = TextEditingController(text: '${widget.policy.baseDiscountBp / 100}');
+  late final _extra = TextEditingController(text: '${widget.policy.extraDiscountBp / 100}');
+  late final _note = TextEditingController(text: widget.policy.note ?? '');
+  final _reason = TextEditingController();
+
+  @override
+  void dispose() {
+    for (final c in [_base, _extra, _note, _reason]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final base = _bp(_base.text), extra = _bp(_extra.text);
+    if (base == null || extra == null) {
+      await showMessage(context, 'النسبة يجب أن تكون رقماً بين 0 و 100');
+      return;
+    }
+    final ok = await runGuarded(context, () async {
+      await ref.read(buyingPolicyServiceProvider).correct(
+            widget.policy.id,
+            baseDiscountBp: base,
+            extraDiscountBp: extra,
+            validFrom: widget.policy.validFrom,
+            validTo: widget.policy.validTo,
+            note: _note.text,
+            reason: _reason.text,
+            user: ref.read(currentUserProvider)!,
+          );
+      return true;
+    });
+    if (ok == true && mounted) Navigator.pop(context, true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('تعديل سياسة شراء'),
+      content: SizedBox(
+        width: 420,
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text('الحالي: أساسي ${_percent(widget.policy.baseDiscountBp)} + إضافي ${_percent(widget.policy.extraDiscountBp)}',
+              style: const TextStyle(color: AppColors.muted)),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(child: TextField(controller: _base, decoration: const InputDecoration(labelText: 'الخصم الأساسي %'))),
+            const SizedBox(width: 12),
+            Expanded(child: TextField(controller: _extra, decoration: const InputDecoration(labelText: 'خصم إضافي %'))),
+          ]),
+          const SizedBox(height: 12),
+          TextField(controller: _note, decoration: const InputDecoration(labelText: 'ملاحظة')),
+          const SizedBox(height: 12),
+          TextField(controller: _reason, decoration: const InputDecoration(labelText: 'سبب التعديل (مطلوب)')),
+          const SizedBox(height: 12),
+          const InfoNote('فواتير الشراء المحفوظة تبقى بالخصم الذي سُجلت به. التعديل يسري على الفواتير الجديدة فقط.'),
+        ]),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+        FilledButton(onPressed: _save, child: const Text('حفظ التعديل')),
+      ],
     );
   }
 }

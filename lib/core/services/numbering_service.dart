@@ -18,6 +18,7 @@ class NumberingService {
     'supplier_advance': 'SA',
     'journal': 'JE',
     'project': 'PRJ',
+    'stock_entry': 'ME',
   };
 
   /// Returns the next number for [kind], e.g. "S-000001".

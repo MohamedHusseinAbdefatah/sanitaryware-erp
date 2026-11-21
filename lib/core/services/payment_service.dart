@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 
 import '../auth/auth_service.dart';
 import '../db/database.dart';
+import '../db/ledger_setup.dart';
 import '../money.dart';
 import 'audit_service.dart';
 import 'balance_service.dart';
@@ -310,7 +311,7 @@ class PaymentService {
       final p = await (db.select(db.payments)..where((t) => t.id.equals(paymentId))).getSingle();
       if (p.status == DocStatus.cancelled) throw ValidationException('الدفعة ${p.number} ملغاة من قبل');
       if (p.invoiceRefType == RefType.supplierAdvance && !_cancellingAdvance) {
-        throw ValidationException('هذه دفعة مقدمة بسعر قائمة؛ تُلغى من شاشة الدفعات المقدمة للمورد');
+        throw ValidationException('هذه دفعة مقدمة لمورد؛ تُلغى من شاشة الدفعات المقدمة');
       }
       final note = 'سبب الإلغاء: ${reason.trim()}';
       await (db.update(db.payments)..where((t) => t.id.equals(paymentId))).write(PaymentsCompanion(
@@ -329,6 +330,105 @@ class PaymentService {
         details: '${p.number}: ${reason.trim()}',
       );
     });
+  }
+
+  /// Owner only: corrects a saved payment's amount, date or notes (a figure
+  /// typed wrong). The payment keeps its number; balances, the invoice it
+  /// pays and the books follow at once because they are worked out from the
+  /// payments. Refused when it would pay an invoice beyond its total, take an
+  /// advance below what was already used from it, or touch a closed period.
+  /// The value before, after and the reason go to the audit log.
+  Future<Payment> correct(
+    int paymentId, {
+    int? amount,
+    DateTime? date,
+    String? notes,
+    required String reason,
+    required User user,
+  }) {
+    return db.transaction(() async {
+      if (!user.isAdmin) throw ValidationException('تعديل المدفوعات المسجلة للمالك فقط');
+      if (reason.trim().isEmpty) throw ValidationException('اكتب سبب التعديل');
+      final p = await (db.select(db.payments)..where((t) => t.id.equals(paymentId))).getSingleOrNull();
+      if (p == null) throw ValidationException('الدفعة غير موجودة');
+      if (p.status != DocStatus.active) throw ValidationException('الدفعة ${p.number} ملغاة؛ لا تُعدّل');
+      final newAmount = amount ?? p.amount;
+      final newDate = date ?? p.date;
+      final newNotes = notes == null ? p.notes : _blankToNull(notes);
+      if (newAmount <= 0) throw ValidationException('المبلغ يجب أن يكون أكبر من صفر');
+      if (newAmount == p.amount && newDate == p.date && newNotes == p.notes) {
+        throw ValidationException('لم يتغير شيء');
+      }
+      await _refuseClosed(p.date);
+      await _refuseClosed(newDate);
+
+      // Paying an invoice: never beyond what it has left.
+      if (p.invoiceRefId != null &&
+          (p.invoiceRefType == RefType.purchaseInvoice || p.invoiceRefType == RefType.salesInvoice)) {
+        final others = await invoiceRemaining(p.invoiceRefType!, p.invoiceRefId!, partyId: p.partyId) +
+            (await _counts(p) ? p.amount : 0);
+        if (newAmount > others) {
+          throw ValidationException('المبلغ أكبر من المتبقي على الفاتورة (${formatMoney(others)})');
+        }
+      }
+      // A supplier advance: its amount follows, but not below what was used.
+      SupplierAdvance? advance;
+      if (p.invoiceRefType == RefType.supplierAdvance) {
+        advance = await (db.select(db.supplierAdvances)..where((t) => t.paymentId.equals(p.id))).getSingleOrNull();
+        if (advance != null) {
+          final used = await db.customSelect(
+            "SELECT COALESCE(SUM(amount), 0) AS u FROM supplier_advance_allocations WHERE advance_id = ? AND status = 'active'",
+            variables: [Variable.withInt(advance.id)],
+          ).getSingle();
+          final u = used.read<int>('u');
+          if (newAmount < u) {
+            throw ValidationException('خُصم من هذه الدفعة المقدمة ${formatMoney(u)} على فواتير؛ لا تقل عن ذلك. '
+                'صحّح التوزيع على الفواتير أولاً.');
+          }
+        }
+      }
+
+      await (db.update(db.payments)..where((t) => t.id.equals(paymentId))).write(PaymentsCompanion(
+            amount: Value(newAmount),
+            date: Value(newDate),
+            notes: Value(newNotes),
+            updatedAt: Value(DateTime.now()),
+          ));
+      if (advance != null) {
+        await (db.update(db.supplierAdvances)..where((t) => t.id.equals(advance!.id))).write(SupplierAdvancesCompanion(
+            amount: Value(newAmount), date: Value(newDate), updatedAt: Value(DateTime.now())));
+      }
+      String show(int a, DateTime d, String? n) =>
+          '${formatMoney(a)} · ${d.year}/${d.month}/${d.day}${n == null ? '' : ' · $n'}';
+      await AuditService(db).log(
+        action: AuditAction.correct,
+        entity: 'payment',
+        entityId: paymentId,
+        userId: user.id,
+        details: '${p.number} ${await _partyName(p.partyType, p.partyId) ?? ''}',
+        oldValue: show(p.amount, p.date.toLocal(), p.notes),
+        newValue: show(newAmount, newDate.toLocal(), newNotes),
+        reason: reason.trim(),
+      );
+      return (db.select(db.payments)..where((t) => t.id.equals(paymentId))).getSingle();
+    });
+  }
+
+  /// True when [p] counts now (not a bounced or uncounted cheque).
+  Future<bool> _counts(Payment p) async {
+    if (p.method != PaymentMethod.cheque) return true;
+    final c = await (db.select(db.cheques)..where((t) => t.paymentId.equals(p.id))).getSingleOrNull();
+    if (c == null) return false;
+    if (c.status == ChequeStatus.cleared) return true;
+    return c.status == ChequeStatus.pending && await BalanceService(db).countPendingCheques();
+  }
+
+  Future<void> _refuseClosed(DateTime day) async {
+    final row = await (db.select(db.appSettings)..where((t) => t.keyName.equals(booksLockedUntilKey))).getSingleOrNull();
+    final until = int.tryParse(row?.val ?? '');
+    if (until != null && until >= 0 && day.millisecondsSinceEpoch ~/ 1000 <= until) {
+      throw ValidationException('هذا التاريخ داخل فترة مقفلة؛ لا يُعدّل فيها شيء');
+    }
   }
 
   /// Pending → cleared: the money is in (or out of) the bank.

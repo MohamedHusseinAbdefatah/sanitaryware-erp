@@ -88,11 +88,15 @@ class DocumentView extends StatelessWidget {
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextButton.icon(
-                  onPressed: () => context.go(backPath),
-                  icon: const Icon(Icons.arrow_forward, size: 18),
-                  label: Text(backLabel),
+                Tooltip(
+                  message: 'رجوع (Alt + →)',
+                  child: FilledButton.tonalIcon(
+                    onPressed: () => context.go(backPath),
+                    icon: const Icon(Icons.arrow_forward, size: 20),
+                    label: Text(backLabel),
+                  ),
                 ),
+                const SizedBox(width: 6),
                 const Icon(Icons.chevron_left, size: 18, color: AppColors.muted),
                 Text(number, style: const TextStyle(color: AppColors.muted)),
               ],

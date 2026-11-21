@@ -35,6 +35,8 @@ class _ReturnsScreenState extends ConsumerState<ReturnsScreen> {
       children: [
         PageHeader(
           title: Strings.returns,
+          icon: Icons.assignment_return_outlined,
+          subtitle: 'مرتجعات المبيعات والمشتريات',
           actions: [
             SegmentedButton<String?>(
               segments: const [
@@ -88,8 +90,8 @@ class _ReturnsScreenState extends ConsumerState<ReturnsScreen> {
                       onTap: (r) => showDialog<void>(context: context, builder: (_) => _ReturnDialog(row: r)),
                       rowColor: (r) => r.doc.status == DocStatus.cancelled ? AppColors.canvas : null,
                       columns: [
-                        DataListColumn(Strings.number, (r) => Text(r.doc.number, style: const TextStyle(fontWeight: FontWeight.w700))),
-                        DataListColumn(Strings.date, flex: 2, (r) => Text(formatDateTime(r.doc.date))),
+                        DataListColumn(Strings.number, sortValue: (r) => r.doc.number, (r) => Text(r.doc.number, style: const TextStyle(fontWeight: FontWeight.w700))),
+                        DataListColumn(Strings.date, sortValue: (r) => r.doc.date, flex: 2, (r) => Text(formatDateTime(r.doc.date))),
                         DataListColumn(Strings.kind, numeric: true, (r) => r.doc.kind == ReturnKind.sale
                             ? const StatusPill.warn(Strings.saleReturn)
                             : const StatusPill(Strings.purchaseReturn)),
@@ -102,7 +104,7 @@ class _ReturnsScreenState extends ConsumerState<ReturnsScreen> {
                                 child: Text(r.invoiceNumber ?? '',
                                     style: const TextStyle(color: AppColors.brand, fontWeight: FontWeight.w600)),
                               )),
-                        DataListColumn(Strings.total, numeric: true,
+                        DataListColumn(Strings.total, sortValue: (r) => r.doc.total, numeric: true,
                             (r) => Text(formatMoney(r.doc.total), style: const TextStyle(fontWeight: FontWeight.w700))),
                         DataListColumn(Strings.refunded, numeric: true, (r) => Text(formatMoney(r.doc.refundAmount))),
                         DataListColumn(Strings.status, numeric: true, (r) => r.doc.status == DocStatus.cancelled

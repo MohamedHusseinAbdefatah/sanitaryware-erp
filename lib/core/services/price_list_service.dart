@@ -12,6 +12,18 @@ abstract final class PriceListStatus {
   static const active = 'active';
   static const pendingReview = 'pending_review';
   static const withdrawn = 'withdrawn';
+
+  /// Switched off by the owner: no new document is priced from it, every
+  /// document that used it keeps it, and it can be switched on again.
+  static const inactive = 'inactive';
+
+  static String label(String status) => switch (status) {
+        active => 'مفعلة',
+        pendingReview => 'قيد المراجعة',
+        withdrawn => 'مسحوبة',
+        inactive => 'موقوفة',
+        _ => status,
+      };
 }
 
 abstract final class PriceRowStatus {
@@ -31,9 +43,13 @@ class PriceRowInput {
     this.productId,
     this.reviewReason,
     this.sourceRow,
+    this.modelNo,
   });
 
   final String name;
+
+  /// The maker's model number, when the list has one apart from the code.
+  final String? modelNo;
 
   /// Piastres per unit. Null only with a [reviewReason].
   final int? price;
@@ -63,7 +79,11 @@ class PriceListHeader {
     this.sourceFile,
     this.sourcePages,
     this.note,
+    this.categoryId,
   });
+
+  /// The owner's kind of list (فاخر، متوسط...), with its buying discount.
+  final int? categoryId;
 
   final String name;
   final int brandId;
@@ -194,17 +214,22 @@ class PriceListService {
             ..orderBy([(l) => OrderingTerm.desc(l.versionNo)]))
           .get();
       final live = earlier.where((l) => l.status == PriceListStatus.active).toList();
-      for (final l in live) {
-        if (l.effectiveFrom.isAfter(from)) {
-          throw ValidationException(
-              'يوجد إصدار V${l.versionNo} يبدأ بعد هذا التاريخ؛ الإصدار الجديد يجب أن يبدأ في تاريخه أو بعده');
-        }
+      // An old list may be entered today (a 2024 list in 2026): it goes in
+      // its own place in time. The versions starting after it are never
+      // touched; a full old list ends the day before the next one starts.
+      final before = live.where((l) => !l.effectiveFrom.isAfter(from)).toList();
+      final after = live.where((l) => l.effectiveFrom.isAfter(from)).toList()
+        ..sort((a, b) => a.effectiveFrom.compareTo(b.effectiveFrom));
+      var to = header.effectiveTo == null ? null : dayOf(header.effectiveTo!);
+      if (closePrevious && after.isNotEmpty) {
+        final cap = dayOf(after.first.effectiveFrom).subtract(const Duration(days: 1));
+        if (to == null || to.isAfter(cap)) to = cap;
       }
       if (closePrevious) {
         // A version starting the same day (a corrected or re-sent list) is
         // replaced from its first day: it stays on record, never in force.
         final dayBefore = from.subtract(const Duration(days: 1));
-        for (final l in live) {
+        for (final l in before) {
           if (l.effectiveTo == null || !l.effectiveTo!.isBefore(from)) {
             await (db.update(db.priceLists)..where((t) => t.id.equals(l.id))).write(
                 PriceListsCompanion(effectiveTo: Value(dayBefore), updatedAt: Value(DateTime.now())));
@@ -218,7 +243,7 @@ class PriceListService {
             versionNo: Value((earlier.isEmpty ? 0 : earlier.first.versionNo) + 1),
             currency: Value(header.currency),
             effectiveFrom: from,
-            effectiveTo: Value(header.effectiveTo == null ? null : dayOf(header.effectiveTo!)),
+            effectiveTo: Value(to),
             importDate: DateTime.now(),
             sourceFile: Value(_blankToNull(header.sourceFile)),
             sourcePages: Value(_blankToNull(header.sourcePages)),
@@ -226,6 +251,7 @@ class PriceListService {
             vatStatus: Value(header.vatStatus),
             vatRateBp: Value(header.vatRateBp),
             note: Value(_blankToNull(header.note)),
+            categoryId: Value(header.categoryId),
           ));
       var matched = 0, review = 0;
       for (final r in rows) {
@@ -237,7 +263,10 @@ class PriceListService {
         }
         await _insertRow(id, r, stopped);
       }
-      final carried = await _carryPolicies(live.map((l) => l.id).toList(), id);
+      // The supplier discounts come from the version just before it, or for
+      // the oldest list of all, from the one just after it.
+      final carryFrom = before.isNotEmpty ? before : after.take(1).toList();
+      final carried = await _carryPolicies(carryFrom.map((l) => l.id).toList(), id);
       await AuditService(db).log(
         action: AuditAction.create,
         entity: 'price_list',
@@ -311,6 +340,7 @@ class PriceListService {
           status: Value(stopped ? PriceRowStatus.review : PriceRowStatus.ok),
           reviewReason: Value(stopped ? (r.reviewReason ?? 'لم يطابق صنفاً') : null),
           sourceRow: Value(r.sourceRow),
+          modelNo: Value(_blankToNull(r.modelNo)),
         ));
   }
 
@@ -543,6 +573,138 @@ class PriceListService {
     });
   }
 
+  /// Switches a version off (no new document is priced from it) or on again.
+  /// Owner only. Nothing is deleted; documents that used it keep it, and the
+  /// periods of the other versions do not change.
+  Future<void> setActive(int listId, bool active, {required String reason, required User user}) {
+    return db.transaction(() async {
+      if (!user.isAdmin) throw ValidationException('تفعيل وإيقاف قوائم الأسعار للمالك فقط');
+      if (reason.trim().isEmpty) throw ValidationException('اكتب السبب');
+      final list = await _list(listId);
+      final from = active ? PriceListStatus.inactive : PriceListStatus.active;
+      if (list.status != from) {
+        throw ValidationException(switch (list.status) {
+          PriceListStatus.withdrawn => 'هذه القائمة مسحوبة نهائياً ولا يمكن تفعيلها',
+          PriceListStatus.pendingReview => 'هذه القائمة قيد المراجعة؛ اعتمدها أولاً',
+          _ => active ? 'القائمة مفعلة بالفعل' : 'القائمة موقوفة بالفعل',
+        });
+      }
+      final to = active ? PriceListStatus.active : PriceListStatus.inactive;
+      await (db.update(db.priceLists)..where((l) => l.id.equals(listId)))
+          .write(PriceListsCompanion(status: Value(to), updatedAt: Value(DateTime.now())));
+      await AuditService(db).log(
+        action: active ? AuditAction.activate : AuditAction.deactivate,
+        entity: 'price_list',
+        entityId: listId,
+        userId: user.id,
+        details: '${list.name} ${list.listType} V${list.versionNo}',
+        oldValue: PriceListStatus.label(from),
+        newValue: PriceListStatus.label(to),
+        reason: reason.trim(),
+      );
+    });
+  }
+
+  // ---- price list categories (فاخر، متوسط، اقتصادي...) ----
+
+  Stream<List<PriceListCategory>> watchCategories() =>
+      (db.select(db.priceListCategories)..orderBy([(c) => OrderingTerm.asc(c.name)])).watch();
+
+  Future<List<PriceListCategory>> categories() =>
+      (db.select(db.priceListCategories)..orderBy([(c) => OrderingTerm.asc(c.name)])).get();
+
+  /// Owner: adds a category, or changes one when [id] is given. Changing its
+  /// discount never changes a saved invoice (each line keeps its own).
+  Future<int> saveCategory({
+    int? id,
+    required String name,
+    required int buyingDiscountBp,
+    bool isActive = true,
+    String? note,
+    String reason = '',
+    required User user,
+  }) {
+    return db.transaction(() async {
+      if (!user.isAdmin) throw ValidationException('تصنيفات قوائم الأسعار للمالك فقط');
+      final n = name.trim();
+      if (n.isEmpty) throw ValidationException('اكتب اسم التصنيف');
+      if (buyingDiscountBp < 0 || buyingDiscountBp > 10000) throw ValidationException('الخصم بين 0 و 100');
+      final same = await (db.select(db.priceListCategories)..where((c) => c.name.equals(n))).getSingleOrNull();
+      if (same != null && same.id != id) throw ValidationException('يوجد تصنيف بنفس الاسم');
+      if (id == null) {
+        final newId = await db.into(db.priceListCategories).insert(PriceListCategoriesCompanion.insert(
+              name: n,
+              buyingDiscountBp: Value(buyingDiscountBp),
+              isActive: Value(isActive),
+              note: Value(_blankToNull(note)),
+            ));
+        await AuditService(db).log(
+            action: AuditAction.create,
+            entity: 'price_list_category',
+            entityId: newId,
+            userId: user.id,
+            details: n,
+            newValue: '${buyingDiscountBp / 100}%');
+        return newId;
+      }
+      final before = await (db.select(db.priceListCategories)..where((c) => c.id.equals(id))).getSingle();
+      await (db.update(db.priceListCategories)..where((c) => c.id.equals(id))).write(PriceListCategoriesCompanion(
+            name: Value(n),
+            buyingDiscountBp: Value(buyingDiscountBp),
+            isActive: Value(isActive),
+            note: Value(_blankToNull(note)),
+            updatedAt: Value(DateTime.now()),
+          ));
+      await AuditService(db).log(
+        action: before.buyingDiscountBp != buyingDiscountBp ? AuditAction.correct : AuditAction.update,
+        entity: 'price_list_category',
+        entityId: id,
+        userId: user.id,
+        details: n,
+        oldValue: '${before.name} ${before.buyingDiscountBp / 100}%${before.isActive ? '' : ' (موقوف)'}',
+        newValue: '$n ${buyingDiscountBp / 100}%${isActive ? '' : ' (موقوف)'}',
+        reason: _blankToNull(reason),
+      );
+      return id;
+    });
+  }
+
+  /// Owner: deletes a category no list uses (otherwise switch it off).
+  Future<void> deleteCategory(int id, {required User user}) {
+    return db.transaction(() async {
+      if (!user.isAdmin) throw ValidationException('تصنيفات قوائم الأسعار للمالك فقط');
+      final used = await (db.select(db.priceLists)..where((l) => l.categoryId.equals(id))).get();
+      if (used.isNotEmpty) {
+        throw ValidationException('التصنيف مستخدم في ${used.length} قائمة؛ أوقفه بدلاً من حذفه حتى يبقى في السجل');
+      }
+      final c = await (db.select(db.priceListCategories)..where((t) => t.id.equals(id))).getSingle();
+      await (db.delete(db.priceListCategories)..where((t) => t.id.equals(id))).go();
+      await AuditService(db).log(
+          action: AuditAction.cancel, entity: 'price_list_category', entityId: id, userId: user.id, details: c.name);
+    });
+  }
+
+  /// Gives a version its category (or none). Saved invoices keep theirs.
+  Future<void> setListCategory(int listId, int? categoryId, {required User user}) {
+    return db.transaction(() async {
+      _admin(user);
+      final list = await _list(listId);
+      if (list.categoryId == categoryId) return;
+      final names = {for (final c in await categories()) c.id: c.name};
+      await (db.update(db.priceLists)..where((l) => l.id.equals(listId)))
+          .write(PriceListsCompanion(categoryId: Value(categoryId), updatedAt: Value(DateTime.now())));
+      await AuditService(db).log(
+        action: AuditAction.update,
+        entity: 'price_list',
+        entityId: listId,
+        userId: user.id,
+        details: 'تصنيف القائمة ${list.name}',
+        oldValue: names[list.categoryId] ?? '—',
+        newValue: names[categoryId] ?? '—',
+      );
+    });
+  }
+
   /// True when [list] can price something on [day].
   static bool inForce(PriceList list, DateTime day) {
     if (list.status != PriceListStatus.active) return false;
@@ -562,7 +724,13 @@ class PriceListService {
     ])
           ..where(db.priceListItems.productId.equals(productId) &
               db.priceListItems.status.equals(PriceRowStatus.ok))
-          ..orderBy([OrderingTerm.desc(db.priceLists.versionNo), OrderingTerm.desc(db.priceLists.id)]))
+          // Newest by date first: an old list entered late has a high version
+          // number but must never win over the lists that came after it.
+          ..orderBy([
+            OrderingTerm.desc(db.priceLists.effectiveFrom),
+            OrderingTerm.desc(db.priceLists.versionNo),
+            OrderingTerm.desc(db.priceLists.id),
+          ]))
         .get();
     final byKind = <String, PriceQuote>{};
     for (final row in rows) {

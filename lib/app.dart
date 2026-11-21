@@ -24,6 +24,7 @@ class App extends ConsumerWidget {
       title: Strings.appTitle,
       debugShowCheckedModeBanner: false,
       theme: buildTheme(),
+      scrollBehavior: const AppScrollBehavior(),
       locale: appLocale,
       supportedLocales: const [appLocale],
       localizationsDelegates: appLocalizationsDelegates,

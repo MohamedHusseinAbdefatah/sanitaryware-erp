@@ -140,4 +140,46 @@ void main() {
     final backups = await BackupService(dir: Directory(p.join(appData.path, dataFolderName, 'backups'))).list();
     expect(backups.map((b) => b.reason), contains(BackupReason.beforeMigration));
   });
+
+  test('a 2.3 database (schema 19) is backed up, upgraded to 2.4 and intact', () async {
+    final old = await oldShop();
+    // Take away everything schema 20 added.
+    final raw = sql.sqlite3.open(p.join(old.folder, 'erp.sqlite'));
+    for (final t in [
+      'price_list_categories',
+      'supplier_advance_allocations',
+      'stock_entry_lines',
+      'stock_entries',
+      'remembered_logins',
+      'project_tasks',
+    ]) {
+      raw.execute('DROP TABLE IF EXISTS $t');
+    }
+    for (final (table, column) in [
+      ('products', 'model_no'),
+      ('price_list_items', 'model_no'),
+      ('audit_logs', 'old_value'),
+      ('audit_logs', 'new_value'),
+      ('audit_logs', 'reason'),
+      ('price_lists', 'category_id'),
+      ('purchase_invoices', 'discount_bp'),
+      ('purchase_invoice_items', 'list_category_id'),
+      ('purchase_invoice_items', 'list_category_name'),
+    ]) {
+      raw.execute('ALTER TABLE $table DROP COLUMN $column');
+    }
+    raw.execute('PRAGMA user_version = 19');
+    raw.dispose();
+
+    final start = await startNewVersion();
+    try {
+      await expectSameShop(start.db, old.customerId, old.productId);
+      expect(await start.db.select(start.db.supplierAdvanceAllocations).get(), isEmpty);
+      expect((await start.db.select(start.db.products).get()).single.modelNo, isNull);
+    } finally {
+      await start.db.close();
+    }
+    final backups = await BackupService(dir: Directory(p.join(appData.path, dataFolderName, 'backups'))).list();
+    expect(backups.map((b) => b.reason), contains(BackupReason.beforeMigration));
+  });
 }

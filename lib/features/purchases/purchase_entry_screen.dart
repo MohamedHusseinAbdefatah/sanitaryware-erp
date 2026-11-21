@@ -19,6 +19,7 @@ import '../../core/services/purchase_order_service.dart';
 import '../../core/services/purchase_service.dart';
 import '../../core/services/stock_service.dart';
 import '../../core/services/supplier_advance_service.dart';
+import '../../core/theme.dart';
 import '../../core/widgets/amounts.dart';
 import '../../core/widgets/feedback.dart';
 import '../../core/widgets/number_fields.dart';
@@ -63,6 +64,16 @@ class _Line {
   /// Why there is no quote to start from, shown under the product.
   String? note;
 
+  /// From the invoice being corrected: the list and discounts it was bought
+  /// under, kept unless the person changes the cost.
+  int? presetListId;
+  int? presetListPrice;
+  int? presetPolicyId;
+  int presetBaseBp = 0;
+  int presetExtraBp = 0;
+  int? presetCategoryId;
+  String? presetCategoryName;
+
   int? get qtyValue => parseQty(qty.text, allowDecimal: row.unitAllowsDecimal);
   int? get costValue => parseMoney(cost.text);
   int? get total {
@@ -70,7 +81,7 @@ class _Line {
     return q == null || c == null ? null : lineAmount(q, c);
   }
 
-  int? get listPrice => poLine?.line.listPrice ?? quote?.listPrice;
+  int? get listPrice => poLine?.line.listPrice ?? quote?.listPrice ?? presetListPrice;
 
   /// The discount agreed with the supplier (base + extra of the policy).
   int? get agreedBp {
@@ -78,6 +89,7 @@ class _Line {
       return poLine!.line.listPrice == null ? null : poLine!.line.discountBp + poLine!.line.extraDiscountBp;
     }
     final q = quote;
+    if (q == null && presetListPrice != null) return presetBaseBp + presetExtraBp;
     return q == null || q.missingPolicy ? null : q.baseBp + q.extraBp;
   }
 
@@ -113,10 +125,15 @@ class _Line {
 /// cost above what was agreed is marked. Lines can come from an approved
 /// purchase order or be ticked from a price list.
 class PurchaseEntryScreen extends ConsumerStatefulWidget {
-  const PurchaseEntryScreen({super.key, this.supplierId});
+  const PurchaseEntryScreen({super.key, this.supplierId, this.correctInvoiceId});
 
   /// Starts the invoice for this supplier (from the supplier's page).
   final int? supplierId;
+
+  /// Owner: corrects this saved invoice. The form opens with its lines; on
+  /// saving, the corrected invoice replaces it (the old one stays on record,
+  /// cancelled) and its payments move over.
+  final int? correctInvoiceId;
 
   @override
   ConsumerState<PurchaseEntryScreen> createState() => _PurchaseEntryScreenState();
@@ -126,6 +143,9 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.correctInvoiceId != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadForCorrection(widget.correctInvoiceId!));
+    }
     final id = widget.supplierId;
     if (id != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -150,10 +170,14 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
   final _searchFocus = FocusNode();
   Supplier? _supplier;
   PoDetail? _order;
-  List<AdvanceRow> _advances = const [];
 
-  /// Taken against this supplier advance, at its locked prices.
-  AdvanceRow? _advance;
+  /// What is left of the supplier's advances, and how much of it this
+  /// invoice takes.
+  AdvanceBalance? _advanceBalance;
+  final _fromAdvance = TextEditingController();
+
+  /// The invoice being corrected, when correcting.
+  PurchaseInvoice? _correcting;
   String _method = PaymentMethod.cash;
   int _locationId = mainLocationId;
   bool _saving = false;
@@ -168,7 +192,14 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
   int get _extraValue => moneyOrZero(_extraCosts);
   int get _vatValue => moneyOrZero(_vat);
   int get _total => _subtotal - _discountValue + (_extraOnSupplier ? _extraValue : 0) + _vatValue;
-  int get _remaining => _advance != null ? 0 : _total - moneyOrZero(_paid);
+  int get _advanceValue => moneyOrZero(_fromAdvance);
+
+  /// What the advances can give: what is left of them, plus (when
+  /// correcting) what the old invoice took, which comes back on saving.
+  int get _advanceAvailable => (_advanceBalance?.remaining ?? 0) + (_correcting?.advanceUsed ?? 0);
+  int get _paidValue => _correcting != null ? _correctingPaid : moneyOrZero(_paid);
+  int _correctingPaid = 0;
+  int get _remaining => _total - _paidValue - _advanceValue;
 
   @override
   void dispose() {
@@ -185,6 +216,7 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
       _notes,
       _chequeNo,
       _chequeBank,
+      _fromAdvance,
     ]) {
       c.dispose();
     }
@@ -233,36 +265,17 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
   /// policy, the list price shows and the cost is typed: no discount is assumed.
   Future<void> _applyListCost(_Line line) async {
     final supplier = _supplier;
-    if (supplier == null || line.poLine != null) return;
-    final advance = _advance;
-    if (advance != null) {
-      // The locked list price and the supplier's discount of the advance's day.
-      final q = await ref.read(supplierAdvanceServiceProvider).quote(advance.advance.id, line.row.product.id);
-      if (!mounted || advance.advance.id != _advance?.advance.id) return;
-      setState(() {
-        line.extra.clear();
-        line.quote = q;
-        if (q == null) {
-          line.note = 'ليس في قوائم الدفعة ${advance.advance.number}؛ احذفه واشترِه على فاتورة أخرى';
-          line.cost.clear();
-        } else if (q.missingPolicy) {
-          line.note = 'سعر مثبت من ${q.quote.label}، ولا يوجد خصم مسجل لهذا المورد يومها؛ اكتب التكلفة';
-          line.cost.clear();
-        } else {
-          line.note = 'سعر مثبت من الدفعة ${advance.advance.number} (${q.quote.label})';
-          line.cost.text = _plain(q.netCost!);
-        }
-      });
-      return;
-    }
+    if (supplier == null || line.poLine != null || line.presetListPrice != null) return;
     final quotes = await ref.read(buyingPolicyServiceProvider).quotes(line.row.product.id, supplierId: supplier.id);
     final backed = quotes.where((q) => !q.missingPolicy).toList();
-    if (!mounted || supplier.id != _supplier?.id || _advance != null) return;
+    if (!mounted || supplier.id != _supplier?.id) return;
     setState(() {
       line.extra.clear();
       if (backed.length == 1) {
         line.quote = backed.single;
-        line.note = null;
+        line.note = backed.single.fromCategory
+            ? '${backed.single.discountSource} ${_pct(backed.single.baseBp)} (لا يوجد خصم خاص بهذا المورد)'
+            : null;
         line.cost.text = _plain(backed.single.netCost!);
       } else if (backed.isEmpty && quotes.length == 1) {
         line.quote = quotes.single;
@@ -299,8 +312,8 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
     }
     setState(() {
       _supplier = s;
-      _advance = null;
-      _advances = const [];
+      _advanceBalance = null;
+      _fromAdvance.clear();
     });
     _loadAdvances();
     _refreshListCosts();
@@ -309,20 +322,59 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
   Future<void> _loadAdvances() async {
     final s = _supplier;
     if (s == null) return;
-    final open = await ref.read(supplierAdvanceServiceProvider).rows(supplierId: s.id, openOnly: true);
+    final b = await ref.read(supplierAdvanceServiceProvider).balance(s.id);
     if (!mounted || s.id != _supplier?.id) return;
-    setState(() => _advances = open);
+    setState(() => _advanceBalance = b);
   }
 
-  void _setAdvance(AdvanceRow? a) {
+  /// Takes as much of the advances as the invoice still needs.
+  void _useAdvance() {
+    final need = _total - _paidValue;
+    final take = need < _advanceAvailable ? need : _advanceAvailable;
+    setState(() => _fromAdvance.text = take <= 0 ? '' : _plain(take));
+  }
+
+  /// Opens the saved invoice in the form, with its lines and their lists.
+  Future<void> _loadForCorrection(int id) async {
+    final service = ref.read(purchaseServiceProvider);
+    final d = await service.detail(id);
+    final products = ref.read(productServiceProvider);
+    final lines = <_Line>[];
+    for (final l in d.lines) {
+      final line = _Line(await products.row(l.item.productId));
+      line.qty.text = formatQty(l.item.qty);
+      line.cost.text = _plain(l.item.unitCost);
+      line.presetListId = l.item.priceListId;
+      line.presetListPrice = l.item.listPrice;
+      line.presetPolicyId = l.item.buyingPolicyId;
+      line.presetBaseBp = l.item.baseDiscountBp;
+      line.presetExtraBp = l.item.extraDiscountBp;
+      line.presetCategoryId = l.item.listCategoryId;
+      line.presetCategoryName = l.item.listCategoryName;
+      line.note = 'من الفاتورة الأصلية ${d.invoice.number}';
+      lines.add(line);
+    }
+    final paid = await ref.read(paymentServiceProvider).onInvoice(RefType.purchaseInvoice, id);
+    if (!mounted) return;
+    final inv = d.invoice;
     setState(() {
-      _advance = a;
-      if (a != null) {
-        _paid.clear();
-        _dueDate = null;
-      }
+      _correcting = inv;
+      _correctingPaid = paid.where((p) => p.status == DocStatus.active).fold(0, (s, p) => s + p.amount);
+      _supplier = d.supplier;
+      _lines.addAll(lines);
+      _supplierInvoiceNo.text = inv.supplierInvoiceNo ?? '';
+      _discountPercent = inv.discountBp != null;
+      _discount.text = inv.discountBp != null
+          ? (inv.discountBp! / 100).toString()
+          : (inv.discount == 0 ? '' : _plain(inv.discount));
+      _extraCosts.text = inv.extraCosts == 0 ? '' : _plain(inv.extraCosts);
+      _extraOnSupplier = inv.extraCostsOnSupplier;
+      _vat.text = inv.vatAmount == 0 ? '' : _plain(inv.vatAmount);
+      _notes.text = inv.notes ?? '';
+      _dueDate = inv.dueDate;
+      _fromAdvance.text = inv.advanceUsed == 0 ? '' : _plain(inv.advanceUsed);
     });
-    _refreshListCosts();
+    _loadAdvances();
   }
 
   void _clearOrder() {
@@ -361,7 +413,6 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
     setState(() {
       _supplier = supplier;
       _order = picked;
-      _advance = null;
       _lines.insertAll(0, lines);
     });
     _loadAdvances();
@@ -398,6 +449,14 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
       return;
     }
     if (!_form.currentState!.validate()) return;
+    if (_advanceValue > _advanceAvailable) {
+      await showMessage(context, 'رصيد الدفعات المقدمة لهذا المورد ${formatMoney(_advanceAvailable)} فقط');
+      return;
+    }
+    if (_remaining < 0) {
+      await showMessage(context, 'المدفوع والمخصوم من الدفعة المقدمة أكبر من إجمالي الفاتورة');
+      return;
+    }
     final over = _lines.where((l) => l.overAgreed).toList();
     if (over.isNotEmpty) {
       final go = await _confirm(
@@ -407,6 +466,10 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
             'راجع فاتورة المورد. هل تحفظ بهذه الأسعار؟',
       );
       if (go != true || !mounted) return;
+    }
+    if (_correcting != null) {
+      await _saveCorrection();
+      return;
     }
     var allowDuplicate = false;
     final no = _supplierInvoiceNo.text.trim();
@@ -431,7 +494,7 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
     final free = [for (final l in _lines.where((l) => l.poLine == null)) _lineInput(l)];
     final invoice = await runGuarded(context, () async {
       if (_order != null) {
-        return PurchaseOrderService(ref.read(databaseProvider)).receive(
+        final received = await PurchaseOrderService(ref.read(databaseProvider)).receive(
           _order!.order.id,
           qtyByLine: {for (final l in _lines.where((l) => l.poLine != null)) l.poLine!.line.id: l.qtyValue!},
           supplierInvoiceNo: _supplierInvoiceNo.text,
@@ -450,6 +513,12 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
           extraLines: free,
           user: user,
         );
+        if (_advanceValue > 0) {
+          await ref
+              .read(supplierAdvanceServiceProvider)
+              .allocate(invoiceId: received.id, amount: _advanceValue, user: user);
+        }
+        return received;
       }
       return ref
           .read(purchaseServiceProvider)
@@ -464,13 +533,14 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
               extraCostsNote: _extraCostsNote.text,
               dueDate: _dueDate,
               vatAmount: _vatValue,
-              paidAmount: _advance == null ? moneyOrZero(_paid) : 0,
+              paidAmount: moneyOrZero(_paid),
               paymentMethod: _method,
-              cheque: _advance == null ? cheque : null,
+              cheque: cheque,
               notes: _notes.text,
               locationId: _locationId,
               allowDuplicateSupplierNo: allowDuplicate,
-              advanceId: _advance?.advance.id,
+              advanceAmount: _advanceValue,
+              discountBp: _discountBp,
             ),
             user: user,
           );
@@ -483,9 +553,67 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
     }
   }
 
+  /// The invoice discount as a percent, when it was typed as one.
+  int? get _discountBp => _discountPercent && _discount.text.trim().isNotEmpty ? _bpOf(_discount.text) : null;
+
+  /// Owner: the corrected invoice replaces the saved one, after a reason.
+  Future<void> _saveCorrection() async {
+    final old = _correcting!;
+    final reason = await askReason(context, title: 'سبب تصحيح الفاتورة ${old.number}');
+    if (reason == null || !mounted) return;
+    setState(() => _saving = true);
+    final fixed = await runGuarded(
+      context,
+      () => ref.read(purchaseServiceProvider).correct(
+            old.id,
+            PurchaseInput(
+              supplierId: old.supplierId,
+              supplierInvoiceNo: _supplierInvoiceNo.text,
+              lines: [for (final l in _lines) _lineInput(l)],
+              date: old.date,
+              discount: _discountValue,
+              discountBp: _discountBp,
+              extraCosts: _extraValue,
+              extraCostsOnSupplier: _extraOnSupplier,
+              extraCostsNote: _extraCostsNote.text,
+              dueDate: _dueDate,
+              vatAmount: _vatValue,
+              notes: _notes.text,
+              locationId: _locationId,
+              advanceAmount: _advanceValue,
+            ),
+            reason: reason,
+            user: ref.read(currentUserProvider)!,
+          ),
+    );
+    if (!mounted) return;
+    setState(() => _saving = false);
+    if (fixed != null) {
+      showToast(context, 'تم التصحيح: ${old.number} ← ${fixed.number}');
+      context.go('/purchases/${fixed.id}');
+    }
+  }
+
   /// The line as saved: the list price and version are kept whenever they are
   /// known, so the stock knows its list; the discount is what this invoice gave.
   PurchaseLineInput _lineInput(_Line l) {
+    if (l.quote == null && l.presetListPrice != null) {
+      final list = l.presetListPrice!, c = l.costValue!;
+      final actual = list == 0 ? 0 : ((list - c) * 10000 / list).round();
+      final base = actual < l.presetBaseBp ? (actual < 0 ? 0 : actual) : l.presetBaseBp;
+      return PurchaseLineInput(
+        productId: l.row.product.id,
+        qty: l.qtyValue!,
+        unitCost: c,
+        priceListId: l.presetListId,
+        listPrice: list,
+        buyingPolicyId: l.presetPolicyId,
+        baseDiscountBp: base,
+        extraDiscountBp: actual > base ? actual - base : 0,
+        listCategoryId: l.presetCategoryId,
+        listCategoryName: l.presetCategoryName,
+      );
+    }
     final q = l.quote;
     final actual = l.actualBp;
     final base = q == null || q.missingPolicy ? 0 : q.baseBp;
@@ -496,6 +624,8 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
       priceListId: q?.quote.priceListId,
       listPrice: q?.listPrice,
       buyingPolicyId: q?.policy?.id,
+      listCategoryId: q != null && q.fromCategory ? q.category!.id : null,
+      listCategoryName: q != null && q.fromCategory ? q.category!.name : null,
       baseDiscountBp: q == null ? 0 : (actual == null ? base : (actual < base ? (actual < 0 ? 0 : actual) : base)),
       extraDiscountBp: q == null || actual == null || actual <= base ? 0 : actual - base,
     );
@@ -516,7 +646,7 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final warn = Colors.orange.shade800;
+    const warn = AppColors.warn;
     final suppliers = ref.watch(activeSuppliersProvider).valueOrNull ?? const <Supplier>[];
     return CallbackShortcuts(
       bindings: {
@@ -536,8 +666,15 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                 runSpacing: 8,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Text(Strings.newPurchase, style: theme.textTheme.headlineSmall),
-                  Text('${Strings.date}: ${formatDateTime(DateTime.now())}'),
+                  if (_correcting != null)
+                    IconButton.outlined(
+                      tooltip: 'رجوع للفاتورة',
+                      onPressed: () => context.go('/purchases/${_correcting!.id}'),
+                      icon: const Icon(Icons.arrow_forward),
+                    ),
+                  Text(_correcting == null ? Strings.newPurchase : 'تصحيح الفاتورة ${_correcting!.number}',
+                      style: theme.textTheme.headlineSmall),
+                  Text('${Strings.date}: ${formatDateTime(_correcting?.date ?? DateTime.now())}'),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -607,53 +744,14 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                 ],
               ),
             ),
-            if (_advances.isNotEmpty && _order == null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
-                child: Row(
-                  children: [
-                    Icon(Icons.lock_clock_outlined, color: theme.colorScheme.primary),
-                    const SizedBox(width: 8),
-                    SizedBox(
-                      width: 460,
-                      child: DropdownButtonFormField<int?>(
-                        isExpanded: true,
-                        isDense: true,
-                        initialValue: _advance?.advance.id,
-                        decoration: const InputDecoration(
-                          labelText: 'الشراء من دفعة مقدمة بسعر مثبت',
-                          border: OutlineInputBorder(),
-                          isDense: true,
-                        ),
-                        items: [
-                          const DropdownMenuItem(value: null, child: Text('لا — بأسعار اليوم')),
-                          for (final a in _advances)
-                            DropdownMenuItem(
-                              value: a.advance.id,
-                              child: Text(
-                                '${a.advance.number} · ${formatDate(a.advance.date)} · المتبقي ${formatMoney(a.remaining)} · '
-                                '${a.lists.map((l) => l.brandName).toSet().join('، ')}',
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                        ],
-                        onChanged: (v) =>
-                            _setAdvance(v == null ? null : _advances.firstWhere((a) => a.advance.id == v)),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    if (_advance != null)
-                      Expanded(
-                        child: Text(
-                          'الأسعار مثبتة من ${formatDate(_advance!.advance.date)}. '
-                          'تُخصم الفاتورة من الدفعة: يتبقى ${formatMoney(_advance!.remaining - _total)}',
-                          style: TextStyle(
-                            color: _total > _advance!.remaining ? theme.colorScheme.error : theme.colorScheme.primary,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                  ],
+            if (_correcting != null)
+              const Padding(
+                padding: EdgeInsets.fromLTRB(24, 8, 24, 0),
+                child: InfoNote(
+                  'تصحيح فاتورة محفوظة: عند الحفظ تُسجل الفاتورة المصححة برقم جديد، وتنتقل إليها المدفوعات '
+                  'والمخصوم من الدفعات المقدمة، وتُلغى الفاتورة الأصلية وتبقى في السجل. المخزون والتكلفة '
+                  'ورصيد المورد والقيود تتعدل تلقائياً، ويُسجل التصحيح في سجل العمليات.',
+                  warning: true,
                 ),
               ),
             if (_order != null)
@@ -741,7 +839,7 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
       color = theme.colorScheme.outline;
     }
     return Container(
-      color: l.overAgreed ? Colors.orange.withValues(alpha: .08) : null,
+      color: l.overAgreed ? AppColors.warnBg : null,
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
@@ -905,12 +1003,31 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                       : 'النقل يُضاف لتكلفة الأصناف ويُسجل مصروف شراء نقدي (لا يُخصم مرتين من صافي الربح)',
                   style: theme.textTheme.bodySmall,
                 ),
-              if (_advance != null)
-                Text(
-                  'مدفوعة من الدفعة ${_advance!.advance.number}',
-                  style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold),
-                ),
-              if (_advance == null) ...[
+              if (_advanceAvailable > 0 || _advanceValue > 0)
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  SizedBox(
+                    width: 170,
+                    child: MoneyField(
+                      controller: _fromAdvance,
+                      label: 'من الدفعات المقدمة',
+                      onChanged: (_) => setState(() {}),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Tooltip(
+                    message: 'رصيد الدفعات المقدمة لهذا المورد (لأي ماركة أو قائمة)',
+                    child: TextButton.icon(
+                      onPressed: _useAdvance,
+                      icon: const Icon(Icons.account_balance_wallet_outlined, size: 18),
+                      label: Text('المتاح ${formatMoney(_advanceAvailable)}'),
+                    ),
+                  ),
+                ]),
+              if (_correcting != null) ...[
+                AmountLabel('مدفوع من قبل (ينتقل للفاتورة المصححة)', _correctingPaid),
+                AmountLabel(Strings.remaining, _remaining, color: _remaining > 0 ? AppColors.warn : AppColors.good),
+              ],
+              if (_correcting == null) ...[
                 SizedBox(
                   width: 130,
                   child: MoneyField(controller: _paid, label: Strings.paidNow, onChanged: (_) => setState(() {})),
@@ -946,7 +1063,7 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                     label: Text('استحقاق الشيك ${formatDate(_chequeDue)}'),
                   ),
                 ],
-                AmountLabel(Strings.remaining, _remaining),
+                AmountLabel(Strings.remaining, _remaining, color: _remaining > 0 ? AppColors.warn : AppColors.good),
                 if (hasRemaining)
                   OutlinedButton.icon(
                     onPressed: () => _pickDate(false),
@@ -957,8 +1074,8 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
               OutlinedButton(onPressed: () => context.go('/purchases'), child: const Text(Strings.cancel)),
               FilledButton.icon(
                 onPressed: _saving ? null : _save,
-                icon: const Icon(Icons.save),
-                label: const Text('${Strings.save} (Ctrl+S)'),
+                icon: Icon(_correcting == null ? Icons.save : Icons.published_with_changes),
+                label: Text(_correcting == null ? '${Strings.save} (Ctrl+S)' : 'حفظ التصحيح (Ctrl+S)'),
               ),
             ],
           ),

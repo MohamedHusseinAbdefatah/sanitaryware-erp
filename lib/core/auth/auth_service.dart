@@ -248,6 +248,8 @@ class AuthService {
             isActive: Value(isActive),
             updatedAt: Value(DateTime.now()),
           ));
+      // A stopped user, or a changed role, signs in again with the password.
+      if (!isActive || role != user.role) await _forgetLogins(userId);
       await AuditService(db).log(
         action: AuditAction.update,
         entity: 'user',
@@ -270,6 +272,8 @@ class AuthService {
       await (db.update(db.users)..where((t) => t.id.equals(userId))).write(
         UsersCompanion(passwordHash: Value(hash), salt: Value(salt), updatedAt: Value(DateTime.now())),
       );
+      // A new password ends every remembered sign-in of that user.
+      await _forgetLogins(userId);
       await AuditService(db).log(
         action: AuditAction.update,
         entity: 'user',
@@ -281,6 +285,10 @@ class AuthService {
   }
 
   String _normalizeUsername(String username) => username.trim().toLowerCase();
+
+  Future<void> _forgetLogins(int userId) => (db.update(db.rememberedLogins)
+        ..where((t) => t.userId.equals(userId) & t.revokedAt.isNull()))
+      .write(RememberedLoginsCompanion(revokedAt: Value(DateTime.now())));
 }
 
 /// Refuses when [userId] is a read-only user: they see, they never record.

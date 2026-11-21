@@ -486,10 +486,12 @@ class LedgerService {
         final m = await (db.select(db.stockMovements)..where((t) => t.id.equals(id))).getSingleOrNull();
         if (m == null) return null;
         if (m.type == StockMovementType.opening) {
+          // Negative when a hand entry of stock is cancelled.
           final v = lineAmount(m.qty, m.unitCost);
-          return (m.date, 'OPN-$id', 'مخزون أول المدة', null, [
-            PostLine('inventory', debit: v),
-            PostLine('opening', credit: v),
+          final memo = m.refType == RefType.stockEntry ? 'إدخال مخزون يدوي: ${m.note ?? ''}' : 'مخزون أول المدة';
+          return (m.date, 'OPN-$id', memo, null, [
+            PostLine('inventory', debit: v > 0 ? v : 0, credit: v < 0 ? -v : 0),
+            PostLine('opening', credit: v > 0 ? v : 0, debit: v < 0 ? -v : 0),
           ]);
         }
         if (m.type != StockMovementType.adjustment) return null;

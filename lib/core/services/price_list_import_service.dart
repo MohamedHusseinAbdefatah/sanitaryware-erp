@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart' show BooleanExpressionOperators, Value;
 import 'package:excel/excel.dart';
 
@@ -29,7 +31,18 @@ enum PriceRowAction {
 /// One sheet row after checking.
 class PriceImportRow {
   PriceImportRow(this.rowNumber, this.code, this.name, this.variant, this.priceText, this.packText,
-      {this.codeWasNumber = false, this.details = const {}, this.page, this.presetReason, this.arabicName = ''});
+      {this.codeWasNumber = false,
+      this.details = const {},
+      this.page,
+      this.presetReason,
+      this.arabicName = '',
+      this.modelNo = ''});
+
+  /// The model number from a column of its own; empty when there is none.
+  final String modelNo;
+
+  /// A known product with no model number: it takes this one.
+  bool fillModel = false;
 
   /// The Arabic name from a column of its own, when the list has one.
   final String arabicName;
@@ -86,10 +99,12 @@ class PriceEntry {
     this.variant,
     this.dimensions,
     this.details = const {},
+    this.modelNo,
   });
 
   final String code;
   final int price;
+  final String? modelNo;
   final String name;
   final String? variant;
   final String? dimensions;
@@ -112,6 +127,12 @@ class PriceImportPreview {
   /// Known products that get their Arabic name from this list.
   int get arabicNameCount => rows.where((r) => r.ok && r.fillArabicName).length;
 
+  /// Known products with no model number that get one from this list.
+  int get modelCount => {for (final r in rows.where((r) => r.ok && r.fillModel)) r.productId}.length;
+
+  /// Rows that carry a model number.
+  int get withModel => rows.where((r) => r.modelNo.isNotEmpty).length;
+
   /// Known products with no category that get one from this list.
   int get categoryCount => {for (final r in rows.where((r) => r.ok && r.fillCategory)) r.productId}.length;
   bool get canImport => missingColumns.isEmpty && rows.isNotEmpty;
@@ -130,9 +151,21 @@ class PriceListImportService {
   final AppDatabase db;
 
   static const _codeHeaders = [
-    'كود الشركة', 'كود المورد', 'كود المصنع', 'الكود', 'كود', 'كود الصنف', 'code', 'model', 'manufacturer code',
+    'كود الشركة', 'كود المورد', 'كود المصنع', 'الكود', 'كود', 'كود الصنف', 'رقم الصنف', 'كود المنتج',
+    'code', 'item code', 'product code', 'manufacturer code', 'article', 'article no', 'article number',
+    'art no', 'art nr', 'sku', 'ref', 'ref no', 'reference', 'item no', 'item number', 'part no',
   ];
-  static const _nameHeaders = ['الاسم', 'اسم الصنف', 'الصنف', 'name', 'product name'];
+
+  /// The maker's model number. With no code column it also stands as the code
+  /// (as the old "model" heading did); with one it is kept beside the code.
+  static const _modelHeaders = [
+    'رقم الموديل', 'الموديل', 'موديل', 'موديل رقم', 'كود الموديل', 'الطراز',
+    'model', 'model no', 'model number', 'model nr', 'model code', 'model #', 'modell', 'mod no',
+  ];
+  static const _nameHeaders = [
+    'الاسم', 'اسم الصنف', 'الصنف', 'البيان', 'الوصف المختصر', 'name', 'product name', 'item name', 'item',
+    'product', 'designation',
+  ];
   static const _arabicNameHeaders = [
     'الاسم بالعربي', 'الاسم العربي', 'الاسم بالعربية', 'اسم عربي', 'الاسم عربي', 'arabic name', 'name ar', 'name_ar',
   ];
@@ -141,9 +174,12 @@ class PriceListImportService {
 
   /// True when [text] has Arabic letters.
   static bool hasArabic(String text) => _arabicLetters.hasMatch(text);
-  static const _variantHeaders = ['اللون', 'colour', 'color', 'variant'];
-  static const _priceHeaders = ['السعر', 'سعر القائمة', 'price', 'list price'];
-  static const _packHeaders = ['عدد الكرتونة', 'التعبئة', 'العدد داخل الكرتونة', 'pack'];
+  static const _variantHeaders = ['اللون', 'colour', 'color', 'variant', 'finish colour'];
+  static const _priceHeaders = [
+    'السعر', 'سعر القائمة', 'سعر البيع', 'السعر بالجنيه', 'price', 'list price', 'unit price', 'price egp',
+    'retail price', 'rrp',
+  ];
+  static const _packHeaders = ['عدد الكرتونة', 'التعبئة', 'العدد داخل الكرتونة', 'pack', 'pack size', 'qty per box'];
   static const _detailHeaders = {
     'category': ['التصنيف', 'category'],
     'subcategory': ['التصنيف الفرعي', 'subcategory'],
@@ -163,12 +199,12 @@ class PriceListImportService {
     final sheet = excel['قائمة الأسعار'];
     sheet.isRTL = true;
     final headers = [
-      'كود الشركة', 'الاسم', 'اللون', 'السعر', 'عدد الكرتونة', 'التصنيف', 'التصنيف الفرعي', 'السلسلة',
+      'كود الشركة', 'رقم الموديل', 'الاسم', 'اللون', 'السعر', 'عدد الكرتونة', 'التصنيف', 'التصنيف الفرعي', 'السلسلة',
       'الوصف', 'المقاسات', 'التشطيب', 'الوحدة', 'الباركود', 'المواصفات الفنية',
     ];
     sheet.appendRow([for (final h in headers) TextCellValue(h)]);
     for (var i = 0; i < headers.length; i++) {
-      sheet.setColumnWidth(i, i == 1 ? 34 : 16);
+      sheet.setColumnWidth(i, i == 2 ? 34 : 16);
     }
     return excel.encode()!;
   }
@@ -185,20 +221,38 @@ class PriceListImportService {
     if (sheet == null) return PriceImportPreview(brandId, [], ['الاسم', 'السعر']);
 
     final all = sheet.rows;
-    final headerIndex = all.indexWhere((r) => r.any((c) => _text(c?.value).isNotEmpty));
+    // A list often has a title or the maker's address above the table: the
+    // heading row is the first one (within the top 20) that names a known
+    // column; failing that, the first row with anything in it.
+    final known = [..._codeHeaders, ..._modelHeaders, ..._nameHeaders, ..._arabicNameHeaders, ..._priceHeaders]
+        .map(foldHeader)
+        .toSet();
+    var headerIndex = -1;
+    for (var r = 0; r < all.length && r < 20; r++) {
+      if (all[r].any((c) {
+        final h = foldHeader(_text(c?.value));
+        return known.contains(h) || (h.startsWith('سعر ') && h.length > 4);
+      })) {
+        headerIndex = r;
+        break;
+      }
+    }
+    if (headerIndex < 0) headerIndex = all.indexWhere((r) => r.any((c) => _text(c?.value).isNotEmpty));
     if (headerIndex < 0) return PriceImportPreview(brandId, [], ['الاسم', 'السعر']);
 
-    int? codeCol, nameCol, arabicCol, variantCol, priceCol, packCol;
+    int? codeCol, modelCol, nameCol, arabicCol, variantCol, priceCol, packCol;
     final variantPriceCols = <int, String>{}; // column -> variant
     final detailCols = <String, int>{};
     final header = all[headerIndex];
     for (var i = 0; i < header.length; i++) {
       final raw = _text(header[i]?.value);
-      final h = foldForSearch(raw);
+      final h = foldHeader(raw);
       if (h.isEmpty) continue;
-      bool isOne(List<String> aliases) => aliases.any((a) => foldForSearch(a) == h);
+      bool isOne(List<String> aliases) => aliases.any((a) => foldHeader(a) == h);
       if (codeCol == null && isOne(_codeHeaders)) {
         codeCol = i;
+      } else if (modelCol == null && isOne(_modelHeaders)) {
+        modelCol = i;
       } else if (arabicCol == null && isOne(_arabicNameHeaders)) {
         arabicCol = i;
       } else if (nameCol == null && isOne(_nameHeaders)) {
@@ -217,6 +271,9 @@ class PriceListImportService {
         }
       }
     }
+    // No code column: the model number identifies the product, as before.
+    final modelIsCode = codeCol == null && modelCol != null;
+    if (modelIsCode) codeCol = modelCol;
     final missing = <String>[
       if (nameCol == null && arabicCol == null) 'الاسم',
       if (priceCol == null && variantPriceCols.isEmpty) 'السعر',
@@ -230,6 +287,7 @@ class PriceListImportService {
     for (var r = headerIndex + 1; r < all.length; r++) {
       final cells = all[r];
       final code = at(cells, codeCol);
+      final model = at(cells, modelCol);
       final arabic = at(cells, arabicCol);
       final listName = at(cells, nameCol);
       // With no name of its own the row is known by its Arabic name.
@@ -248,18 +306,76 @@ class PriceListImportService {
         if (priceCol != null) (sheetVariant.isEmpty ? null : sheetVariant): at(cells, priceCol),
         for (final e in variantPriceCols.entries) e.value: at(cells, e.key),
       };
-      if (name.isEmpty && code.isEmpty && prices.values.every((v) => v.isEmpty)) continue;
+      if (name.isEmpty && code.isEmpty && model.isEmpty && prices.values.every((v) => v.isEmpty)) continue;
       for (final e in prices.entries) {
         // A colour-price column left empty means "not made in that colour".
         if (e.value.isEmpty && prices.length > 1) continue;
         rows.add(PriceImportRow(r + 1, code, name, e.key, e.value, pack,
             codeWasNumber: numeric,
             details: details,
+            modelNo: model,
             arabicName: hasArabic(arabic) ? arabic : (arabicCol == null && hasArabic(listName) ? listName : '')));
       }
     }
     await _classify(rows, brandId);
     return PriceImportPreview(brandId, rows, const []);
+  }
+
+  /// A CSV file (comma, semicolon or tab between columns; UTF-8) read the
+  /// same way as an Excel sheet. Every cell stays text, so codes keep their
+  /// leading zeros.
+  Future<PriceImportPreview> previewCsv(List<int> bytes, {required int brandId}) {
+    final rows = parseCsv(utf8.decode(bytes, allowMalformed: true));
+    if (rows.isEmpty) return Future.value(PriceImportPreview(brandId, [], ['الاسم', 'السعر']));
+    final excel = Excel.createExcel();
+    final sheet = excel[excel.getDefaultSheet()!];
+    for (final r in rows) {
+      sheet.appendRow([for (final c in r) TextCellValue(c)]);
+    }
+    return preview(excel.encode()!, brandId: brandId);
+  }
+
+  /// Rows of a CSV text: quoted fields may hold the separator, quotes ("")
+  /// and line breaks. The separator is the one the first line uses most.
+  static List<List<String>> parseCsv(String text) {
+    if (text.startsWith('\uFEFF')) text = text.substring(1);
+    final firstLine = text.split('\n').first;
+    final sep = [',', ';', '\t'].reduce((a, b) => b.allMatches(firstLine).length > a.allMatches(firstLine).length ? b : a);
+    final rows = <List<String>>[];
+    var row = <String>[];
+    final cell = StringBuffer();
+    var quoted = false;
+    for (var i = 0; i < text.length; i++) {
+      final ch = text[i];
+      if (quoted) {
+        if (ch == '"') {
+          if (i + 1 < text.length && text[i + 1] == '"') {
+            cell.write('"');
+            i++;
+          } else {
+            quoted = false;
+          }
+        } else {
+          cell.write(ch);
+        }
+      } else if (ch == '"') {
+        quoted = true;
+      } else if (ch == sep) {
+        row.add(cell.toString().trim());
+        cell.clear();
+      } else if (ch == '\n' || ch == '\r') {
+        if (ch == '\r' && i + 1 < text.length && text[i + 1] == '\n') i++;
+        row.add(cell.toString().trim());
+        cell.clear();
+        if (row.any((c) => c.isNotEmpty)) rows.add(row);
+        row = <String>[];
+      } else {
+        cell.write(ch);
+      }
+    }
+    row.add(cell.toString().trim());
+    if (row.any((c) => c.isNotEmpty)) rows.add(row);
+    return rows;
   }
 
   /// Turns a price table read from a PDF into the same preview as an Excel
@@ -387,6 +503,7 @@ class PriceListImportService {
       final p = r.productId == null ? null : byProductId[r.productId];
       r.fillArabicName = p != null && r.arabicName.isNotEmpty && !hasArabic(p.nameAr);
       r.fillCategory = p != null && p.categoryId == null && (r.details['category'] ?? '').trim().isNotEmpty;
+      r.fillModel = p != null && r.modelNo.isNotEmpty && (p.modelNo ?? '').trim().isEmpty;
     }
   }
 
@@ -407,6 +524,7 @@ class PriceListImportService {
       final inputs = <PriceRowInput>[];
       final named = <int>{};
       final categorized = <int>{};
+      final modelled = <int>{};
       for (final r in preview.rows) {
         int? productId = r.productId;
         if (r.action == PriceRowAction.create) {
@@ -443,6 +561,24 @@ class PriceListImportService {
             );
           }
         }
+        // A known product with no model number takes the list's. A model
+        // number already on the product is never changed by a list.
+        if (r.ok && r.fillModel && productId != null && modelled.add(productId)) {
+          final n = await (db.update(db.products)
+                ..where((t) => t.id.equals(productId!) & (t.modelNo.isNull() | t.modelNo.equals(''))))
+              .write(ProductsCompanion(modelNo: Value(r.modelNo), updatedAt: Value(DateTime.now())));
+          if (n > 0) {
+            await AuditService(db).log(
+              action: AuditAction.update,
+              entity: 'product',
+              entityId: productId,
+              userId: user.id,
+              details: 'رقم الموديل من قائمة الأسعار',
+              oldValue: '—',
+              newValue: r.modelNo,
+            );
+          }
+        }
         inputs.add(PriceRowInput(
           name: r.name,
           price: r.price,
@@ -452,6 +588,7 @@ class PriceListImportService {
           productId: r.action == PriceRowAction.review ? null : productId,
           reviewReason: r.reviewReason,
           sourceRow: r.page ?? r.rowNumber,
+          modelNo: r.modelNo,
         ));
       }
       final saved = await PriceListService(db).createVersion(
@@ -501,6 +638,7 @@ class PriceListImportService {
             '${e.price / 100}',
             '',
             details: {...e.details, if ((e.dimensions ?? '').trim().isNotEmpty) 'dimensions': e.dimensions!.trim()},
+            modelNo: (e.modelNo ?? '').trim(),
           ),
       ];
       await _classify(rows, brandId);
@@ -527,6 +665,7 @@ class PriceListImportService {
           manufacturerCode: r.code,
           variant: r.variant,
           productId: productId,
+          modelNo: r.modelNo,
         ));
       }
       final prices = PriceListService(db);
@@ -598,6 +737,7 @@ class PriceListImportService {
         finish: d('finish'),
         barcode: d('barcode'),
         technicalSpecs: d('specs'),
+        modelNo: r.modelNo.isEmpty ? null : r.modelNo,
       ),
       userId: user.id,
     );

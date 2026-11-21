@@ -76,9 +76,19 @@ void main() {
     expect((await lists.items(v1)).single.price, 100000);
   });
 
-  test('a new version cannot start before an existing one', () async {
-    await version('سيراميك', DateTime(2026, 7, 1), 120000);
-    await expectLater(version('سيراميك', DateTime(2026, 1, 1), 90000), throwsA(isA<ValidationException>()));
+  test('an old list entered late goes in its own place in time and leaves the newer one alone', () async {
+    final current = await version('سيراميك', DateTime(2026, 7, 1), 120000);
+    final old = await version('سيراميك', DateTime(2024, 1, 1), 90000);
+
+    final newer = await (shop.db.select(shop.db.priceLists)..where((l) => l.id.equals(current))).getSingle();
+    expect(newer.effectiveTo, isNull, reason: 'the newer list is not touched');
+    final older = await (shop.db.select(shop.db.priceLists)..where((l) => l.id.equals(old))).getSingle();
+    expect(older.effectiveTo, DateTime(2026, 6, 30), reason: 'ends the day before the next list');
+
+    Future<PriceQuote> on(DateTime d) async => (await lists.quotesFor(basin.id, asOf: d)).single;
+    expect((await on(DateTime(2024, 5, 1))).priceListId, old);
+    expect((await on(DateTime(2024, 5, 1))).price, 90000);
+    expect((await on(DateTime(2026, 8, 1))).priceListId, current, reason: 'never replaced by the old prices');
   });
 
   test('a list sent again on the same day replaces the first from that day', () async {

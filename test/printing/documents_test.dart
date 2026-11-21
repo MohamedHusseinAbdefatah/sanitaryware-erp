@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pdf/pdf.dart';
 import 'package:sanitaryware_erp/core/printing/documents.dart';
 import 'package:sanitaryware_erp/core/printing/pdf_fonts.dart';
 import 'package:sanitaryware_erp/core/quantity.dart';
@@ -119,5 +120,23 @@ void main() {
     final bytes = await tablePdf(report, company, fonts, from: DateTime(2026, 10), to: DateTime(2026, 10, 31));
     expectPdf(bytes);
     keep('report_landscape', bytes);
+  });
+
+  test('the invoice keeps the printer\'s margins: the signature and date lines stay on the paper', () async {
+    final sales = SalesService(shop.db);
+    final inv = await sales.post(
+      SaleInput(
+        customerId: shop.customerId,
+        lines: [SaleLineInput(productId: shop.mixer.id, qty: qtyOf(1), unitPrice: 50000)],
+      ),
+      userId: shop.admin.id,
+    );
+    // Letter paper, and an inkjet that cannot print the last 15 mm.
+    final printer = PdfPageFormat.letter.copyWith(marginBottom: 15 * PdfPageFormat.mm, marginTop: 5 * PdfPageFormat.mm);
+    final bytes = await salesInvoicePdf(await sales.detail(inv.id), company.forPrinter(printer), fonts);
+    expectPdf(bytes);
+    keep('sales_invoice_letter', bytes);
+    final a4 = await salesInvoicePdf(await sales.detail(inv.id), company, fonts);
+    expectPdf(a4);
   });
 }

@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart';
 
 import '../auth/auth_service.dart';
+import '../dates.dart';
 import '../db/database.dart';
 import '../money.dart';
 import '../pricing_math.dart';
@@ -27,7 +28,14 @@ class PurchaseLineInput {
     this.buyingPolicyId,
     this.baseDiscountBp = 0,
     this.extraDiscountBp = 0,
+    this.listCategoryId,
+    this.listCategoryName,
   });
+
+  /// The price list category whose usual discount was used (no supplier
+  /// discount was recorded), kept as it was that day.
+  final int? listCategoryId;
+  final String? listCategoryName;
 
   final int productId;
 
@@ -67,16 +75,21 @@ class PurchaseInput {
     this.notes,
     this.locationId = mainLocationId,
     this.allowDuplicateSupplierNo = false,
-    this.advanceId,
+    this.advanceAmount = 0,
+    this.discountBp,
     this.projectId,
   });
 
   /// Bought for this project, if any.
   final int? projectId;
 
-  /// Taken against this supplier advance, at its locked prices. The invoice
-  /// is then paid from the advance and must fit in what is left of it.
-  final int? advanceId;
+  /// Paid from the supplier's advance balance (any of their advances, oldest
+  /// first). Part of the invoice or all of it; 0 = none.
+  final int advanceAmount;
+
+  /// The invoice discount typed as a percent (basis points), kept with the
+  /// invoice; null = typed as an amount (or none). [discount] is the amount.
+  final int? discountBp;
 
   /// Transport, unloading and the like, added to the goods' cost. On the
   /// supplier's invoice ([extraCostsOnSupplier]) they are owed to the
@@ -192,26 +205,22 @@ class PurchaseService {
       }
       if (input.extraCosts < 0) throw ValidationException('المصاريف الإضافية لا يمكن أن تكون سالبة');
       if (input.vatAmount < 0) throw ValidationException('الضريبة لا تكون سالبة');
+      if (input.discountBp != null && (input.discountBp! < 0 || input.discountBp! > 10000)) {
+        throw ValidationException('نسبة الخصم يجب أن تكون بين 0 و 100');
+      }
       final total = input.total;
       if (input.paidAmount < 0 || input.paidAmount > total) {
         throw ValidationException('المبلغ المدفوع يجب أن يكون بين صفر وإجمالي الفاتورة');
       }
-      if (input.advanceId != null) {
-        final advances = SupplierAdvanceService(db);
-        final adv = await advances.row(input.advanceId!);
-        if (adv.advance.supplierId != input.supplierId) throw ValidationException('الدفعة المقدمة ليست لهذا المورد');
-        if (adv.advance.status != DocStatus.active) throw ValidationException('الدفعة المقدمة ملغاة');
-        for (final line in input.lines) {
-          if (await advances.quote(adv.advance.id, line.productId) == null) {
-            throw ValidationException('الصنف "${products[line.productId]!.nameAr}" ليس في قوائم الدفعة '
-                '${adv.advance.number}؛ اشترِه على فاتورة أخرى');
-          }
+      if (input.advanceAmount < 0) throw ValidationException('المبلغ من الدفعة المقدمة لا يكون سالباً');
+      if (input.paidAmount + input.advanceAmount > total) {
+        throw ValidationException('المدفوع والمخصوم من الدفعة المقدمة معاً أكبر من إجمالي الفاتورة');
+      }
+      if (input.advanceAmount > 0) {
+        final available = (await SupplierAdvanceService(db).balance(input.supplierId)).remaining;
+        if (input.advanceAmount > available) {
+          throw ValidationException('رصيد الدفعات المقدمة لهذا المورد ${formatMoney(available)} فقط');
         }
-        if (total > adv.remaining) {
-          throw ValidationException('الفاتورة ${formatMoney(total)} أكبر من المتبقي من الدفعة '
-              '${adv.advance.number} (${formatMoney(adv.remaining)}). قسّم الأصناف على فاتورتين.');
-        }
-        if (input.paidAmount > 0) throw ValidationException('الفاتورة مدفوعة من الدفعة المقدمة؛ لا تكتب مبلغاً مدفوعاً');
       }
       final supplierNo = _blankToNull(input.supplierInvoiceNo);
       if (supplierNo != null && !input.allowDuplicateSupplierNo) {
@@ -238,11 +247,10 @@ class PurchaseService {
             createdBy: Value(user.id),
             extraCosts: Value(input.extraCosts),
             extraCostsOnSupplier: Value(input.extraCostsOnSupplier),
-            dueDate: Value(input.advanceId != null || input.paidAmount >= total || input.dueDate == null
+            dueDate: Value(input.paidAmount + input.advanceAmount >= total || input.dueDate == null
                 ? null
                 : dayOf(input.dueDate!)),
-            advanceId: Value(input.advanceId),
-            advanceUsed: Value(input.advanceId == null ? 0 : total),
+            discountBp: Value(input.discountBp),
             vatAmount: Value(input.vatAmount),
             isDirect: Value(input.isDirect),
             salesInvoiceId: Value(input.salesInvoiceId),
@@ -275,6 +283,8 @@ class PurchaseService {
               invoiceDiscountShare: Value(shares[n]),
               netTotal: Value(net),
               extraCostShare: Value(extraShares[n]),
+              listCategoryId: Value(line.listCategoryId),
+              listCategoryName: Value(line.listCategoryName),
             ));
         final p = products[line.productId]!;
         // Delivered straight to the customer: never in stock.
@@ -317,6 +327,11 @@ class PurchaseService {
           ),
           user: user,
         );
+      }
+
+      // Part of the supplier's advance balance pays this invoice.
+      if (input.advanceAmount > 0) {
+        await SupplierAdvanceService(db).allocate(invoiceId: invoiceId, amount: input.advanceAmount, user: user);
       }
 
       // Extra costs paid to someone else: a purchase expense tied to this
@@ -455,6 +470,8 @@ class PurchaseService {
           .toList();
       await (db.update(db.payments)..where((t) => t.id.isIn(paymentIds)))
           .write(PaymentsCompanion(status: const Value(DocStatus.cancelled), updatedAt: Value(DateTime.now())));
+      // What it took from the supplier's advances goes back to them.
+      await SupplierAdvanceService(db).releaseInvoice(invoiceId);
       // A cheque written with it is cancelled too, unless it was already paid.
       await (db.update(db.cheques)
             ..where((t) => t.paymentId.isIn(paymentIds) & t.status.equals(ChequeStatus.pending)))
@@ -470,6 +487,84 @@ class PurchaseService {
         userId: user.id,
         details: '${invoice.number}: ${reason.trim()}',
       );
+    });
+  }
+
+  /// Owner only: replaces a saved invoice with a corrected one (quantities,
+  /// costs, discount, extra costs, VAT, date...). In one step the corrected
+  /// invoice is posted, the payments and the advance amount of the old one
+  /// move to it, and the old one is cancelled and kept on record. Stock,
+  /// costs, the supplier's balance and the books follow from the documents.
+  /// [replacement] must be for the same supplier; its paid amount is not
+  /// used (the old payments carry over).
+  Future<PurchaseInvoice> correct(int invoiceId, PurchaseInput replacement, {required String reason, required User user}) {
+    return db.transaction(() async {
+      if (!user.isAdmin) throw ValidationException('تصحيح فواتير الشراء للمالك فقط');
+      if (reason.trim().isEmpty) throw ValidationException('اكتب سبب التصحيح');
+      final old = await (db.select(db.purchaseInvoices)..where((t) => t.id.equals(invoiceId))).getSingleOrNull();
+      if (old == null) throw ValidationException('الفاتورة غير موجودة');
+      if (old.status != DocStatus.active) throw ValidationException('الفاتورة ${old.number} ملغاة');
+      if (old.isDirect) throw ValidationException('فاتورة التوريد المباشر تُصحح من فاتورة البيع المرتبطة بها');
+      if (replacement.supplierId != old.supplierId) throw ValidationException('التصحيح لنفس المورد فقط');
+      await refuseLocked(db, old.date);
+      await refuseLocked(db, replacement.date ?? old.date);
+      final payments = await (db.select(db.payments)
+            ..where((t) =>
+                t.invoiceRefType.equals(RefType.purchaseInvoice) &
+                t.invoiceRefId.equals(invoiceId) &
+                t.status.equals(DocStatus.active)))
+          .get();
+      final paid = payments.fold<int>(0, (s, p) => s + p.amount);
+      final fromAdvance = old.advanceUsed;
+      if (paid + fromAdvance > replacement.total) {
+        throw ValidationException('المدفوع على الفاتورة (${formatMoney(paid + fromAdvance)}) أكبر من إجماليها بعد '
+            'التصحيح (${formatMoney(replacement.total)}). ألغِ أو صحّح الدفعة الزائدة أولاً.');
+      }
+      final advances = SupplierAdvanceService(db);
+      // The old one's advance amount is freed first so the new one can take it.
+      await advances.releaseInvoice(invoiceId);
+      await advances.syncInvoice(invoiceId);
+      final fresh = await post(
+        PurchaseInput(
+          supplierId: replacement.supplierId,
+          lines: replacement.lines,
+          supplierInvoiceNo: replacement.supplierInvoiceNo ?? old.supplierInvoiceNo,
+          date: replacement.date ?? old.date,
+          discount: replacement.discount,
+          discountBp: replacement.discountBp,
+          extraCosts: replacement.extraCosts,
+          extraCostsOnSupplier: replacement.extraCostsOnSupplier,
+          extraCostsNote: replacement.extraCostsNote,
+          dueDate: replacement.dueDate ?? old.dueDate,
+          notes: [
+            if ((replacement.notes ?? '').trim().isNotEmpty) replacement.notes!.trim(),
+            'تصحيح للفاتورة ${old.number}: ${reason.trim()}',
+          ].join('\n'),
+          locationId: replacement.locationId,
+          allowDuplicateSupplierNo: true,
+          advanceAmount: fromAdvance,
+          projectId: replacement.projectId ?? old.projectId,
+          vatAmount: replacement.vatAmount,
+        ),
+        user: user,
+      );
+      // The money already paid stays paid, now on the corrected invoice.
+      for (final p in payments) {
+        await (db.update(db.payments)..where((t) => t.id.equals(p.id))).write(
+            PaymentsCompanion(invoiceRefId: Value(fresh.id), updatedAt: Value(DateTime.now())));
+      }
+      await cancel(invoiceId, reason: 'استُبدلت بالفاتورة المصححة ${fresh.number}: ${reason.trim()}', user: user);
+      await AuditService(db).log(
+        action: AuditAction.correct,
+        entity: 'purchase_invoice',
+        entityId: fresh.id,
+        userId: user.id,
+        details: '${old.number} ← ${fresh.number}',
+        oldValue: 'الإجمالي ${formatMoney(old.total)} · الخصم ${formatMoney(old.discount)} · ${formatDate(old.date)}',
+        newValue: 'الإجمالي ${formatMoney(fresh.total)} · الخصم ${formatMoney(fresh.discount)} · ${formatDate(fresh.date)}',
+        reason: reason.trim(),
+      );
+      return (db.select(db.purchaseInvoices)..where((t) => t.id.equals(fresh.id))).getSingle();
     });
   }
 

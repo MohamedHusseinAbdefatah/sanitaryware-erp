@@ -75,24 +75,37 @@ class BuyingPolicyRow {
 
 /// What a product costs from a supplier under one version.
 class BuyQuote {
-  const BuyQuote({required this.quote, this.policy, this.vatStatus, this.vatRateBp});
+  const BuyQuote({required this.quote, this.policy, this.vatStatus, this.vatRateBp, this.category});
 
   final PriceQuote quote;
 
-  /// Null means no recorded policy: the cost stays unknown, no percentage is
-  /// assumed.
+  /// Null means no recorded policy: the list's category discount is used if
+  /// it has one; otherwise the cost stays unknown, no percentage is assumed.
   final BuyingPolicy? policy;
   final String? vatStatus;
   final int? vatRateBp;
 
+  /// The list's category (فاخر، متوسط...), when it has one.
+  final PriceListCategory? category;
+
   int get listPrice => quote.price;
-  int get baseBp => policy?.baseDiscountBp ?? 0;
+
+  /// The discount comes from the list's category (no supplier policy).
+  bool get fromCategory => policy == null && category != null && category!.isActive;
+  int get baseBp => policy?.baseDiscountBp ?? (fromCategory ? category!.buyingDiscountBp : 0);
   int get extraBp => policy?.extraDiscountBp ?? 0;
-  bool get missingPolicy => policy == null;
+  bool get missingPolicy => policy == null && !fromCategory;
+
+  /// Where the discount came from, for the screen.
+  String get discountSource => policy != null
+      ? 'خصم المورد المسجل'
+      : fromCategory
+          ? 'خصم تصنيف القائمة "${category!.name}"'
+          : 'لا يوجد خصم مسجل';
 
   /// List price less the recorded discounts. Null with no policy.
   int? get netCost {
-    if (policy == null) return null;
+    if (missingPolicy) return null;
     final bp = baseBp + extraBp;
     return applyDiscount(listPrice, bp > 10000 ? 10000 : bp);
   }
@@ -178,6 +191,54 @@ class BuyingPolicyService {
     });
   }
 
+  /// Owner only: corrects a saved buying policy (its percentages, dates or
+  /// note). Invoices and orders already saved keep the discount they used:
+  /// each line holds its own copy. New documents use the corrected one.
+  Future<void> correct(
+    int id, {
+    required int baseDiscountBp,
+    required int extraDiscountBp,
+    DateTime? validFrom,
+    DateTime? validTo,
+    String? note,
+    required String reason,
+    required User user,
+  }) {
+    return db.transaction(() async {
+      if (!user.isAdmin) throw ValidationException('تعديل سياسات الشراء المسجلة للمالك فقط');
+      if (reason.trim().isEmpty) throw ValidationException('اكتب سبب التعديل');
+      _checkPercent(baseDiscountBp);
+      _checkPercent(extraDiscountBp);
+      if (baseDiscountBp + extraDiscountBp > 10000) throw ValidationException('مجموع الخصمين أكبر من 100%');
+      if (validFrom != null && validTo != null && validTo.isBefore(validFrom)) {
+        throw ValidationException('نهاية السياسة قبل بدايتها');
+      }
+      final p = await (db.select(db.buyingPolicies)..where((t) => t.id.equals(id))).getSingleOrNull();
+      if (p == null) throw ValidationException('السياسة غير موجودة');
+      final cleanNote = (note ?? '').trim().isEmpty ? null : note!.trim();
+      await (db.update(db.buyingPolicies)..where((t) => t.id.equals(id))).write(BuyingPoliciesCompanion(
+            baseDiscountBp: Value(baseDiscountBp),
+            extraDiscountBp: Value(extraDiscountBp),
+            validFrom: Value(validFrom),
+            validTo: Value(validTo),
+            note: Value(cleanNote),
+            updatedAt: Value(DateTime.now()),
+          ));
+      String show(int b, int e, DateTime? f, DateTime? t) =>
+          '${b / 100}% + ${e / 100}%${f == null ? '' : ' من ${f.year}/${f.month}/${f.day}'}'
+          '${t == null ? '' : ' إلى ${t.year}/${t.month}/${t.day}'}';
+      await AuditService(db).log(
+        action: AuditAction.correct,
+        entity: 'buying_policy',
+        entityId: id,
+        userId: user.id,
+        oldValue: show(p.baseDiscountBp, p.extraDiscountBp, p.validFrom, p.validTo),
+        newValue: show(baseDiscountBp, extraDiscountBp, validFrom, validTo),
+        reason: reason.trim(),
+      );
+    });
+  }
+
   /// Completes a discount brought over from an old version.
   Future<void> complete(int id, {required int brandId, required int priceListId, required User user}) {
     return db.transaction(() async {
@@ -248,6 +309,7 @@ class BuyingPolicyService {
   Future<List<BuyQuote>> quotes(int productId, {required int supplierId, DateTime? asOf}) async {
     final product = await (db.select(db.products)..where((t) => t.id.equals(productId))).getSingle();
     final prices = await PriceListService(db).quotesFor(productId, asOf: asOf);
+    final categories = {for (final c in await db.select(db.priceListCategories).get()) c.id: c};
     final result = <BuyQuote>[];
     for (final q in prices) {
       final policy = await policyFor(supplierId: supplierId, list: q.priceList, product: product, asOf: asOf);
@@ -256,6 +318,7 @@ class BuyingPolicyService {
         policy: policy,
         vatStatus: q.priceList.vatStatus,
         vatRateBp: q.priceList.vatRateBp ?? product.vatRateBp,
+        category: categories[q.priceList.categoryId],
       ));
     }
     result.sort((a, b) => (a.missingPolicy ? 1 : 0) - (b.missingPolicy ? 1 : 0));

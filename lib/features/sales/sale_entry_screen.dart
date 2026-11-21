@@ -679,7 +679,8 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                     ],
                     onChanged: (v) => setState(() => _method = v!),
                   ),
-                  AmountLabel(Strings.remaining, _total - _paidValue),
+                  AmountLabel(Strings.remaining, _total - _paidValue,
+                      color: _total - _paidValue > 0 ? AppColors.warn : AppColors.good),
                   if (_customerBalance != null) ...[
                     AmountLabel(Strings.previousBalance, _customerBalance!),
                     Tooltip(

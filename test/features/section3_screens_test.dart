@@ -102,6 +102,10 @@ void main() {
     expect(find.text('الخصم المعتاد %'), findsOneWidget);
     await tester.tap(find.text('إلغاء'));
     await settle(tester);
+    // The brand × customer-type grid sits above, so scroll down to the special discounts.
+    await tester.scrollUntilVisible(find.text('خصم خاص'), 300,
+        scrollable: find.descendant(of: find.byType(ListView).last, matching: find.byType(Scrollable)).first);
+    await settle(tester);
     await tester.tap(find.text('خصم خاص'));
     await settle(tester);
     expect(find.text('أقصى خصم بدون موافقة المدير % (اختياري)'), findsOneWidget);

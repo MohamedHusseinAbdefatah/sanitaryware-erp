@@ -82,6 +82,9 @@ class Products extends Table with Timestamps {
   IntColumn get minStock => integer().withDefault(const Constant(0))();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   TextColumn get notes => text().nullable()();
+  // Schema 20: the maker's model number, when the list gives one apart from
+  // the code (e.g. "Model No."). Searchable; never part of the name.
+  TextColumn get modelNo => text().nullable()();
 }
 
 // Where stock is kept (schema 4). Id 1 is the main warehouse and always exists.
@@ -156,11 +159,29 @@ class PriceLists extends Table with Timestamps {
   // 'inclusive', 'exclusive' or 'unverified'. Set only after checking the source.
   TextColumn get vatStatus => text().withDefault(const Constant('unverified'))();
   IntColumn get vatRateBp => integer().nullable()();
-  // 'active', 'pending_review' (not usable yet) or 'withdrawn'.
+  // 'active', 'pending_review' (not usable yet), 'inactive' (switched off by
+  // the owner, can be switched on again) or 'withdrawn' (a mistake, for good).
+  // Only 'active' prices new documents; every status stays on record.
   TextColumn get status => text().withDefault(const Constant('active'))();
   // Set only on lists made from the old per-level product prices: such a list
   // prices one pricing type only.
   TextColumn get pricingTypeOnly => text().nullable()();
+  TextColumn get note => text().nullable()();
+  // Schema 20: the owner's grouping (فاخر، متوسط، اقتصادي...) and through it
+  // the usual buying discount on the list.
+  IntColumn get categoryId => integer().nullable()();
+}
+
+// Schema 20: a kind of price list the owner names (فاخر، متوسط، اقتصادي...),
+// with the discount usually got when buying from a list of that kind. A
+// supplier's own recorded discount on the list comes first. Changing it never
+// changes an invoice already saved: each line keeps the discount it used.
+class PriceListCategories extends Table with Timestamps {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get name => text().unique()();
+  // Basis points: 1000 = 10%.
+  IntColumn get buyingDiscountBp => integer().withDefault(const Constant(0))();
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   TextColumn get note => text().nullable()();
 }
 
@@ -185,6 +206,8 @@ class PriceListItems extends Table {
   TextColumn get reviewReason => text().nullable()();
   // The row number on the source file.
   IntColumn get sourceRow => integer().nullable()();
+  // Schema 20: the model number as the list printed it.
+  TextColumn get modelNo => text().nullable()();
 }
 
 // What a supplier gives us (blueprint 3.4): Supplier + Brand + Price List, then
@@ -684,6 +707,10 @@ class PurchaseInvoices extends Table with Timestamps {
   IntColumn get vatAmount => integer().withDefault(const Constant(0))();
   BoolColumn get isDirect => boolean().withDefault(const Constant(false))();
   IntColumn get salesInvoiceId => integer().nullable()();
+  // Schema 20: the invoice discount as typed. Null = a fixed amount (or none);
+  // a value = that percent of the subtotal (basis points). [discount] always
+  // holds the amount.
+  IntColumn get discountBp => integer().nullable()();
 }
 
 class PurchaseInvoiceItems extends Table {
@@ -706,6 +733,10 @@ class PurchaseInvoiceItems extends Table {
   // Schema 14: this line's part of the invoice's extra costs. The FIFO cost
   // of the goods is netTotal + extraCostShare; the supplier is owed netTotal.
   IntColumn get extraCostShare => integer().withDefault(const Constant(0))();
+  // Schema 20: the price list category the discount came from, when it did,
+  // as it was that day (its name may change later).
+  IntColumn get listCategoryId => integer().nullable()();
+  TextColumn get listCategoryName => text().nullable()();
 }
 
 @DataClassName('ReturnDoc')
@@ -814,6 +845,10 @@ class AuditLogs extends Table {
   IntColumn get entityId => integer().nullable()();
   TextColumn get details => text().nullable()();
   DateTimeColumn get at => dateTime().withDefault(currentDateAndTime)();
+  // Schema 20: for corrections, the value before, the value after and why.
+  TextColumn get oldValue => text().nullable()();
+  TextColumn get newValue => text().nullable()();
+  TextColumn get reason => text().nullable()();
 }
 
 /// Goods refused when a purchase order was received (schema 18): they never
@@ -862,4 +897,104 @@ class ExpensePlans extends Table with Timestamps {
   DateTimeColumn get nextDue => dateTime()();
   DateTimeColumn get endDate => dateTime().nullable()();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+}
+
+// ------------------------------------------------------------------ schema 20
+
+/// One use of a supplier advance on one purchase invoice. An advance belongs
+/// to the supplier, not to a price list: any of the supplier's invoices may
+/// take part of it, and one invoice may take from several advances. The sum of
+/// an invoice's active rows is its `advance_used`.
+@TableIndex(name: 'idx_advance_alloc_advance', columns: {#advanceId})
+@TableIndex(name: 'idx_advance_alloc_invoice', columns: {#invoiceId})
+class SupplierAdvanceAllocations extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get advanceId => integer().references(SupplierAdvances, #id)();
+  IntColumn get invoiceId => integer().references(PurchaseInvoices, #id)();
+  IntColumn get amount => integer()();
+  DateTimeColumn get date => dateTime()();
+  // 'active' or 'cancelled' (corrected, or its invoice was cancelled).
+  TextColumn get status => text().withDefault(const Constant('active'))();
+  TextColumn get note => text().nullable()();
+  IntColumn get createdBy => integer().nullable()();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+}
+
+/// Stock the owner enters by hand, without a purchase invoice: stock that was
+/// already in the shop (bought in 2024, entered in 2026), with its real cost.
+/// No supplier invoice and no payment is made; the value goes to the opening
+/// balance in the books. [effectiveDate] is when it was bought; the row's
+/// [createdAt] is when it was entered.
+class StockEntries extends Table with Timestamps {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get number => text().unique()();
+  DateTimeColumn get effectiveDate => dateTime()();
+  // The historical price list the cost was worked out from, if any.
+  IntColumn get priceListId => integer().nullable()();
+  IntColumn get locationId => integer().withDefault(const Constant(1))();
+  // Who it was bought from, for the record only (no balance, no invoice).
+  IntColumn get supplierId => integer().nullable()();
+  TextColumn get reason => text()();
+  TextColumn get notes => text().nullable()();
+  IntColumn get total => integer().withDefault(const Constant(0))();
+  // 'active' or 'cancelled'.
+  TextColumn get status => text().withDefault(const Constant('active'))();
+  IntColumn get createdBy => integer().nullable()();
+}
+
+class StockEntryLines extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get entryId => integer().references(StockEntries, #id)();
+  IntColumn get productId => integer().references(Products, #id)();
+  // Thousandths.
+  IntColumn get qty => integer()();
+  // The list price on the historical list, when one was used.
+  IntColumn get listPrice => integer().nullable()();
+  IntColumn get priceListId => integer().nullable()();
+  // The discount as entered: a percent (basis points) or an amount per unit.
+  IntColumn get discountBp => integer().withDefault(const Constant(0))();
+  IntColumn get discountAmount => integer().withDefault(const Constant(0))();
+  // The resulting cost per whole unit, and qty x cost.
+  IntColumn get unitCost => integer()();
+  IntColumn get lineTotal => integer()();
+}
+
+/// A "remember me" sign-in on this computer: only a hash of a random token is
+/// kept (the token itself sits in the user's local settings file), with an
+/// expiry. Revoked sign-ins never work again.
+class RememberedLogins extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get userId => integer().references(Users, #id)();
+  TextColumn get tokenHash => text().unique()();
+  TextColumn get deviceName => text().nullable()();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get lastUsedAt => dateTime().nullable()();
+  DateTimeColumn get expiresAt => dateTime()();
+  DateTimeColumn get revokedAt => dateTime().nullable()();
+}
+
+/// A task, milestone or delivery of a project, with its planned day, its
+/// current due day (which may be moved) and the day it was really done.
+@TableIndex(name: 'idx_project_tasks_project', columns: {#projectId})
+@TableIndex(name: 'idx_project_tasks_due', columns: {#dueDate})
+class ProjectTasks extends Table with Timestamps {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get projectId => integer().references(Projects, #id)();
+  TextColumn get title => text()();
+  // 'task', 'milestone' or 'delivery'
+  TextColumn get kind => text().withDefault(const Constant('task'))();
+  // Who is responsible: a user of the program, or a name typed in.
+  IntColumn get assigneeUserId => integer().nullable()();
+  TextColumn get assigneeName => text().nullable()();
+  DateTimeColumn get startDate => dateTime().nullable()();
+  // The day first planned (kept when the task is moved) and the current one.
+  DateTimeColumn get plannedDate => dateTime()();
+  DateTimeColumn get dueDate => dateTime()();
+  DateTimeColumn get completedAt => dateTime().nullable()();
+  // 'not_started', 'in_progress' or 'done'. Late is worked out from the dates.
+  TextColumn get status => text().withDefault(const Constant('not_started'))();
+  IntColumn get progress => integer().withDefault(const Constant(0))();
+  // Remind this many days before the due day (0 = on the day).
+  IntColumn get remindDaysBefore => integer().withDefault(const Constant(2))();
+  TextColumn get notes => text().nullable()();
 }

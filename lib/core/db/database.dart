@@ -58,6 +58,12 @@ part 'database.g.dart';
   ExpensePlans,
   CustomerContacts,
   ExpenseAttachments,
+  PriceListCategories,
+  SupplierAdvanceAllocations,
+  StockEntries,
+  StockEntryLines,
+  RememberedLogins,
+  ProjectTasks,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
@@ -65,7 +71,7 @@ class AppDatabase extends _$AppDatabase {
   @override
   int get schemaVersion => latestSchemaVersion;
 
-  static const latestSchemaVersion = 19;
+  static const latestSchemaVersion = 20;
 
   /// The categories every shop starts with. The first three are the old
   /// price levels; discounts start at 0 until the owner sets them.
@@ -458,6 +464,51 @@ class AppDatabase extends _$AppDatabase {
     await seedChart(this);
   }
 
+  /// Schema 20 (2.4): model numbers, the audit log's before / after / reason,
+  /// price list categories, supplier advances by supplier with allocations,
+  /// hand-entered stock, remembered sign-ins and project tasks. Only new
+  /// columns and tables; the one data step copies what each purchase invoice
+  /// took from an advance into an allocation row, so no amount changes.
+  Future<void> _upgradeToV20(Migrator m) async {
+    await _addColumns(m, products, [products.modelNo]);
+    await _addColumns(m, priceListItems, [priceListItems.modelNo]);
+    await _addColumns(m, auditLogs, [auditLogs.oldValue, auditLogs.newValue, auditLogs.reason]);
+    await _addColumns(m, priceLists, [priceLists.categoryId]);
+    await _addColumns(m, purchaseInvoices, [purchaseInvoices.discountBp]);
+    await _addColumns(m, purchaseInvoiceItems, [purchaseInvoiceItems.listCategoryId, purchaseInvoiceItems.listCategoryName]);
+    final hadAllocations = await _tableExists('supplier_advance_allocations');
+    for (final TableInfo t in [
+      priceListCategories,
+      supplierAdvanceAllocations,
+      stockEntries,
+      stockEntryLines,
+      rememberedLogins,
+      projectTasks,
+    ]) {
+      if (!await _tableExists(t.actualTableName)) await m.createTable(t);
+    }
+    for (final s in [
+      'CREATE INDEX IF NOT EXISTS idx_advance_alloc_advance ON supplier_advance_allocations (advance_id)',
+      'CREATE INDEX IF NOT EXISTS idx_advance_alloc_invoice ON supplier_advance_allocations (invoice_id)',
+      'CREATE INDEX IF NOT EXISTS idx_project_tasks_project ON project_tasks (project_id)',
+      'CREATE INDEX IF NOT EXISTS idx_project_tasks_due ON project_tasks (due_date)',
+    ]) {
+      await customStatement(s);
+    }
+    if (!hadAllocations && await _tableExists('purchase_invoices') && await _columnExists('purchase_invoices', 'advance_id')) {
+      // An advance used to be taken whole by each invoice on it: the same
+      // amounts become allocation rows, active while their invoice is.
+      await customStatement('''
+        INSERT INTO supplier_advance_allocations (advance_id, invoice_id, amount, date, status, note, created_by)
+        SELECT advance_id, id, advance_used, date,
+               CASE WHEN status = 'active' THEN 'active' ELSE 'cancelled' END,
+               'من قبل الإصدار 2.4', created_by
+        FROM purchase_invoices
+        WHERE advance_id IS NOT NULL AND advance_used > 0
+      ''');
+    }
+  }
+
   Future<void> _upgradeToV17(Migrator m) async {
     for (final TableInfo t in [accounts, journalEntries, journalLines, ledgerQueue, projects, projectBoqLines]) {
       if (!await _tableExists(t.actualTableName)) await m.createTable(t);
@@ -589,6 +640,7 @@ class AppDatabase extends _$AppDatabase {
           if (from < 17) await _upgradeToV17(m);
           if (from < 18) await _upgradeToV18(m);
           if (from < 19) await _upgradeToV19(m);
+          if (from < 20) await _upgradeToV20(m);
         },
         beforeOpen: (details) async {
           // Make SQLite enforce references between tables.

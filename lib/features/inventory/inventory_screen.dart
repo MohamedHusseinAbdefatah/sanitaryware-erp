@@ -16,6 +16,7 @@ import '../../core/widgets/data_list.dart';
 import '../../core/widgets/list_kit.dart';
 import '../products/locations_dialog.dart';
 import 'stock_count_dialog.dart';
+import 'stock_entry_dialog.dart';
 import '../products/product_image.dart';
 import '../products/products_screen.dart';
 import '../products/reservations_dialog.dart';
@@ -50,13 +51,19 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     final byPrice = ref.watch(_stockByPriceProvider).valueOrNull ?? const <int, StockPriceSummary>{};
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      PageHeader(title: Strings.inventory, actions: [
+      PageHeader(title: Strings.inventory, icon: Icons.warehouse_outlined, subtitle: 'الأرصدة الحالية وحد الطلب وحركة كل صنف', actions: [
         SearchBox(hint: 'بحث بالكود أو الاسم أو الماركة', onChanged: (v) => setState(() => _search = v)),
         if (canStock)
           FilledButton.icon(
             onPressed: () => showStockCount(context),
             icon: const Icon(Icons.fact_check_outlined),
             label: const Text('جرد'),
+          ),
+        if (user?.isAdmin ?? false)
+          FilledButton.tonalIcon(
+            onPressed: () => showStockEntries(context),
+            icon: const Icon(Icons.move_to_inbox_outlined),
+            label: const Text('إدخال مخزون يدوي'),
           ),
         OutlinedButton.icon(
           onPressed: () => showDialog<void>(context: context, builder: (_) => const ReservationsDialog()),
@@ -140,7 +147,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   trailing: (r) => _InventoryMenu(row: r, isAdmin: canStock),
                   columns: [
                     DataListColumn('', width: 60, (r) => ProductThumb(productId: r.product.id, size: 44)),
-                    DataListColumn(Strings.productName, flex: 5, (r) => TitleCell(
+                    DataListColumn(Strings.productName, sortValue: (r) => r.product.nameAr, flex: 5, (r) => TitleCell(
                           r.product.nameAr,
                           subtitle: [r.product.code, if (r.item.brandName != null) r.item.brandName!].join('  ·  '),
                         )),
@@ -153,11 +160,11 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                             ),
                         ])),
                     DataListColumn('جديد / قديم', flex: 3, (r) => _PriceSplit(byPrice[r.product.id], r.stock)),
-                    DataListColumn('آخر وارد', numeric: true, flex: 2, (r) => Text(sinceText(r.lastIn),
+                    DataListColumn('آخر وارد', sortValue: (r) => r.lastIn, numeric: true, flex: 2, (r) => Text(sinceText(r.lastIn),
                         style: const TextStyle(fontSize: 12.5, color: AppColors.muted))),
                     if (isAdmin)
-                      DataListColumn('القيمة', flex: 2, numeric: true, (r) => Text(formatMoney(r.value))),
-                    DataListColumn(Strings.stock, flex: 2, numeric: true, (r) => Column(
+                      DataListColumn('القيمة', sortValue: (r) => r.value, flex: 2, numeric: true, (r) => Text(formatMoney(r.value))),
+                    DataListColumn(Strings.stock, sortValue: (r) => r.stock, flex: 2, numeric: true, (r) => Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             stockPill(r.item),

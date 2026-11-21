@@ -41,6 +41,7 @@ class _PdfImportDialogState extends ConsumerState<_PdfImportDialog> {
   final _pages = TextEditingController();
   final _rate = TextEditingController();
   int? _brandId;
+  int? _categoryId;
   DateTime _from = DateTime.now();
   DateTime? _to;
   String _vat = VatStatus.unverified;
@@ -216,6 +217,7 @@ class _PdfImportDialogState extends ConsumerState<_PdfImportDialog> {
               vatRateBp: _rate.text.trim().isEmpty ? null : _bp(_rate.text),
               sourceFile: _fileName,
               sourcePages: _pagesRead == null || _pagesRead!.isEmpty ? null : _pagesRead,
+              categoryId: _categoryId,
             ),
             user: ref.read(currentUserProvider)!,
           ),
@@ -327,6 +329,8 @@ class _PdfImportDialogState extends ConsumerState<_PdfImportDialog> {
                 label: 'نوع القائمة (مثال: أطقم اقتصادية، بانيوهات)',
                 onChanged: () => setState(() {}),
               ),
+              const SizedBox(height: 12),
+              _ListCategoryField(value: _categoryId, onChanged: (v) => setState(() => _categoryId = v)),
               const SizedBox(height: 12),
               TextField(
                 controller: _name,

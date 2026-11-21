@@ -22,6 +22,7 @@ import '../accounting/accounting_kit.dart' show percentBp;
 import '../purchases/purchase_orders_dialog.dart';
 import '../sales/orders_screens.dart';
 import '../sales/sales_orders_dialog.dart';
+import 'project_plan.dart';
 
 final projectsProvider = FutureProvider.autoDispose<List<ProjectRow>>((ref) => ref.watch(projectServiceProvider).list());
 
@@ -49,8 +50,13 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
   Widget build(BuildContext context) {
     final async = ref.watch(projectsProvider);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      PageHeader(title: 'المشروعات', actions: [
+      PageHeader(title: 'المشروعات', icon: Icons.apartment_outlined, subtitle: 'المقايسات والتوريدات والمهام وربحية كل مشروع', actions: [
         SearchBox(onChanged: (v) => setState(() => _query = v), hint: 'بحث بالاسم أو العميل أو الموقع'),
+        OutlinedButton.icon(
+          onPressed: () => context.go('/projects/calendar'),
+          icon: const Icon(Icons.calendar_month_outlined),
+          label: const Text('الخطة الأسبوعية والشهرية'),
+        ),
         FilledButton.icon(
           onPressed: () async {
             final id = await showProjectForm(context);
@@ -101,7 +107,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                   emptyText: 'لا توجد مشروعات بعد. أضف مشروعاً لتتابع كمياته وتوريداته وربحيته.',
                   onTap: (r) => context.go('/projects/${r.project.id}'),
                   columns: [
-                    DataListColumn('الكود', width: 100, (r) => Text(r.project.code, style: const TextStyle(color: AppColors.muted))),
+                    DataListColumn('الكود', sortValue: (r) => r.project.code, width: 100, (r) => Text(r.project.code, style: const TextStyle(color: AppColors.muted))),
                     DataListColumn('المشروع', flex: 3, (r) => Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
@@ -112,9 +118,9 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                           ],
                         )),
                     DataListColumn('العميل', flex: 2, (r) => Text(r.customerName ?? '—')),
-                    DataListColumn('التعاقد', numeric: true, (r) => Text(r.project.contractValue == 0 ? '—' : formatMoney(r.project.contractValue))),
-                    DataListColumn('مفوتر', numeric: true, (r) => Text(formatMoney(r.money.invoiced))),
-                    DataListColumn('محصّل', numeric: true, (r) => Text(formatMoney(r.money.collected))),
+                    DataListColumn('التعاقد', sortValue: (r) => r.project.contractValue, numeric: true, (r) => Text(r.project.contractValue == 0 ? '—' : formatMoney(r.project.contractValue))),
+                    DataListColumn('مفوتر', sortValue: (r) => r.money.invoiced, numeric: true, (r) => Text(formatMoney(r.money.invoiced))),
+                    DataListColumn('محصّل', sortValue: (r) => r.money.collected, numeric: true, (r) => Text(formatMoney(r.money.collected))),
                     DataListColumn('الربح', numeric: true, (r) => Text(
                           '${formatMoney(r.money.netProfit)}\n${percentBp(r.money.marginBp)}',
                           textAlign: TextAlign.center,
@@ -414,6 +420,7 @@ class ProjectPage extends ConsumerWidget {
                 hint: 'هامش ${percentBp(m.marginBp)}', icon: Icons.trending_up, tone: m.netProfit < 0 ? AppColors.bad : AppColors.good),
           ],
           tabs: [
+            RecordTab('الخطة الزمنية', ProjectPlanTab(project: p), icon: Icons.timeline),
             RecordTab('بنود الكميات', _BoqTab(data: d, onChanged: refresh), count: d.boq.length, icon: Icons.checklist),
             RecordTab('الربحية', _ProfitTab(data: d), icon: Icons.insights_outlined),
             RecordTab('المستندات', _DocsTab(data: d, onChanged: refresh), count: d.docs.length, icon: Icons.folder_open),
@@ -489,6 +496,12 @@ class _BoqTab extends ConsumerWidget {
             tooltip: 'حذف البند',
             icon: const Icon(Icons.delete_outline, size: 18),
             onPressed: () async {
+              final sure = await confirmAction(context,
+                  title: 'حذف البند؟',
+                  message: 'سيُحذف هذا البند من مقايسة المشروع. المستندات المرتبطة لا تتأثر.',
+                  confirmLabel: 'حذف',
+                  destructive: true);
+              if (!sure || !context.mounted) return;
               final ok = await runGuarded(context, () async {
                 await ref.read(projectServiceProvider).deleteBoqLine(b.line.id, user: ref.read(currentUserProvider)!);
                 return true;
