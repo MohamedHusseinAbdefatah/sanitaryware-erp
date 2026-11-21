@@ -145,10 +145,11 @@ class _SettingsScreenState extends ConsumerState<GeneralSettingsTab> {
         final company = await ref.read(settingsServiceProvider).company();
         await Printing.layoutPdf(
           name: Strings.printTestPage,
-          onLayout: (_) => buildTestPage(
+          onLayout: (format) => buildTestPage(
             fonts: fonts,
             company: company,
             printedAt: DateTime.now(),
+            printer: format,
           ),
         );
       });

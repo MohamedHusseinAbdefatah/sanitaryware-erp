@@ -102,6 +102,21 @@ class AppDatabase extends _$AppDatabase {
     return rows.length == 1 && rows.single.data.values.first == 'ok';
   }
 
+  /// Brings every product's stored match key up to the current rule in
+  /// [matchKeyOf] (2.5.1 started ignoring Arabic vowel marks and invisible
+  /// characters). Only the keys that changed are written, so after the first
+  /// start this is one read of the codes and nothing else.
+  Future<void> refreshMatchKeys() async {
+    if (!await _tableExists('products')) return;
+    final rows = await customSelect('SELECT id, manufacturer_code, match_key FROM products').get();
+    for (final r in rows) {
+      final fresh = matchKeyOf(r.read<String>('manufacturer_code'));
+      if (fresh != r.read<String>('match_key')) {
+        await customStatement('UPDATE products SET match_key = ? WHERE id = ?', [fresh, r.read<int>('id')]);
+      }
+    }
+  }
+
   Future<bool> _tableExists(String name) async {
     final rows = await customSelect(
       "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
@@ -651,6 +666,7 @@ class AppDatabase extends _$AppDatabase {
             await installLedgerTriggers(this);
             await seedChart(this);
           }
+          await refreshMatchKeys();
         },
       );
 }

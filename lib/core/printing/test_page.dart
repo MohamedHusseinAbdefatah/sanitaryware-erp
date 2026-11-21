@@ -33,11 +33,25 @@ const _lines = [
 
 /// A one-page A4 PDF that proves Arabic fonts, right-to-left layout and
 /// number formatting print correctly before any real template is built.
+///
+/// [printer] is the paper and printable area the printer reported. Its
+/// margins are kept (as on every real document) so the signature and the
+/// print date never fall in the strip at the foot of the sheet that the
+/// printer cannot reach.
 Future<Uint8List> buildTestPage({
   required PdfFonts fonts,
   required CompanyInfo company,
   required DateTime printedAt,
+  PdfPageFormat? printer,
 }) {
+  double atLeast(double ours, double? theirs) => theirs != null && theirs > ours ? theirs : ours;
+  final paper = printer == null ? PdfPageFormat.a4 : PdfPageFormat(printer.width, printer.height);
+  final margin = pw.EdgeInsets.fromLTRB(
+    atLeast(36, printer?.marginLeft),
+    atLeast(36, printer?.marginTop),
+    atLeast(36, printer?.marginRight),
+    atLeast(48, printer?.marginBottom),
+  );
   final rows = <List<String>>[];
   var total = 0;
   for (var i = 0; i < _lines.length; i++) {
@@ -57,8 +71,8 @@ Future<Uint8List> buildTestPage({
   final doc = pw.Document(theme: fonts.theme, title: 'صفحة اختبار الطباعة');
   doc.addPage(
     pw.Page(
-      pageFormat: PdfPageFormat.a4,
-      margin: const pw.EdgeInsets.all(36),
+      pageFormat: paper,
+      margin: margin,
       textDirection: pw.TextDirection.rtl,
       build: (context) => pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.stretch,
@@ -101,12 +115,19 @@ Future<Uint8List> buildTestPage({
             'خط عريض للعناوين والإجماليات',
             style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
           ),
-          pw.Spacer(),
+          // Right after the content, not pinned to the foot of the sheet: the
+          // last few millimetres of the paper are outside many printers' reach.
+          pw.SizedBox(height: 40),
           pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
               pw.Text('التوقيع: ....................'),
-              pw.Text('تاريخ الطباعة: ${formatDateTime(printedAt)}'),
+              // Label and date as separate runs, so the date keeps its order.
+              pw.Row(mainAxisSize: pw.MainAxisSize.min, children: [
+                pw.Text('تاريخ الطباعة:'),
+                pw.SizedBox(width: 4),
+                pw.Text(formatDateTime(printedAt), textDirection: pw.TextDirection.ltr),
+              ]),
             ],
           ),
         ],

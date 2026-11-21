@@ -6,6 +6,8 @@ import '../../core/dates.dart';
 import '../../core/db/database.dart';
 import '../../core/l10n/strings.dart';
 import '../../core/money.dart';
+import '../../core/printing/documents.dart';
+import '../../core/printing/print_actions.dart';
 import '../../core/providers.dart';
 import '../../core/quantity.dart';
 import '../../core/services/doc_types.dart';
@@ -231,6 +233,21 @@ class _OrderDetailDialogState extends ConsumerState<_OrderDetailDialog> {
         _reject[l.line.id]!.clear();
       }
     });
+  }
+
+  /// Prints the supply request: [withPrices] false is the copy for the
+  /// supplier or customer, true the shop's own copy with costs and totals.
+  Future<void> _print({required bool withPrices}) async {
+    final d = await ref.read(purchaseOrderServiceProvider).detail(widget.orderId);
+    final db = ref.read(databaseProvider);
+    final supplier = await (db.select(db.suppliers)..where((s) => s.id.equals(d.order.supplierId))).getSingleOrNull();
+    if (!mounted) return;
+    await printDocument(
+      context,
+      ref,
+      name: '${withPrices ? 'طلب توريد داخلي' : 'طلب توريد'} ${d.order.number}',
+      build: (company, fonts) => purchaseOrderPdf(d, company, fonts, withPrices: withPrices, supplierPhone: supplier?.phone),
+    );
   }
 
   Future<void> _act(Future<Object?> Function(User user) action) async {
@@ -482,6 +499,18 @@ class _OrderDetailDialogState extends ConsumerState<_OrderDetailDialog> {
             onPressed: () => _act((u) => svc.cancel(widget.orderId, user: u)),
             child: const Text('إلغاء الأمر'),
           ),
+        // Two copies of the supply request: the supplier's (or customer's)
+        // with no prices, and the shop's own with prices and totals.
+        TextButton.icon(
+          onPressed: () => _print(withPrices: false),
+          icon: const Icon(Icons.print_outlined),
+          label: const Text('طباعة للمورد (بدون أسعار)'),
+        ),
+        TextButton.icon(
+          onPressed: () => _print(withPrices: true),
+          icon: const Icon(Icons.print),
+          label: const Text('طباعة داخلية (بالأسعار)'),
+        ),
         TextButton(onPressed: () => Navigator.pop(context), child: const Text(Strings.close)),
       ],
     );

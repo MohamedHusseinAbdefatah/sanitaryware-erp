@@ -1186,8 +1186,13 @@ class _EntryDialogState extends ConsumerState<_EntryDialog> {
   DateTime _from = DateTime.now();
   final _rows = <_EntryRow>[_EntryRow()];
 
+  /// The VAT basis of a new version, as checked on the supplier's list.
+  String _vat = VatStatus.unverified;
+  final _vatRate = TextEditingController();
+
   @override
   void dispose() {
+    _vatRate.dispose();
     _type.dispose();
     _name.dispose();
     for (final r in _rows) {
@@ -1229,6 +1234,8 @@ class _EntryDialogState extends ConsumerState<_EntryDialog> {
                     listType: _type.text,
                     effectiveFrom: _from,
                     sourceFile: 'إدخال يدوي',
+                    vatStatus: _vat,
+                    vatRateBp: _vatRate.text.trim().isEmpty ? null : _bp(_vatRate.text),
                   ),
             user: ref.read(currentUserProvider)!,
           );
@@ -1307,6 +1314,8 @@ class _EntryDialogState extends ConsumerState<_EntryDialog> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 12),
+                _VatFields(status: _vat, rate: _vatRate, onStatus: (v) => setState(() => _vat = v)),
               ],
               const SizedBox(height: 12),
               for (final r in _rows)

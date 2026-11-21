@@ -110,6 +110,7 @@ String matchKeyOf(String code) {
   final b = StringBuffer();
   for (final r in code.runes) {
     if (r == 0x20 || r == 0xA0 || r == 0x09) continue;
+    if (_invisibleInCode(r)) continue;
     if (r >= 0x0660 && r <= 0x0669) {
       b.writeCharCode(0x30 + r - 0x0660);
     } else if (r >= 0x06F0 && r <= 0x06F9) {
@@ -120,6 +121,23 @@ String matchKeyOf(String code) {
   }
   return b.toString().toUpperCase();
 }
+
+/// Characters that change nothing a person can see in a code: Arabic vowel
+/// marks (an Arabic keyboard adds a kasra to "00123-A" easily), the tatweel,
+/// and the invisible direction and zero-width marks that copying from a PDF or
+/// a chat brings along. Without this the same code typed twice could pass the
+/// duplicate check.
+bool _invisibleInCode(int r) =>
+    (r >= 0x0610 && r <= 0x061A) || // Arabic signs above and below
+    (r >= 0x064B && r <= 0x065F) || // fatha, damma, kasra, shadda, sukun...
+    r == 0x0670 || // superscript alef
+    (r >= 0x06D6 && r <= 0x06ED) || // Quranic marks
+    r == 0x0640 || // tatweel
+    r == 0x00AD || // soft hyphen
+    (r >= 0x200B && r <= 0x200F) || // zero-width space/joiners, LRM, RLM
+    (r >= 0x202A && r <= 0x202E) || // embedding and override marks
+    (r >= 0x2060 && r <= 0x2069) || // word joiner, isolates
+    r == 0xFEFF; // byte order mark
 
 /// The Variant part of a match: blank and case do not matter.
 String variantKeyOf(String? variant) => (variant ?? '').trim().toUpperCase();

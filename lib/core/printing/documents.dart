@@ -7,6 +7,7 @@ import '../dates.dart';
 import '../money.dart';
 import '../quantity.dart';
 import '../reports/report_table.dart';
+import '../services/purchase_order_service.dart';
 import '../services/purchase_service.dart';
 import '../services/sales_service.dart';
 import 'pdf_fonts.dart';
@@ -203,6 +204,73 @@ Future<Uint8List> purchaseInvoicePdf(PurchaseInvoiceDetail d, PrintCompany compa
       if (inv.notes != null) ...[pw.SizedBox(height: 8), pw.Text('ملاحظات: ${inv.notes}')],
       pw.SizedBox(height: 30),
       _signatures([('المستلم', null), ('المورد', null)]),
+    ],
+  );
+}
+
+/// A purchase order as "طلب توريد", in two copies: the supplier's (or the
+/// customer's) without any price, and the shop's own with list price,
+/// discount, net cost and totals.
+Future<Uint8List> purchaseOrderPdf(
+  PoDetail d,
+  PrintCompany company,
+  PdfFonts fonts, {
+  required bool withPrices,
+  String? supplierPhone,
+}) {
+  final o = d.order;
+  String pct(int bp) => bp == 0 ? '—' : '${bp % 100 == 0 ? bp ~/ 100 : (bp / 100).toStringAsFixed(2)}%';
+  return _document(
+    fonts: fonts,
+    company: company,
+    title: withPrices ? 'طلب توريد (نسخة داخلية)' : 'طلب توريد',
+    number: o.number,
+    date: o.orderDate,
+    cancelled: o.status == 'cancelled',
+    body: [
+      _partyBlock(
+        'المورد',
+        d.supplierName,
+        phone: supplierPhone,
+        extras: [if (o.expectedDate != null) _labelValue('موعد التوريد المطلوب', formatDate(o.expectedDate!))],
+      ),
+      pw.SizedBox(height: 10),
+      rtlTable(
+        columns: [
+          const PdfColumn('م', flex: 0.6, numeric: true),
+          const PdfColumn('الكود', flex: 1.5, numeric: true),
+          PdfColumn('الصنف', flex: withPrices ? 3.2 : 5),
+          const PdfColumn('الكمية', flex: 1, numeric: true),
+          if (withPrices) ...const [
+            PdfColumn('سعر القائمة', flex: 1.3, numeric: true),
+            PdfColumn('الخصم', flex: 1, numeric: true),
+            PdfColumn('صافي التكلفة', flex: 1.3, numeric: true),
+            PdfColumn('الإجمالي', flex: 1.4, numeric: true),
+          ],
+        ],
+        rows: [
+          for (var i = 0; i < d.lines.length; i++)
+            [
+              '${i + 1}',
+              d.lines[i].productCode,
+              d.lines[i].productName,
+              formatQty(d.lines[i].line.qty),
+              if (withPrices) ...[
+                d.lines[i].line.listPrice == null ? '—' : formatMoney(d.lines[i].line.listPrice!),
+                pct(d.lines[i].line.discountBp + d.lines[i].line.extraDiscountBp),
+                formatMoney(d.lines[i].line.unitCost),
+                formatMoney(d.lines[i].orderedValue),
+              ],
+            ],
+        ],
+      ),
+      if (withPrices) ...[
+        pw.SizedBox(height: 10),
+        _totals([('إجمالي الطلب', d.orderedValue, true)]),
+      ],
+      if (o.notes != null) ...[pw.SizedBox(height: 8), pw.Text('ملاحظات: ${o.notes}')],
+      pw.SizedBox(height: 30),
+      _signatures([('المورد', null), ('عن المحل', null)]),
     ],
   );
 }

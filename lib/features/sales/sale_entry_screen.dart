@@ -9,7 +9,6 @@ import '../../core/dates.dart';
 import '../../core/db/database.dart';
 import '../../core/l10n/strings.dart';
 import '../../core/money.dart';
-import '../../core/pricing_math.dart';
 import '../../core/printing/print_actions.dart';
 import '../../core/providers.dart';
 import '../../core/quantity.dart';
@@ -71,13 +70,21 @@ class _Line {
   Product get product => row.product;
   int? get qtyValue => parseQty(qty.text, allowDecimal: row.unitAllowsDecimal);
   int? get priceValue => parseMoney(price.text);
-  int get discountValue => discount.text.trim().isEmpty ? 0 : (parseMoney(discount.text) ?? 0);
+  /// The line before its discount: quantity x price. Null while invalid.
+  int? get gross {
+    final q = qtyValue, p = priceValue;
+    return q == null || p == null ? null : lineAmount(q, p);
+  }
+
+  /// The discount is typed as a percent of the line (20 = 20% off the list
+  /// price); empty is no discount. The invoice keeps it as an amount.
+  int get discountValue => discountAmount(discount.text, percent: true, subtotal: gross ?? 0) ?? 0;
 
   /// Null while any field is invalid.
   int? get total {
-    final q = qtyValue, p = priceValue;
-    if (q == null || p == null) return null;
-    return lineAmount(q, p) - discountValue;
+    final g = gross;
+    if (g == null) return null;
+    return g - discountValue;
   }
 
   void dispose() {
@@ -89,6 +96,13 @@ class _Line {
 }
 
 String _plain(int piastres) => formatMoney(piastres).replaceAll(',', '');
+
+/// Basis points as the percent a person would type: 2200 -> "22", 2150 -> "21.5".
+String _percentText(int bp) {
+  final whole = bp ~/ 100, rest = bp % 100;
+  if (rest == 0) return '$whole';
+  return '$whole.${rest.toString().padLeft(2, '0')}'.replaceFirst(RegExp(r'0$'), '');
+}
 
 class SaleEntryScreen extends ConsumerStatefulWidget {
   const SaleEntryScreen({super.key, this.customerId, this.projectId});
@@ -178,14 +192,8 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
   /// typed one. 21% from the policy and 1% more is 22%.
   void _fillCustomerDiscounts() {
     for (final l in _lines.where((l) => !l.discountEdited)) {
-      final q = l.qtyValue, p = l.priceValue;
       final bp = l.quote?.totalBp ?? 0;
-      var text = '';
-      if (bp > 0 && q != null && p != null) {
-        final gross = lineAmount(q, p);
-        final off = gross - applyDiscount(gross, bp);
-        if (off > 0) text = _plain(off);
-      }
+      final text = bp > 0 ? _percentText(bp) : '';
       if (l.discount.text != text) l.discount.text = text;
     }
   }
@@ -858,10 +866,21 @@ class _LineRow extends StatelessWidget {
           ),
           cell(
             6,
-            MoneyField(
+            TextFormField(
               controller: line.discount,
-              label: Strings.discount,
-              dense: true,
+              textAlign: TextAlign.center,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                labelText: '${Strings.discount} %',
+                isDense: true,
+                // The amount it takes off, so the person sees the effect.
+                helperText: line.discountValue > 0 ? '= ${formatMoney(line.discountValue)}' : null,
+              ),
+              // Empty is allowed: a line does not need a discount.
+              validator: (text) {
+                if ((text ?? '').trim().isEmpty) return null;
+                return discountAmount(text!, percent: true, subtotal: line.gross ?? 0) == null ? 'من 0 إلى 100' : null;
+              },
               onChanged: (_) {
                 line.discountEdited = true;
                 onChanged();

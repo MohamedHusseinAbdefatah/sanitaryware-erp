@@ -2,6 +2,30 @@
 
 Versions follow `version:` in `pubspec.yaml` and `lib/core/version.dart`.
 
+## 2.5.1
+
+The client's requests of 21 November. No database change.
+
+- Purchase orders print as "طلب توريد" in two copies: one for the supplier
+  (or customer) with code, product and quantity and no prices, and an
+  internal copy with list price, discount, net cost, line totals and the
+  order total. Both from the purchase order window.
+- Sales invoice: the discount on a line is a percent of the line (20 = 20%
+  off the list price), with the amount it takes off shown under it. Empty is
+  no discount. The customer's or policy discount fills in as a percent (21%
+  and one point = 22). The invoice still keeps the discount as an amount,
+  so nothing changes in saved invoices, the books or the reports.
+- Printer test page: the signature and print date follow the content
+  instead of the very foot of the sheet, and the page keeps the printer's own
+  margins, as every document already did. They no longer print half cut.
+- Price lists: a new version made from "إدخال صنف أو مجموعة أصناف" can be
+  given its VAT basis and rate, as the full import already could.
+- Fix: a manufacturer code typed with an Arabic vowel mark (a kasra from an
+  Arabic keyboard), a tatweel or an invisible character copied from a PDF
+  or a chat passed the duplicate check as a different code. These are now
+  ignored when codes are compared; the code is still saved as typed. Codes
+  saved by earlier versions are re-compared on the first start.
+
 ## 2.5.0
 
 Look, navigation and ease of use. No database change, no change to any
