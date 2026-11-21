@@ -341,7 +341,7 @@ const _scenarios = [
 ];
 
 /// Automated tests in the release (keep in step with `flutter test`).
-const _testCount = 422;
+const _testCount = 453;
 
 const _missing = [
   ['Shopify', 'الربط مع المتجر الإلكتروني ومزامنة الأصناف والمخزون والطلبات. مؤجل باتفاق؛ أوامر البيع تحفظ القناة ورقم الطلب الخارجي تمهيداً له', 'القسم 11'],

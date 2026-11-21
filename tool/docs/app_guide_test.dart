@@ -251,18 +251,20 @@ final _content = <_B>[
         'first. The chosen lines are saved as one draft purchase order per supplier (the requisition), approved as usual.',
   ]),
   const _S('17_purchase_entry', 'Purchase invoice: list price, agreed discount, extra %, transport'),
-  const _H('Supplier advance locked to a price list', level: 2),
+  const _H('Supplier advances and price list categories', level: 2),
   const _L([
-    'Money paid to a supplier ahead (e.g. 300,000), from the supplier\'s menu. It locks the price lists in force that '
-        'day for the brands chosen, and the supplier\'s discount on them that day; not particular products.',
-    'It counts in the supplier\'s balance at once. Each advance shows what has been taken and what is left.',
-    'A purchase invoice for that supplier can be "from the advance": every line takes its locked list price and '
-        'discount, whatever newer lists or discounts exist, and the invoice is paid from the advance. An invoice '
-        'bigger than what is left, or a product not on the locked lists, is refused.',
-    'Cancelling such an invoice gives its value back to the advance. An advance can be cancelled only while nothing '
-        'has been taken; its payment cannot be cancelled from the payments screen.',
+    'An advance belongs to the supplier, not to a price list. Any purchase invoice of that supplier (any brand or '
+        'list) can take part of the advance balance, when entered or later from the invoice. Each use links one '
+        'advance to one invoice; more than is left, or more than the invoice owes, is refused.',
+    'Price lists from the past can be uploaded: each takes its own place in time and ends the day before the next '
+        'list of the same type; newer lists are never touched. Lists can be switched off (they price nothing new and '
+        'stay readable) and on again.',
+    'Categories of lists (luxury, mid, economy...) each carry a buying discount, used when the supplier has no '
+        'recorded discount; invoice lines keep the category and discount they used.',
+    'Selling discounts also have a grid by brand and customer type; a brand without its own discount takes the '
+        'customer type\'s usual one.',
   ]),
-  const _S('19_purchase_from_advance', 'A purchase taken against an advance at the locked prices'),
+  const _S('18_supplier_advances', 'Supplier advances'),
   const _H('8. Returns, payments, balances and expenses'),
   const _L([
     'Sale return (anyone) back into a chosen place, keeping the price list version the goods left under; purchase '
