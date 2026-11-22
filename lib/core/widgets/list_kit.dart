@@ -184,12 +184,15 @@ class NameAvatar extends StatelessWidget {
 /// A name with a smaller second line (phone, code...) and an optional
 /// leading picture or avatar.
 class TitleCell extends StatelessWidget {
-  const TitleCell(this.title, {super.key, this.subtitle, this.leading, this.muted = false});
+  const TitleCell(this.title, {super.key, this.subtitle, this.leading, this.muted = false, this.tag});
 
   final String title;
   final String? subtitle;
   final Widget? leading;
   final bool muted;
+
+  /// Shown right after the title (a product's model number).
+  final Widget? tag;
 
   @override
   Widget build(BuildContext context) {
@@ -199,9 +202,14 @@ class TitleCell extends StatelessWidget {
         if (leading != null) ...[leading!, const SizedBox(width: 10)],
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            Text(title,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontWeight: FontWeight.w700, color: muted ? AppColors.muted : AppColors.ink)),
+            Row(children: [
+              Flexible(
+                child: Text(title,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontWeight: FontWeight.w700, color: muted ? AppColors.muted : AppColors.ink)),
+              ),
+              if (tag != null) ...[const SizedBox(width: 8), tag!],
+            ]),
             if (subtitle != null && subtitle!.isNotEmpty)
               Text(subtitle!,
                   overflow: TextOverflow.ellipsis,

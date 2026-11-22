@@ -319,7 +319,6 @@ class SellingPolicyService {
   }) {
     return db.transaction(() async {
       _admin(user);
-      if (reason.trim().isEmpty) throw ValidationException('اكتب سبب التعديل');
       _checkPercent(discountBp);
       _checkPercent(maxDiscountBp);
       _checkPercent(minMarginBp);

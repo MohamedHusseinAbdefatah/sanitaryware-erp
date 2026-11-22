@@ -190,8 +190,6 @@ void main() {
     test('only the owner switches lists; a withdrawn list cannot come back', () async {
       await expectLater(lists.setActive(shop.priceListId, false, reason: 'x', user: shop.cashier),
           throwsA(isA<ValidationException>()));
-      await expectLater(lists.setActive(shop.priceListId, false, reason: ' ', user: shop.admin),
-          throwsA(isA<ValidationException>()));
       await lists.withdraw(shop.priceListId, reason: 'خطأ', user: shop.admin);
       await expectLater(lists.setActive(shop.priceListId, true, reason: 'x', user: shop.admin),
           throwsA(isA<ValidationException>()));

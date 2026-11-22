@@ -17,6 +17,7 @@ import '../../core/services/reservation_service.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/data_list.dart';
 import '../../core/widgets/record_page.dart';
+import 'delete_products_dialog.dart';
 import 'product_form_dialog.dart';
 import 'product_image.dart';
 import 'stock_dialogs.dart';
@@ -76,6 +77,7 @@ class ProductPage extends ConsumerWidget {
               : const InitialsAvatar('', size: 72, icon: Icons.inventory_2_outlined),
           onRefresh: refresh,
           pills: [
+            if ((pr.modelNo ?? '').isNotEmpty) ModelTag(pr.modelNo, large: true),
             if (!pr.isActive) const StatusPill.bad('موقوف'),
             if (r.brandName != null) StatusPill(r.brandName!),
             if (r.categoryName != null) StatusPill(r.categoryName!),
@@ -106,6 +108,25 @@ class ProductPage extends ConsumerWidget {
               icon: const Icon(Icons.price_change_outlined),
               label: const Text('المخزون حسب السعر'),
             ),
+            if (canEdit)
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(foregroundColor: AppColors.bad),
+                onPressed: () async {
+                  final changed = await deleteProducts(context, ref, [pr.id]);
+                  if (!context.mounted || !changed) return;
+                  final still = await (ref.read(databaseProvider).select(ref.read(databaseProvider).products)
+                        ..where((t) => t.id.equals(pr.id)))
+                      .getSingleOrNull();
+                  if (!context.mounted) return;
+                  if (still == null) {
+                    context.go('/products');
+                  } else {
+                    refresh();
+                  }
+                },
+                icon: const Icon(Icons.delete_outline),
+                label: const Text('حذف'),
+              ),
           ],
           stats: [
             StatTile('الرصيد', '${formatQty(r.stock)} $unit',

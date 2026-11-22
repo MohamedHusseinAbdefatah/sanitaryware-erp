@@ -249,4 +249,77 @@ class PartyService {
     await (db.delete(db.customerContacts)..where((t) => t.id.equals(id))).go();
     await AuditService(db).log(action: AuditAction.update, entity: 'customer_contact', entityId: id, userId: userId, details: 'حذف');
   }
+
+  // --------------------------------------------------------------- delete
+
+  /// What a customer or supplier is used in ("2 فاتورة بيع، 1 دفعة"); empty
+  /// when nothing, so it can be deleted.
+  Future<String> usage({required bool customer, required int id}) async {
+    final checks = customer
+        ? const {
+            "SELECT COUNT(*) AS n FROM sales_invoices WHERE customer_id = ?": 'فاتورة بيع',
+            "SELECT COUNT(*) AS n FROM sales_orders WHERE customer_id = ?": 'أمر بيع أو عرض سعر',
+            "SELECT COUNT(*) AS n FROM payments WHERE party_type = 'customer' AND party_id = ?": 'دفعة',
+            "SELECT COUNT(*) AS n FROM reservations WHERE customer_id = ?": 'حجز',
+            "SELECT COUNT(*) AS n FROM projects WHERE customer_id = ?": 'مشروع',
+          }
+        : const {
+            "SELECT COUNT(*) AS n FROM purchase_invoices WHERE supplier_id = ?": 'فاتورة شراء',
+            "SELECT COUNT(*) AS n FROM purchase_orders WHERE supplier_id = ?": 'أمر شراء',
+            "SELECT COUNT(*) AS n FROM payments WHERE party_type = 'supplier' AND party_id = ?": 'دفعة',
+            "SELECT COUNT(*) AS n FROM supplier_advances WHERE supplier_id = ?": 'دفعة مقدمة',
+            "SELECT COUNT(*) AS n FROM cost_layers WHERE supplier_id = ?": 'رصيد مخزون',
+            "SELECT COUNT(*) AS n FROM sales_invoice_items WHERE direct_supplier_id = ?": 'توريد مباشر',
+            "SELECT COUNT(*) AS n FROM stock_entries WHERE supplier_id = ?": 'إدخال مخزون',
+          };
+    final parts = <String>[];
+    for (final e in checks.entries) {
+      try {
+        final n = (await db.customSelect(e.key, variables: [Variable.withInt(id)]).getSingle()).read<int>('n');
+        if (n > 0) parts.add('$n ${e.value}');
+      } on Object {
+        // A table an older database does not have.
+      }
+    }
+    return parts.join('، ');
+  }
+
+  /// Deletes a customer or supplier entered by mistake, for good. Only one
+  /// with no dealings at all (no invoice, order, payment, advance, stock or
+  /// project); one with dealings is switched off instead. Its opening
+  /// balance entry leaves the books with it; its contacts, the supplier
+  /// discounts set for it, and a lead's link to it go too.
+  Future<void> deleteParty({required bool customer, required int id, String reason = '', int? userId}) {
+    return db.transaction(() async {
+      final used = await usage(customer: customer, id: id);
+      if (used.isNotEmpty) {
+        throw ValidationException('لا يُحذف لأنه مستخدم في: $used. يمكن إيقافه بدلاً من ذلك.');
+      }
+      final String name;
+      if (customer) {
+        final c = await (db.select(db.customers)..where((t) => t.id.equals(id))).getSingle();
+        name = c.name;
+        await (db.delete(db.customerContacts)..where((t) => t.customerId.equals(id))).go();
+        await db.customStatement('UPDATE leads SET customer_id = NULL WHERE customer_id = ?', [id]);
+        await (db.delete(db.customers)..where((t) => t.id.equals(id))).go();
+      } else {
+        final s = await (db.select(db.suppliers)..where((t) => t.id.equals(id))).getSingle();
+        name = s.name;
+        await (db.delete(db.buyingPolicies)..where((t) => t.supplierId.equals(id))).go();
+        await db.customStatement('UPDATE project_boq_lines SET preferred_supplier_id = NULL WHERE preferred_supplier_id = ?', [id]);
+        await (db.delete(db.suppliers)..where((t) => t.id.equals(id))).go();
+      }
+      // The opening balance entry is rebuilt from nothing: it is voided.
+      await db.customStatement('INSERT OR IGNORE INTO ledger_queue (ref_type, ref_id) VALUES (?, ?)',
+          [customer ? 'customer_opening' : 'supplier_opening', id]);
+      await AuditService(db).log(
+        action: AuditAction.delete,
+        entity: customer ? 'customer' : 'supplier',
+        entityId: id,
+        userId: userId,
+        details: name,
+        reason: reason.trim().isEmpty ? null : reason.trim(),
+      );
+    });
+  }
 }

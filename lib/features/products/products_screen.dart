@@ -16,6 +16,7 @@ import '../../core/widgets/data_list.dart';
 import '../../core/widgets/list_kit.dart';
 import '../../core/widgets/feedback.dart';
 import 'bulk_category_dialog.dart';
+import 'delete_products_dialog.dart';
 import 'catalog_dialog.dart';
 import 'price_history_dialog.dart';
 import 'product_form_dialog.dart';
@@ -217,7 +218,19 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                       icon: const Icon(Icons.category_outlined),
                       label: const Text('تعيين التصنيف…'),
                     ),
-                    const Text('ابحث أو صفِّ (مثلاً: الماركة + بدون تصنيف + كلمة "حوض")، ثم حدد الكل وعيّن التصنيف.',
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(foregroundColor: AppColors.bad),
+                      onPressed: _selected.isEmpty
+                          ? null
+                          : () async {
+                              if (await deleteProducts(context, ref, _selected.toList()) && mounted) {
+                                setState(_selected.clear);
+                              }
+                            },
+                      icon: const Icon(Icons.delete_outline),
+                      label: const Text('حذف المحدد…'),
+                    ),
+                    const Text('ابحث أو صفِّ (مثلاً: الماركة + بدون تصنيف + كلمة "حوض")، ثم حدد الكل وعيّن التصنيف أو احذف الخطأ.',
                         style: TextStyle(fontSize: 12, color: AppColors.muted)),
                   ]),
                 ),
@@ -251,11 +264,11 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                           DataListColumn('', width: 60, (r) => ProductThumb(productId: r.product.id, size: 44)),
                           DataListColumn(Strings.productName, sortValue: (r) => r.product.nameAr, flex: 5, (r) => TitleCell(
                                 r.product.nameAr,
+                                tag: ModelTag(r.product.modelNo),
                                 subtitle: [
                                   r.product.code,
                                   if (r.product.manufacturerCode.isNotEmpty && r.product.manufacturerCode != r.product.code)
                                     'كود الشركة ${r.product.manufacturerCode}',
-                                  if ((r.product.modelNo ?? '').isNotEmpty) 'موديل ${r.product.modelNo}',
                                 ].join('  ·  '),
                                 muted: !r.product.isActive,
                               )),
@@ -323,6 +336,7 @@ class ProductCard extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         Text(p.nameAr, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, height: 1.25)),
+        if ((p.modelNo ?? '').isNotEmpty) Padding(padding: const EdgeInsets.only(top: 2), child: ModelTag(p.modelNo)),
         Text([p.code, if (row.brandName != null) row.brandName!].join('  ·  '),
             overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11.5, color: AppColors.muted)),
         const SizedBox(height: 4),
@@ -367,7 +381,7 @@ class FilterMenu extends StatelessWidget {
   }
 }
 
-class _ProductMenu extends StatelessWidget {
+class _ProductMenu extends ConsumerWidget {
   const _ProductMenu({required this.row, required this.isAdmin, required this.canStock});
 
   final bool canStock;
@@ -376,7 +390,7 @@ class _ProductMenu extends StatelessWidget {
   final bool isAdmin;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return PopupMenuButton<void Function()>(
       tooltip: 'إجراءات',
       onSelected: (action) => action(),
@@ -386,6 +400,11 @@ class _ProductMenu extends StatelessWidget {
         PopupMenuItem(value: () => showStockCard(context, row), child: const Text(Strings.stockCard)),
         PopupMenuItem(value: () => showStockByPrice(context, row), child: const Text('المخزون حسب السعر')),
         PopupMenuItem(value: () => showPriceHistory(context, row), child: const Text('سجل الأسعار')),
+        if (isAdmin)
+          PopupMenuItem(
+            value: () => deleteProducts(context, ref, [row.product.id]),
+            child: const Text('حذف الصنف', style: TextStyle(color: AppColors.bad)),
+          ),
       ],
     );
   }

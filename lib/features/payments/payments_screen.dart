@@ -93,35 +93,92 @@ class PaymentsScreen extends ConsumerWidget {
   }
 }
 
-class _PaymentList extends ConsumerWidget {
+/// Deletes a payment entered by mistake (a supplier advance with its
+/// advance). Balances, the invoice and the books follow. Returns true when
+/// done.
+Future<bool> deletePayment(BuildContext context, WidgetRef ref, Payment p) async {
+  final reason = await askReason(context, title: 'حذف الدفعة ${p.number} (${formatMoney(p.amount)})');
+  if (reason == null || !context.mounted) return false;
+  final ok = await runGuarded(context, () async {
+    await ref.read(paymentServiceProvider).remove(p.id, reason: reason, user: ref.read(currentUserProvider)!);
+    return true;
+  });
+  if (ok == true && context.mounted) showToast(context, 'حُذفت الدفعة ${p.number}، وتعدل الرصيد تلقائياً');
+  return ok == true;
+}
+
+/// Print, correct and delete for one payment, wherever payments are listed
+/// (the payments screen, a supplier's or customer's page).
+class PaymentActions extends ConsumerWidget {
+  const PaymentActions({super.key, required this.payment, required this.partyName, this.cheque, this.onChanged});
+
+  final Payment payment;
+  final String partyName;
+  final Cheque? cheque;
+  final VoidCallback? onChanged;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(currentUserProvider);
+    final canDelete = user?.can(Perm.payOut) ?? false;
+    final owner = user?.isAdmin ?? false;
+    final row = PaymentRow(payment, partyName, cheque);
+    final active = payment.status == DocStatus.active;
+    return PopupMenuButton<VoidCallback>(
+      tooltip: 'إجراءات',
+      onSelected: (f) => f(),
+      itemBuilder: (_) => [
+        PopupMenuItem(value: () => printReceipt(context, ref, row), child: const Text(Strings.printReceipt)),
+        if (owner && active)
+          PopupMenuItem(
+            value: () async {
+              await showDialog<void>(context: context, builder: (_) => CorrectPaymentDialog(row: row));
+              onChanged?.call();
+            },
+            child: const ListTile(dense: true, leading: Icon(Icons.edit_outlined), title: Text('تعديل الدفعة')),
+          ),
+        if (canDelete && active)
+          PopupMenuItem(
+            value: () async {
+              if (await deletePayment(context, ref, payment)) onChanged?.call();
+            },
+            child: const ListTile(
+              dense: true,
+              leading: Icon(Icons.delete_outline, color: AppColors.bad),
+              title: Text('حذف الدفعة', style: TextStyle(color: AppColors.bad)),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _PaymentList extends ConsumerStatefulWidget {
   const _PaymentList({required this.direction});
 
   final String direction;
 
-  Future<void> _cancel(BuildContext context, WidgetRef ref, PaymentRow row) async {
-    final reason = await askReason(context, title: '${Strings.cancelPayment} ${row.payment.number}');
-    if (reason == null || !context.mounted) return;
-    await runGuarded(
-      context,
-      () =>
-          ref.read(paymentServiceProvider).cancel(row.payment.id, reason: reason, user: ref.read(currentUserProvider)!),
-    );
-  }
+  @override
+  ConsumerState<_PaymentList> createState() => _PaymentListState();
+}
 
-  /// Owner: corrects a wrong amount, date or note on a saved payment.
-  Future<void> _correct(BuildContext context, WidgetRef ref, PaymentRow row) async {
-    await showDialog<void>(context: context, builder: (_) => CorrectPaymentDialog(row: row));
-  }
+class _PaymentListState extends ConsumerState<_PaymentList> {
+  /// Deleted (cancelled) payments are out of the list unless asked for.
+  bool _showDeleted = false;
+
+  String get direction => widget.direction;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final isAdmin = ref.watch(currentUserProvider)?.can(Perm.payOut) ?? false;
     final owner = ref.watch(currentUserProvider)?.isAdmin ?? false;
     final rows = ref.watch(_paymentsProvider(direction));
     return rows.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text('$e')),
-      data: (list) {
+      data: (all) {
+        final deleted = all.where((r) => r.payment.status != DocStatus.active).length;
+        final list = _showDeleted ? all : all.where((r) => r.payment.status == DocStatus.active).toList();
         final active = list.where((r) => r.payment.status == DocStatus.active).toList();
         final now = DateTime.now();
         int sum(Iterable<PaymentRow> rs) => rs.fold(0, (s, r) => s + r.payment.amount);
@@ -153,6 +210,18 @@ class _PaymentList extends ConsumerWidget {
                 SummaryItem('شيكات (الشهر)', formatMoney(byMethod(PaymentMethod.cheque)), icon: Icons.receipt_outlined),
               ],
             ),
+            if (deleted > 0)
+              Padding(
+                padding: const EdgeInsetsDirectional.fromSTEB(24, 6, 24, 0),
+                child: Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: FilterChip(
+                    label: Text('عرض المحذوفة ($deleted)'),
+                    selected: _showDeleted,
+                    onSelected: (v) => setState(() => _showDeleted = v),
+                  ),
+                ),
+              ),
             Expanded(child: _table(context, ref, list, isAdmin, owner)),
           ],
         );
@@ -165,19 +234,7 @@ class _PaymentList extends ConsumerWidget {
       rows: list,
       emptyText: Strings.noPayments,
       rowColor: (r) => r.payment.status == DocStatus.cancelled ? AppColors.canvas : null,
-      trailing: (r) => PopupMenuButton<VoidCallback>(
-        onSelected: (f) => f(),
-        itemBuilder: (_) => [
-          PopupMenuItem(value: () => printReceipt(context, ref, r), child: const Text(Strings.printReceipt)),
-          if (owner && r.payment.status == DocStatus.active)
-            PopupMenuItem(
-              value: () => _correct(context, ref, r),
-              child: const ListTile(dense: true, leading: Icon(Icons.edit_outlined), title: Text('تعديل الدفعة (المالك)')),
-            ),
-          if (isAdmin && r.payment.status == DocStatus.active)
-            PopupMenuItem(value: () => _cancel(context, ref, r), child: const Text(Strings.cancelPayment)),
-        ],
-      ),
+      trailing: (r) => PaymentActions(payment: r.payment, partyName: r.partyName, cheque: r.cheque),
       columns: [
         DataListColumn(
           Strings.number,
@@ -217,7 +274,7 @@ class _PaymentList extends ConsumerWidget {
           Strings.status,
           numeric: true,
           (r) => r.payment.status == DocStatus.cancelled
-              ? const StatusPill.bad(Strings.cancelled)
+              ? const StatusPill.bad('محذوفة')
               : r.cheque == null
               ? const StatusPill.good('سارية')
               : chequePill(r.cheque!.status),
@@ -253,7 +310,7 @@ class _ChequeListState extends ConsumerState<_ChequeList> {
   );
 
   Future<void> _bounce(ChequeRow row) async {
-    final reason = await askReason(context, title: '${Strings.markBounced}: ${row.cheque.chequeNo}');
+    final reason = await askReason(context, title: '${Strings.markBounced}: ${row.cheque.chequeNo}', required: true);
     if (reason == null || !mounted) return;
     await runGuarded(
       context,
@@ -399,6 +456,8 @@ class _CorrectPaymentDialogState extends ConsumerState<CorrectPaymentDialog> {
   final _reason = TextEditingController();
   final _form = GlobalKey<FormState>();
   late DateTime _date = _p.date;
+  late int _partyId = _p.partyId;
+  late String _method = _p.method;
 
   @override
   void dispose() {
@@ -415,6 +474,8 @@ class _CorrectPaymentDialogState extends ConsumerState<CorrectPaymentDialog> {
             _p.id,
             amount: parseMoney(_amount.text),
             date: _date,
+            partyId: _partyId,
+            method: _method,
             notes: _notes.text,
             reason: _reason.text,
             user: ref.read(currentUserProvider)!,
@@ -467,10 +528,32 @@ class _CorrectPaymentDialogState extends ConsumerState<CorrectPaymentDialog> {
             const SizedBox(height: 12),
             TextField(controller: _notes, decoration: const InputDecoration(labelText: Strings.notes)),
             const SizedBox(height: 12),
+            _PartyPicker(
+              supplier: _p.partyType == PartyType.supplier,
+              value: _partyId,
+              onChanged: (v) => setState(() => _partyId = v),
+            ),
+            if (_partyId != _p.partyId && _p.invoiceRefId != null && _p.invoiceRefType != RefType.supplierAdvance)
+              const Padding(
+                padding: EdgeInsets.only(top: 4),
+                child: Text('بنقلها لطرف آخر تُفك من الفاتورة أو الأمر المرتبط وتصبح تحت حساب الطرف الجديد',
+                    style: TextStyle(color: AppColors.warn, fontSize: 12)),
+              ),
+            if (_p.method != PaymentMethod.cheque) ...[
+              const SizedBox(height: 12),
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: PaymentMethod.cash, label: Text(Strings.methodCash)),
+                  ButtonSegment(value: PaymentMethod.bank, label: Text(Strings.methodBank)),
+                ],
+                selected: {_method},
+                onSelectionChanged: (s) => setState(() => _method = s.single),
+              ),
+            ],
+            const SizedBox(height: 12),
             TextFormField(
               controller: _reason,
-              decoration: const InputDecoration(labelText: 'سبب التعديل (يُحفظ في سجل العمليات)'),
-              validator: (v) => (v ?? '').trim().isEmpty ? Strings.required : null,
+              decoration: const InputDecoration(labelText: 'سبب التعديل (اختياري، يُحفظ في سجل العمليات)'),
             ),
           ]),
         ),
@@ -479,6 +562,38 @@ class _CorrectPaymentDialogState extends ConsumerState<CorrectPaymentDialog> {
         TextButton(onPressed: () => Navigator.pop(context), child: const Text(Strings.cancel)),
         FilledButton.icon(onPressed: _save, icon: const Icon(Icons.save), label: const Text('حفظ التعديل')),
       ],
+    );
+  }
+}
+
+/// The supplier or customer a corrected payment belongs to.
+class _PartyPicker extends ConsumerWidget {
+  const _PartyPicker({required this.supplier, required this.value, required this.onChanged});
+
+  final bool supplier;
+  final int value;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final parties = ref.watch(partyServiceProvider);
+    return StreamBuilder<List<(int, String)>>(
+      stream: supplier
+          ? parties.watchSuppliers().map((l) => [for (final s in l) (s.id, s.name)])
+          : parties.watchCustomers().map((l) => [for (final c in l) (c.id, c.name)]),
+      builder: (context, snap) {
+        final items = snap.data ?? const <(int, String)>[];
+        return DropdownButtonFormField<int>(
+          key: ValueKey(('party', items.length)),
+          initialValue: items.any((e) => e.$1 == value) ? value : null,
+          isExpanded: true,
+          decoration: InputDecoration(labelText: supplier ? 'المورد' : 'العميل'),
+          items: [for (final (id, name) in items) DropdownMenuItem(value: id, child: Text(name))],
+          onChanged: (v) {
+            if (v != null) onChanged(v);
+          },
+        );
+      },
     );
   }
 }

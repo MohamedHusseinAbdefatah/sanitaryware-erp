@@ -598,7 +598,6 @@ class LedgerService {
   Future<void> voidManual(int entryId, {required String reason, required User user}) {
     return db.transaction(() async {
       if (!user.can(Perm.accounts)) throw ValidationException('القيود اليدوية لصلاحية المحاسبة');
-      if (reason.trim().isEmpty) throw ValidationException('سبب الإلغاء مطلوب');
       final e = await (db.select(db.journalEntries)..where((t) => t.id.equals(entryId))).getSingle();
       if (e.source != 'manual') throw ValidationException('هذا القيد من مستند؛ يُلغى بإلغاء المستند نفسه');
       if (e.status == 'void') throw ValidationException('القيد ملغى من قبل');

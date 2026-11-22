@@ -275,7 +275,6 @@ void main() {
       final id = await lists.resolveCreate(queue[0].id, user: shop.admin);
       expect((await lists.quotesFor(id, asOf: DateTime(2026, 8, 1))).single.price, 10000);
 
-      await expectLater(lists.resolveSkip(queue[1].id, reason: ' ', user: shop.admin), throwsA(isA<ValidationException>()));
       await lists.resolveSkip(queue[1].id, reason: 'مكرر فعلاً', user: shop.admin);
       expect(await lists.reviewQueue(listId: row.priceListId), isEmpty);
     });

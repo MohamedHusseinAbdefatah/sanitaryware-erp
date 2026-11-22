@@ -53,16 +53,21 @@ class InvoicesTab extends StatelessWidget {
 
 /// A party's payments, with the cheque state for a cheque.
 class PaymentsTab extends StatelessWidget {
-  const PaymentsTab({super.key, required this.payments});
+  const PaymentsTab({super.key, required this.payments, this.partyName = '', this.onChanged});
 
   final List<PaymentSummary> payments;
+  final String partyName;
+
+  /// After a payment is corrected or deleted (to refresh the page).
+  final VoidCallback? onChanged;
 
   @override
   Widget build(BuildContext context) {
     return DataList<PaymentSummary>(
-      rows: payments,
+      // Deleted payments are left out here; the payments screen shows them on request.
+      rows: [for (final p in payments) if (p.payment.status == DocStatus.active) p],
       emptyText: 'لا توجد مدفوعات',
-      rowColor: (p) => p.payment.status == DocStatus.cancelled ? AppColors.canvas : null,
+      trailing: (p) => PaymentActions(payment: p.payment, partyName: partyName, cheque: p.cheque, onChanged: onChanged),
       columns: [
         DataListColumn('الرقم', flex: 2, (p) => Text(p.payment.number)),
         DataListColumn(Strings.date, flex: 2, (p) => Text(formatDate(p.payment.date))),

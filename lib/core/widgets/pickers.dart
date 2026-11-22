@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../db/database.dart';
 import '../l10n/strings.dart';
+import '../theme.dart';
 import '../providers.dart';
 import '../quantity.dart';
 import '../search_text.dart';
@@ -81,8 +82,11 @@ class _ProductSearchFieldState extends ConsumerState<ProductSearchField> {
                       dense: true,
                       selected: highlighted,
                       selectedTileColor: Theme.of(context).colorScheme.secondaryContainer,
-                      title: Text('${r.product.code} — ${r.product.nameAr}'
-                          '${r.product.variant == null ? '' : ' (${r.product.variant})'}'),
+                      title: Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                        Text('${r.product.code} — ${r.product.nameAr}'
+                            '${r.product.variant == null ? '' : ' (${r.product.variant})'}'),
+                        ModelTag(r.product.modelNo),
+                      ]),
                       subtitle: Text('${r.product.manufacturerCode.isEmpty ? '' : '${r.product.manufacturerCode} · '}'
                           '${Strings.available}: ${formatQty(r.sellableStock)} ${r.unitName ?? ''}'
                           '${r.stock == r.sellableStock ? '' : ' (الإجمالي ${formatQty(r.stock)})'}'),

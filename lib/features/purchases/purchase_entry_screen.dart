@@ -74,6 +74,9 @@ class _Line {
   int? presetCategoryId;
   String? presetCategoryName;
 
+  /// Where this line is received; null takes the invoice's place.
+  int? locationId;
+
   int? get qtyValue => parseQty(qty.text, allowDecimal: row.unitAllowsDecimal);
   int? get costValue => parseMoney(cost.text);
   int? get total {
@@ -594,6 +597,31 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
     }
   }
 
+  /// Splits a line so part of it goes to another place: a copy with the same
+  /// cost and discounts, an empty quantity, and the next place.
+  Future<void> _split(_Line l) async {
+    final places = (await ref.read(locationServiceProvider).watchAll().first).where((p) => p.isActive).toList();
+    final here = l.locationId ?? _locationId;
+    final other = places.where((p) => p.id != here).firstOrNull;
+    final c = _Line(l.row)
+      ..quote = l.quote
+      ..note = l.note
+      ..presetListId = l.presetListId
+      ..presetListPrice = l.presetListPrice
+      ..presetPolicyId = l.presetPolicyId
+      ..presetBaseBp = l.presetBaseBp
+      ..presetExtraBp = l.presetExtraBp
+      ..presetCategoryId = l.presetCategoryId
+      ..presetCategoryName = l.presetCategoryName
+      ..locationId = other?.id ?? here;
+    c.cost.text = l.cost.text;
+    c.extra.text = l.extra.text;
+    c.qty.text = '';
+    if (!mounted) return;
+    setState(() => _lines.insert(_lines.indexOf(l) + 1, c));
+    WidgetsBinding.instance.addPostFrameCallback((_) => c.qtyFocus.requestFocus());
+  }
+
   /// The line as saved: the list price and version are kept whenever they are
   /// known, so the stock knows its list; the discount is what this invoice gave.
   PurchaseLineInput _lineInput(_Line l) {
@@ -612,6 +640,7 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
         extraDiscountBp: actual > base ? actual - base : 0,
         listCategoryId: l.presetCategoryId,
         listCategoryName: l.presetCategoryName,
+        locationId: l.locationId,
       );
     }
     final q = l.quote;
@@ -628,6 +657,7 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
       listCategoryName: q != null && q.fromCategory ? q.category!.name : null,
       baseDiscountBp: q == null ? 0 : (actual == null ? base : (actual < base ? (actual < 0 ? 0 : actual) : base)),
       extraDiscountBp: q == null || actual == null || actual <= base ? 0 : actual - base,
+      locationId: l.poLine == null ? l.locationId : null,
     );
   }
 
@@ -849,12 +879,23 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(l.row.product.nameAr),
+                Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                  Text(l.row.product.nameAr),
+                  ModelTag(l.row.product.modelNo),
+                ]),
                 Text(
                   '${l.row.product.code} · ${l.row.product.manufacturerCode} · ${Strings.stock}: ${formatQty(l.row.stock)} ${l.row.unitName ?? ''}',
                   style: theme.textTheme.bodySmall,
                 ),
                 if (message != null) Text(message, style: theme.textTheme.bodySmall!.copyWith(color: color)),
+                // Where it is received: part can go to the showroom and part to
+                // the warehouse (split the line).
+                if (po == null)
+                  _LinePlace(
+                    value: l.locationId ?? _locationId,
+                    onChanged: (v) => setState(() => l.locationId = v),
+                    onSplit: () => _split(l),
+                  ),
               ],
             ),
           ),
@@ -1081,6 +1122,54 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// A purchase line's receiving place as a small menu, with a button to split
+/// the line onto another place.
+class _LinePlace extends ConsumerWidget {
+  const _LinePlace({required this.value, required this.onChanged, required this.onSplit});
+
+  final int value;
+  final ValueChanged<int> onChanged;
+  final VoidCallback onSplit;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return StreamBuilder<List<Location>>(
+      stream: ref.watch(locationServiceProvider).watchAll(),
+      builder: (context, snap) {
+        final places = (snap.data ?? const <Location>[]).where((p) => p.isActive || p.id == value).toList();
+        final name = places.where((p) => p.id == value).firstOrNull?.name ?? '';
+        return Wrap(spacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+          PopupMenuButton<int>(
+            tooltip: 'مكان استلام هذا الصنف',
+            onSelected: onChanged,
+            itemBuilder: (_) => [for (final p in places) PopupMenuItem(value: p.id, child: Text(p.name))],
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.place_outlined, size: 14, color: AppColors.brand),
+                const SizedBox(width: 2),
+                Flexible(
+                  child: Text('يُستلم في: $name',
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12, color: AppColors.brand, fontWeight: FontWeight.w700)),
+                ),
+                const Icon(Icons.arrow_drop_down, size: 16, color: AppColors.brand),
+              ]),
+            ),
+          ),
+          if (places.length > 1)
+            TextButton.icon(
+              style: TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 6)),
+              onPressed: onSplit,
+              icon: const Icon(Icons.call_split, size: 14),
+              label: const Text('تقسيم على مكان آخر', style: TextStyle(fontSize: 12)),
+            ),
+        ]);
+      },
     );
   }
 }

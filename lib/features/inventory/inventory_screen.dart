@@ -149,6 +149,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                     DataListColumn('', width: 60, (r) => ProductThumb(productId: r.product.id, size: 44)),
                     DataListColumn(Strings.productName, sortValue: (r) => r.product.nameAr, flex: 5, (r) => TitleCell(
                           r.product.nameAr,
+                          tag: ModelTag(r.product.modelNo),
                           subtitle: [r.product.code, if (r.item.brandName != null) r.item.brandName!].join('  ·  '),
                         )),
                     DataListColumn('الأماكن', flex: 4, (r) => Wrap(spacing: 4, runSpacing: 4, children: [

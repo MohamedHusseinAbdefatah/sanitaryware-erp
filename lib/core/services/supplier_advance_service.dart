@@ -224,7 +224,6 @@ class SupplierAdvanceService {
   Future<void> cancelAllocation(int allocationId, {required String reason, required User user}) {
     return db.transaction(() async {
       _owner(user);
-      if (reason.trim().isEmpty) throw ValidationException('اكتب سبب التصحيح');
       final a = await (db.select(db.supplierAdvanceAllocations)..where((t) => t.id.equals(allocationId)))
           .getSingleOrNull();
       if (a == null) throw ValidationException('التوزيع غير موجود');
@@ -252,7 +251,6 @@ class SupplierAdvanceService {
   Future<void> correctInvoiceAllocation(int invoiceId, int newAmount, {required String reason, required User user}) {
     return db.transaction(() async {
       _owner(user);
-      if (reason.trim().isEmpty) throw ValidationException('اكتب سبب التصحيح');
       if (newAmount < 0) throw ValidationException('المبلغ لا يكون سالباً');
       final inv = await (db.select(db.purchaseInvoices)..where((t) => t.id.equals(invoiceId))).getSingle();
       await refuseLocked(db, inv.date);
@@ -300,7 +298,6 @@ class SupplierAdvanceService {
   Future<void> cancel(int id, {required String reason, required User user}) {
     return db.transaction(() async {
       _purchaser(user);
-      if (reason.trim().isEmpty) throw ValidationException('سبب الإلغاء مطلوب');
       final row = await this.row(id);
       if (row.advance.status != DocStatus.active) throw ValidationException('الدفعة ملغاة من قبل');
       if (row.used > 0) {

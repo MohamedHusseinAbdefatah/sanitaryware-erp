@@ -265,6 +265,17 @@ final _content = <_B>[
         'customer type\'s usual one.',
   ]),
   const _S('18_supplier_advances', 'Supplier advances'),
+  const _H('Correcting mistakes (2.6)', level: 2),
+  const _L([
+    'Delete a price list: for good when no document used it, else withdrawn and kept for them. The products only it '
+        'brought in, never used, go with it, and the version before it is in force again.',
+    'Delete products (one, or many from selection mode) and customers or suppliers that nothing used; used ones are '
+        'listed with what uses them and can be switched off.',
+    'Payments: delete any payment (an advance with its advance unless invoices use it); correct the amount, date, '
+        'supplier or customer and cash / bank, from the payments screen or the party page.',
+    'Reasons are optional, except to reopen a closed period, for a bounced cheque, rejected goods and stock adjustments.',
+    'Purchase lines can be received into different places, and a line split between the showroom and the warehouse.',
+  ]),
   const _H('8. Returns, payments, balances and expenses'),
   const _L([
     'Sale return (anyone) back into a chosen place, keeping the price list version the goods left under; purchase '

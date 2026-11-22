@@ -197,7 +197,10 @@ class _OrderLinesEditorState extends ConsumerState<OrderLinesEditor> {
         Expanded(
           flex: 5,
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('${p.nameAr}${p.variant == null ? '' : ' (${p.variant})'}', overflow: TextOverflow.ellipsis),
+            Wrap(spacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+              Text('${p.nameAr}${p.variant == null ? '' : ' (${p.variant})'}', overflow: TextOverflow.ellipsis),
+              ModelTag(p.modelNo),
+            ]),
             Text('${p.code}${p.manufacturerCode.isEmpty ? '' : ' · ${p.manufacturerCode}'}',
                 style: const TextStyle(fontSize: 11, color: AppColors.muted)),
           ]),

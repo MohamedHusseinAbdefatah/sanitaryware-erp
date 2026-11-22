@@ -220,13 +220,9 @@ void main() {
       expect((await payments()).single.status, DocStatus.cancelled);
     });
 
-    test('cashier cannot cancel, a reason is required, and only once', () async {
+    test('cashier cannot cancel, a reason is optional, and only once', () async {
       await expectLater(
         sales.cancel(invoice.id, reason: 'x', user: cashier),
-        throwsA(isA<ValidationException>()),
-      );
-      await expectLater(
-        sales.cancel(invoice.id, reason: ' ', user: admin),
         throwsA(isA<ValidationException>()),
       );
       await sales.cancel(invoice.id, reason: 'x', user: admin);

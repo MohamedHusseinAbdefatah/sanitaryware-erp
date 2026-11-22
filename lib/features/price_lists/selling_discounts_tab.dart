@@ -610,7 +610,7 @@ class _CorrectSellingDialogState extends ConsumerState<_CorrectSellingDialog> {
           const SizedBox(height: 8),
           TextField(controller: _note, decoration: const InputDecoration(labelText: 'ملاحظة')),
           const SizedBox(height: 8),
-          TextField(controller: _reason, decoration: const InputDecoration(labelText: 'سبب التعديل (مطلوب)')),
+          TextField(controller: _reason, decoration: const InputDecoration(labelText: 'سبب التعديل (اختياري)')),
           const SizedBox(height: 12),
           const InfoNote('فواتير البيع المحفوظة تبقى بالخصم الذي بيعت به.'),
         ]),

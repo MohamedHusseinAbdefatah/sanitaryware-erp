@@ -9,6 +9,7 @@ import 'balance_service.dart';
 import 'doc_types.dart';
 import 'errors.dart';
 import 'numbering_service.dart';
+import 'supplier_advance_service.dart';
 
 class ChequeInput {
   const ChequeInput({required this.number, required this.dueDate, this.bank});
@@ -302,12 +303,29 @@ class PaymentService {
     }
   }
 
+  /// Deletes a payment entered by mistake, from wherever it is shown. A
+  /// supplier advance is cancelled with its advance (refused while invoices
+  /// use it); any other payment is cancelled. Balances, the invoice it paid
+  /// and the books follow. It leaves the lists (a "show deleted" filter brings
+  /// it back) and stays in the audit log.
+  Future<void> remove(int paymentId, {String reason = '', required User user}) async {
+    final p = await (db.select(db.payments)..where((t) => t.id.equals(paymentId))).getSingle();
+    if (p.invoiceRefType == RefType.supplierAdvance) {
+      final advance = await (db.select(db.supplierAdvances)..where((t) => t.paymentId.equals(paymentId))).getSingleOrNull();
+      if (advance != null) {
+        await SupplierAdvanceService(db).cancel(advance.id, reason: reason, user: user);
+        return;
+      }
+      return cancelAdvancePayment(paymentId, reason: reason, user: user);
+    }
+    return cancel(paymentId, reason: reason, user: user);
+  }
+
   /// Admin only. The payment stays on record as cancelled; a cheque with it
   /// is cancelled too.
   Future<void> cancel(int paymentId, {required String reason, required User user}) {
     return db.transaction(() async {
       if (!user.can(Perm.payOut)) throw ValidationException('إلغاء المدفوعات لصلاحية المحاسبة');
-      if (reason.trim().isEmpty) throw ValidationException('سبب الإلغاء مطلوب');
       final p = await (db.select(db.payments)..where((t) => t.id.equals(paymentId))).getSingle();
       if (p.status == DocStatus.cancelled) throw ValidationException('الدفعة ${p.number} ملغاة من قبل');
       if (p.invoiceRefType == RefType.supplierAdvance && !_cancellingAdvance) {
@@ -343,12 +361,13 @@ class PaymentService {
     int? amount,
     DateTime? date,
     String? notes,
-    required String reason,
+    int? partyId,
+    String? method,
+    String reason = '',
     required User user,
   }) {
     return db.transaction(() async {
       if (!user.isAdmin) throw ValidationException('تعديل المدفوعات المسجلة للمالك فقط');
-      if (reason.trim().isEmpty) throw ValidationException('اكتب سبب التعديل');
       final p = await (db.select(db.payments)..where((t) => t.id.equals(paymentId))).getSingleOrNull();
       if (p == null) throw ValidationException('الدفعة غير موجودة');
       if (p.status != DocStatus.active) throw ValidationException('الدفعة ${p.number} ملغاة؛ لا تُعدّل');
@@ -356,14 +375,28 @@ class PaymentService {
       final newDate = date ?? p.date;
       final newNotes = notes == null ? p.notes : _blankToNull(notes);
       if (newAmount <= 0) throw ValidationException('المبلغ يجب أن يكون أكبر من صفر');
-      if (newAmount == p.amount && newDate == p.date && newNotes == p.notes) {
+      final newParty = partyId ?? p.partyId;
+      final newMethod = method ?? p.method;
+      final partyChanged = newParty != p.partyId;
+      if (newMethod != p.method) {
+        if (p.method == PaymentMethod.cheque || newMethod == PaymentMethod.cheque) {
+          throw ValidationException('الشيك لا يتحول لنقدي أو تحويل ولا العكس؛ احذف الدفعة وسجّلها من جديد');
+        }
+      }
+      if (partyChanged) {
+        final exists = p.partyType == PartyType.supplier
+            ? await (db.select(db.suppliers)..where((t) => t.id.equals(newParty))).getSingleOrNull() != null
+            : await (db.select(db.customers)..where((t) => t.id.equals(newParty))).getSingleOrNull() != null;
+        if (!exists) throw ValidationException(p.partyType == PartyType.supplier ? 'اختر المورد' : 'اختر العميل');
+      }
+      if (newAmount == p.amount && newDate == p.date && newNotes == p.notes && !partyChanged && newMethod == p.method) {
         throw ValidationException('لم يتغير شيء');
       }
       await _refuseClosed(p.date);
       await _refuseClosed(newDate);
 
       // Paying an invoice: never beyond what it has left.
-      if (p.invoiceRefId != null &&
+      if (p.invoiceRefId != null && !partyChanged &&
           (p.invoiceRefType == RefType.purchaseInvoice || p.invoiceRefType == RefType.salesInvoice)) {
         final others = await invoiceRemaining(p.invoiceRefType!, p.invoiceRefId!, partyId: p.partyId) +
             (await _counts(p) ? p.amount : 0);
@@ -385,6 +418,9 @@ class PaymentService {
             throw ValidationException('خُصم من هذه الدفعة المقدمة ${formatMoney(u)} على فواتير؛ لا تقل عن ذلك. '
                 'صحّح التوزيع على الفواتير أولاً.');
           }
+          if (partyChanged && u > 0) {
+            throw ValidationException('خُصم من هذه الدفعة المقدمة على فواتير هذا المورد؛ لا تُنقل لمورد آخر. صحّح التوزيع أولاً.');
+          }
         }
       }
 
@@ -392,23 +428,35 @@ class PaymentService {
             amount: Value(newAmount),
             date: Value(newDate),
             notes: Value(newNotes),
+            partyId: Value(newParty),
+            method: Value(newMethod),
+            // Moved to another party: it no longer pays that party's invoice or
+            // order; it stays on the new party's account (an advance stays one).
+            invoiceRefType: partyChanged && p.invoiceRefType != RefType.supplierAdvance
+                ? const Value(null)
+                : Value(p.invoiceRefType),
+            invoiceRefId: partyChanged && p.invoiceRefType != RefType.supplierAdvance
+                ? const Value(null)
+                : Value(p.invoiceRefId),
             updatedAt: Value(DateTime.now()),
           ));
       if (advance != null) {
         await (db.update(db.supplierAdvances)..where((t) => t.id.equals(advance!.id))).write(SupplierAdvancesCompanion(
-            amount: Value(newAmount), date: Value(newDate), updatedAt: Value(DateTime.now())));
+            amount: Value(newAmount), date: Value(newDate), supplierId: Value(newParty), updatedAt: Value(DateTime.now())));
       }
-      String show(int a, DateTime d, String? n) =>
-          '${formatMoney(a)} · ${d.year}/${d.month}/${d.day}${n == null ? '' : ' · $n'}';
+      final oldName = await _partyName(p.partyType, p.partyId) ?? '';
+      final newName = await _partyName(p.partyType, newParty) ?? '';
+      String show(int a, DateTime d, String? n, String party, String m) =>
+          '$party · ${formatMoney(a)} · ${paymentMethodName(m)} · ${d.year}/${d.month}/${d.day}${n == null ? '' : ' · $n'}';
       await AuditService(db).log(
         action: AuditAction.correct,
         entity: 'payment',
         entityId: paymentId,
         userId: user.id,
-        details: '${p.number} ${await _partyName(p.partyType, p.partyId) ?? ''}',
-        oldValue: show(p.amount, p.date.toLocal(), p.notes),
-        newValue: show(newAmount, newDate.toLocal(), newNotes),
-        reason: reason.trim(),
+        details: '${p.number} $oldName',
+        oldValue: show(p.amount, p.date.toLocal(), p.notes, oldName, p.method),
+        newValue: show(newAmount, newDate.toLocal(), newNotes, newName, newMethod),
+        reason: reason.trim().isEmpty ? null : reason.trim(),
       );
       return (db.select(db.payments)..where((t) => t.id.equals(paymentId))).getSingle();
     });
@@ -556,3 +604,11 @@ class PaymentService {
   static String? _blankToNull(String? s) =>
       (s == null || s.trim().isEmpty) ? null : s.trim();
 }
+
+/// A payment method's Arabic name, for the audit log.
+String paymentMethodName(String m) => switch (m) {
+      PaymentMethod.cash => 'نقدي',
+      PaymentMethod.bank => 'تحويل',
+      PaymentMethod.cheque => 'شيك',
+      _ => m,
+    };

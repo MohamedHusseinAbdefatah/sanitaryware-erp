@@ -206,7 +206,6 @@ class BuyingPolicyService {
   }) {
     return db.transaction(() async {
       if (!user.isAdmin) throw ValidationException('تعديل سياسات الشراء المسجلة للمالك فقط');
-      if (reason.trim().isEmpty) throw ValidationException('اكتب سبب التعديل');
       _checkPercent(baseDiscountBp);
       _checkPercent(extraDiscountBp);
       if (baseDiscountBp + extraDiscountBp > 10000) throw ValidationException('مجموع الخصمين أكبر من 100%');

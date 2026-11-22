@@ -505,25 +505,57 @@ class _VersionCard extends ConsumerWidget {
     if (n != null && context.mounted) showToast(context, 'تم تحديد القائمة لعدد $n صنف');
   }
 
-  Future<void> _withdraw(BuildContext context, WidgetRef ref) async {
-    final reason = await _askText(context, 'سحب القائمة', 'سبب السحب');
-    if (reason == null || !context.mounted) return;
-    await runGuarded(context, () async {
-      await ref
-          .read(priceListServiceProvider)
-          .withdraw(summary.list.id, reason: reason, user: ref.read(currentUserProvider)!);
-      return true;
-    });
+  /// Deletes a list entered by mistake: for good when no document used it,
+  /// else withdrawn and kept for those documents. Products only it brought
+  /// in, never used, go with it; the version before it is in force again.
+  Future<void> _remove(BuildContext context, WidgetRef ref) async {
+    final service = ref.read(priceListServiceProvider);
+    final used = await service.usage(summary.list.id);
+    if (!context.mounted) return;
+    final l = summary.list;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('حذف القائمة ${l.name}'),
+        content: SizedBox(
+          width: 460,
+          child: Text(used.isEmpty
+              ? 'لم تُستخدم هذه القائمة في أي مستند، فتُحذف نهائياً مع صفوفها وخصوماتها.\n'
+                  'الأصناف التي جاءت منها فقط ولم تُستخدم تُحذف معها، والإصدار السابق من نفس النوع يعود سارياً.'
+              : 'هذه القائمة مستخدمة في: $used.\n'
+                  'لذلك تُسحب (تبقى مقروءة لهذه المستندات فقط ولا تسعّر شيئاً جديداً).\n'
+                  'الأصناف التي جاءت منها فقط ولم تُستخدم تُحذف، والإصدار السابق من نفس النوع يعود سارياً.'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.bad),
+            onPressed: () => Navigator.pop(context, true),
+            icon: const Icon(Icons.delete_outline),
+            label: Text(used.isEmpty ? 'حذف نهائي' : 'سحب القائمة'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+    final r = await runGuarded(context, () => service.remove(l.id, user: ref.read(currentUserProvider)!));
+    if (r == null || !context.mounted) return;
+    showToast(
+      context,
+      [
+        r.deleted ? 'حُذفت القائمة' : 'سُحبت القائمة',
+        if (r.productsDeleted > 0) 'وحُذف ${r.productsDeleted} صنف جاء منها',
+        if (r.productsKept > 0) 'وبقي ${r.productsKept} صنف مستخدم أو في قائمة أخرى',
+        if (r.restoredVersion != null) 'وعاد الإصدار V${r.restoredVersion} سارياً',
+      ].join('، '),
+    );
   }
 
   /// Owner only: no new document is priced from a switched-off list; every
   /// document that used it keeps it.
   Future<void> _setActive(BuildContext context, WidgetRef ref, bool active) async {
-    final reason = await _askText(
-      context,
-      active ? 'تفعيل القائمة' : 'إيقاف القائمة',
-      active ? 'سبب التفعيل' : 'سبب الإيقاف (لن تُستخدم في فواتير أو أوامر جديدة، وتبقى في السجل)',
-    );
+    final reason = await askReason(context,
+        title: active ? 'تفعيل القائمة' : 'إيقاف القائمة (لا تُستخدم في فواتير أو أوامر جديدة، وتبقى في السجل)');
     if (reason == null || !context.mounted) return;
     final ok = await runGuarded(context, () async {
       await ref
@@ -661,7 +693,13 @@ class _VersionCard extends ConsumerWidget {
                     dense: true, leading: Icon(Icons.play_circle_outline), title: Text('تفعيل القائمة')),
               ),
             if (l.status != PriceListStatus.withdrawn)
-              PopupMenuItem(value: () => _withdraw(context, ref), child: const Text('سحب القائمة نهائياً (خطأ)')),
+              PopupMenuItem(
+                value: () => _remove(context, ref),
+                child: const ListTile(
+                    dense: true,
+                    leading: Icon(Icons.delete_outline, color: AppColors.bad),
+                    title: Text('حذف القائمة (خطأ)', style: TextStyle(color: AppColors.bad))),
+              ),
           ],
         ),
       ]),
@@ -1425,7 +1463,7 @@ class _ReviewTabState extends ConsumerState<_ReviewTab> {
   }
 
   Future<void> _skip(PriceListItem item) async {
-    final reason = await _askText(context, 'استبعاد الصف', 'سبب الاستبعاد');
+    final reason = await askReason(context, title: 'استبعاد الصف');
     if (reason == null || !mounted) return;
     final ok = await runGuarded(context, () async {
       await ref
@@ -1665,7 +1703,7 @@ class _CorrectBuyingDialogState extends ConsumerState<_CorrectBuyingDialog> {
           const SizedBox(height: 12),
           TextField(controller: _note, decoration: const InputDecoration(labelText: 'ملاحظة')),
           const SizedBox(height: 12),
-          TextField(controller: _reason, decoration: const InputDecoration(labelText: 'سبب التعديل (مطلوب)')),
+          TextField(controller: _reason, decoration: const InputDecoration(labelText: 'سبب التعديل (اختياري)')),
           const SizedBox(height: 12),
           const InfoNote('فواتير الشراء المحفوظة تبقى بالخصم الذي سُجلت به. التعديل يسري على الفواتير الجديدة فقط.'),
         ]),

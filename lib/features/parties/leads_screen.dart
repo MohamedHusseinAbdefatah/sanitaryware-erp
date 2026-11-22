@@ -44,7 +44,7 @@ class _LeadsScreenState extends ConsumerState<LeadsScreen> {
   Future<void> _stageOf(Lead l, String stage) async {
     String? reason;
     if (stage == LeadStage.lost) {
-      reason = await askReason(context, title: 'سبب عدم الإتمام');
+      reason = await askReason(context, title: 'سبب عدم الإتمام', required: true);
       if (reason == null) return;
     }
     if (!mounted) return;

@@ -443,3 +443,30 @@ class StatusPill extends StatelessWidget {
     );
   }
 }
+
+/// The maker's model number as a tag beside a product's name, so it is seen
+/// first (people ask for a product by its model). Nothing when empty.
+class ModelTag extends StatelessWidget {
+  const ModelTag(this.modelNo, {super.key, this.large = false});
+
+  final String? modelNo;
+  final bool large;
+
+  @override
+  Widget build(BuildContext context) {
+    final m = (modelNo ?? '').trim();
+    if (m.isEmpty) return const SizedBox.shrink();
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: large ? 10 : 6, vertical: large ? 3 : 1),
+      decoration: BoxDecoration(
+        color: AppColors.brand.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: AppColors.brand.withValues(alpha: 0.35)),
+      ),
+      child: Text(
+        'موديل $m',
+        style: TextStyle(color: AppColors.brand, fontWeight: FontWeight.w800, fontSize: large ? 14 : 11.5),
+      ),
+    );
+  }
+}

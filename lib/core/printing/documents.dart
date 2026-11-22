@@ -88,6 +88,10 @@ String _methodLabel(String method) => switch (method) {
 
 /// A4 sales invoice: shop header, customer, items, totals, balance and
 /// signature lines. A cancelled invoice prints with a "ملغاة" watermark.
+/// A product's name with its model number after it, for the printed lines.
+String _withModel(String name, String? model) =>
+    (model ?? '').trim().isEmpty ? name : '$name — موديل ${model!.trim()}';
+
 Future<Uint8List> salesInvoicePdf(SalesInvoiceDetail d, PrintCompany company, PdfFonts fonts) {
   final inv = d.invoice;
   final rows = [
@@ -95,7 +99,7 @@ Future<Uint8List> salesInvoicePdf(SalesInvoiceDetail d, PrintCompany company, Pd
       [
         '${i + 1}',
         d.lines[i].productCode,
-        d.lines[i].productName,
+        _withModel(d.lines[i].productName, d.lines[i].modelNo),
         formatQty(d.lines[i].item.qty),
         d.lines[i].unitName ?? '',
         formatMoney(d.lines[i].item.unitPrice),
@@ -184,7 +188,7 @@ Future<Uint8List> purchaseInvoicePdf(PurchaseInvoiceDetail d, PrintCompany compa
             [
               '${i + 1}',
               d.lines[i].productCode,
-              d.lines[i].productName,
+              _withModel(d.lines[i].productName, d.lines[i].modelNo),
               formatQty(d.lines[i].item.qty),
               d.lines[i].unitName ?? '',
               formatMoney(d.lines[i].item.unitCost),

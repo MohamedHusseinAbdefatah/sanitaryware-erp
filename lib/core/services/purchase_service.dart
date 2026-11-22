@@ -30,7 +30,12 @@ class PurchaseLineInput {
     this.extraDiscountBp = 0,
     this.listCategoryId,
     this.listCategoryName,
+    this.locationId,
   });
+
+  /// Where this line is received (part to the showroom, part to the
+  /// warehouse); null takes the invoice's place.
+  final int? locationId;
 
   /// The price list category whose usual discount was used (no supplier
   /// discount was recorded), kept as it was that day.
@@ -156,11 +161,14 @@ class PurchaseInvoiceRow {
 }
 
 class PurchaseInvoiceLine {
-  const PurchaseInvoiceLine(this.item, this.productCode, this.productName, this.unitName);
+  const PurchaseInvoiceLine(this.item, this.productCode, this.productName, this.unitName, {this.modelNo});
   final PurchaseInvoiceItem item;
   final String productCode;
   final String productName;
   final String? unitName;
+
+  /// The maker's model number, shown under the name and printed.
+  final String? modelNo;
 }
 
 class PurchaseInvoiceDetail {
@@ -256,8 +264,13 @@ class PurchaseService {
             salesInvoiceId: Value(input.salesInvoiceId),
           ));
 
-      final place = await (db.select(db.locations)..where((l) => l.id.equals(input.locationId))).getSingleOrNull();
-      if (!input.isDirect && (place == null || !place.isActive)) throw ValidationException('مكان الاستلام غير موجود أو موقوف');
+      final places = {for (final l in await db.select(db.locations).get()) l.id: l};
+      if (!input.isDirect) {
+        for (final id in {input.locationId, for (final l in input.lines) ?l.locationId}) {
+          final place = places[id];
+          if (place == null || !place.isActive) throw ValidationException('مكان الاستلام غير موجود أو موقوف');
+        }
+      }
       final stock = StockService(db);
       final fifo = FifoService(db);
       // The invoice discount lowers the real cost of the goods, line by line.
@@ -293,7 +306,7 @@ class PurchaseService {
           productId: p.id,
           qty: line.qty,
           unitCost: netUnitCost,
-          locationId: input.locationId,
+          locationId: line.locationId ?? input.locationId,
           receivedAt: date,
           supplierId: input.supplierId,
           sourceType: 'purchase',
@@ -310,7 +323,7 @@ class PurchaseService {
           refId: invoiceId,
           createdBy: user.id,
           date: date,
-          locationId: input.locationId,
+          locationId: line.locationId ?? input.locationId,
         );
       }
 
@@ -370,7 +383,6 @@ class PurchaseService {
   Future<void> cancel(int invoiceId, {required String reason, required User user}) {
     return db.transaction(() async {
       if (!user.can(Perm.cancel)) throw ValidationException('إلغاء الفواتير للمدير أو المحاسب');
-      if (reason.trim().isEmpty) throw ValidationException('سبب الإلغاء مطلوب');
       final invoice = await (db.select(db.purchaseInvoices)..where((t) => t.id.equals(invoiceId)))
           .getSingle();
       if (invoice.status == DocStatus.cancelled) {
@@ -500,7 +512,6 @@ class PurchaseService {
   Future<PurchaseInvoice> correct(int invoiceId, PurchaseInput replacement, {required String reason, required User user}) {
     return db.transaction(() async {
       if (!user.isAdmin) throw ValidationException('تصحيح فواتير الشراء للمالك فقط');
-      if (reason.trim().isEmpty) throw ValidationException('اكتب سبب التصحيح');
       final old = await (db.select(db.purchaseInvoices)..where((t) => t.id.equals(invoiceId))).getSingleOrNull();
       if (old == null) throw ValidationException('الفاتورة غير موجودة');
       if (old.status != DocStatus.active) throw ValidationException('الفاتورة ${old.number} ملغاة');
@@ -614,6 +625,7 @@ class PurchaseService {
             r.readTable(db.products).code,
             r.readTable(db.products).nameAr,
             r.readTableOrNull(db.units)?.nameAr,
+            modelNo: r.readTable(db.products).modelNo,
           ),
       ],
       await BalanceService(db).paidOnInvoice(RefType.purchaseInvoice, invoiceId),

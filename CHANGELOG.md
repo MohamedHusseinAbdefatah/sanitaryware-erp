@@ -2,6 +2,41 @@
 
 Versions follow `version:` in `pubspec.yaml` and `lib/core/version.dart`.
 
+## 2.6.0
+
+The client's requests after 2.5.1: correcting mistakes without friction.
+No database change.
+
+- Price lists: "حذف القائمة" deletes a list entered by mistake for good
+  (with its rows and the discounts set on it) when no document used it; a
+  list documents used is withdrawn instead and kept for them. Either way the
+  products only that list brought in, never used, are deleted with it, and
+  the version of the same type before it is in force again (withdrawing the
+  newest list used to leave its products with no price).
+- Products: "حذف الصنف" on each product and "حذف المحدد" in selection mode.
+  A product nothing used (no stock, document, order, reservation or project
+  line) is deleted for good with its photo; its price-list rows are unlinked.
+  Used ones are listed with what uses them and offered to be switched off.
+- Customers and suppliers: "حذف" for one entered by mistake with no
+  dealings at all; its opening balance leaves the books with it. One with
+  dealings is refused with what it is used in.
+- Payments: "حذف الدفعة" works on every payment, a supplier advance
+  included (with its advance; refused while invoices use it). "تعديل
+  الدفعة" also changes the supplier or customer (a payment to the wrong
+  supplier; it leaves the invoice it paid and stays on the new party's
+  account) and cash / bank. Both are also on each supplier's and
+  customer's page. Deleted payments leave the lists; "عرض المحذوفة" shows them.
+- Reasons are optional for deleting, cancelling, withdrawing and correcting.
+  They stay required only for reopening a closed period, a bounced cheque,
+  rejected goods and a stock adjustment.
+- Model number: a tag beside the product's name in the products and
+  inventory lists, the product search, the product browser, invoice and
+  order lines, the product page header, and on printed sales and purchase
+  invoices.
+- Purchase invoice: each line shows where it is received and can be sent to
+  another place; "تقسيم على مكان آخر" splits a line (part to the showroom,
+  part to the warehouse). Cancelling takes each part back from its place.
+
 ## 2.5.1
 
 The client's requests of 21 November. No database change.

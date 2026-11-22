@@ -109,7 +109,8 @@ class SupplierPage extends ConsumerWidget {
           tabs: [
             RecordTab('فواتير الشراء', InvoicesTab(invoices: p.invoices, basePath: '/purchases', showSupplierNo: true),
                 count: p.invoices.length, icon: Icons.receipt_long_outlined),
-            RecordTab('المدفوعات', PaymentsTab(payments: p.payments), count: p.payments.length, icon: Icons.payments_outlined),
+            RecordTab('المدفوعات', PaymentsTab(payments: p.payments, partyName: s.name, onChanged: refresh),
+                count: p.payments.where((x) => x.payment.status == DocStatus.active).length, icon: Icons.payments_outlined),
             RecordTab('أوامر الشراء', _OrdersTab(orders: p.orders, onChanged: refresh),
                 count: p.orders.length, icon: Icons.assignment_outlined),
             RecordTab('الدفعات المقدمة', _AdvancesTab(advances: p.advances),

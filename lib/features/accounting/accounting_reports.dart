@@ -858,7 +858,7 @@ class ClosingTab extends ConsumerWidget {
                               initialDate: DateTime(until.year, until.month, 1),
                             );
                             if (d == null || !context.mounted) return;
-                            final reason = await askReason(context, title: 'سبب إعادة الفتح');
+                            final reason = await askReason(context, title: 'سبب إعادة الفتح', required: true);
                             if (reason == null || !context.mounted) return;
                             final ok = await runGuarded(context, () async {
                               await ref

@@ -178,11 +178,13 @@ void main() {
     );
   });
 
-  test('a withdrawn version prices nothing but stays on record', () async {
+  test('a withdrawn version prices nothing; the products only it brought in, never used, go with it', () async {
     final id = await version('سيراميك', DateTime(2026, 1, 1), 100000);
-    await lists.withdraw(id, reason: 'خطأ', user: shop.admin);
-    expect(await lists.quotesFor(basin.id, asOf: DateTime(2026, 2, 1)), isEmpty);
-    expect((await lists.history(basin.id)).single.item.price, 100000);
+    final r = await lists.withdraw(id, user: shop.admin);
+    expect(r.productsDeleted, 1);
+    expect(await (shop.db.select(shop.db.products)..where((p) => p.id.equals(basin.id))).getSingleOrNull(), isNull);
+    final list = await (shop.db.select(shop.db.priceLists)..where((l) => l.id.equals(id))).getSingle();
+    expect(list.status, PriceListStatus.withdrawn, reason: 'the list itself stays on record');
   });
 
   test('only the admin manages lists', () async {

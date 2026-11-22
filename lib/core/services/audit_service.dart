@@ -17,6 +17,10 @@ abstract final class AuditAction {
   static const correct = 'correct';
   static const activate = 'activate';
   static const deactivate = 'deactivate';
+
+  /// A record removed for good (only one nothing used: a wrong product, an
+  /// unused price list, a party with no dealings).
+  static const delete = 'delete';
 }
 
 /// "field: before ← after" for every field that changed, for the audit log.

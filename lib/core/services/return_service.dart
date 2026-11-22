@@ -413,7 +413,6 @@ class ReturnService {
   Future<void> cancel(int returnId, {required String reason, required User user}) {
     return db.transaction(() async {
       if (!user.can(Perm.cancel)) throw ValidationException('إلغاء المرتجعات للمدير أو المحاسب');
-      if (reason.trim().isEmpty) throw ValidationException('سبب الإلغاء مطلوب');
       final doc = await (db.select(db.returns)..where((t) => t.id.equals(returnId))).getSingle();
       if (doc.status == DocStatus.cancelled) throw ValidationException('المرتجع ${doc.number} ملغى من قبل');
       final note = 'سبب الإلغاء: ${reason.trim()}';

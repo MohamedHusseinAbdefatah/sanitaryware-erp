@@ -22,6 +22,7 @@ String auditActionLabel(String action) => switch (action) {
       AuditAction.correct => 'تصحيح',
       AuditAction.activate => 'تفعيل',
       AuditAction.deactivate => 'إيقاف',
+      AuditAction.delete => 'حذف',
       _ => action,
     };
 

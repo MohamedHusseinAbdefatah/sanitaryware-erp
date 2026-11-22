@@ -189,11 +189,14 @@ class SalesInvoiceRow {
 }
 
 class SalesInvoiceLine {
-  const SalesInvoiceLine(this.item, this.productCode, this.productName, this.unitName);
+  const SalesInvoiceLine(this.item, this.productCode, this.productName, this.unitName, {this.modelNo});
   final SalesInvoiceItem item;
   final String productCode;
   final String productName;
   final String? unitName;
+
+  /// The maker's model number, shown under the name and printed.
+  final String? modelNo;
 }
 
 class SalesInvoiceDetail {
@@ -673,7 +676,6 @@ class SalesService {
   Future<void> cancel(int invoiceId, {required String reason, required User user}) {
     return db.transaction(() async {
       if (!user.can(Perm.cancel)) throw ValidationException('إلغاء الفواتير للمدير أو المحاسب');
-      if (reason.trim().isEmpty) throw ValidationException('سبب الإلغاء مطلوب');
       final invoice = await (db.select(db.salesInvoices)..where((t) => t.id.equals(invoiceId))).getSingle();
       if (invoice.status == DocStatus.cancelled) {
         throw ValidationException('الفاتورة ${invoice.number} ملغاة من قبل');
@@ -841,6 +843,7 @@ class SalesService {
             r.readTable(db.products).code,
             r.readTable(db.products).nameAr,
             r.readTableOrNull(db.units)?.nameAr,
+            modelNo: r.readTable(db.products).modelNo,
           ),
       ],
     );

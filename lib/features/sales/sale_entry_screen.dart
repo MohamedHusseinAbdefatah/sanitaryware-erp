@@ -804,7 +804,10 @@ class _LineRow extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(line.product.nameAr),
+                Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                  Text(line.product.nameAr),
+                  ModelTag(line.product.modelNo),
+                ]),
                 Text(
                   line.quote == null
                       ? '${line.product.code} · لا يوجد سعر معتمد'

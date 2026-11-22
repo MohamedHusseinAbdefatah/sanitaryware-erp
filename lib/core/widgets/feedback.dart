@@ -108,14 +108,17 @@ Future<void> showMessage(BuildContext context, String message) {
   );
 }
 
-/// Asks for a required reason (cancel, stock adjustment). Null if cancelled.
-Future<String?> askReason(BuildContext context, {required String title}) async {
+/// Asks for a reason before a cancel, delete or correction. Optional by
+/// default (the client asked not to be forced to type one); [required] keeps
+/// it mandatory where it matters (reopening a closed period, a bounced
+/// cheque). Null when the person cancels; '' when they confirm with none.
+Future<String?> askReason(BuildContext context, {required String title, bool required = false}) async {
   final controller = TextEditingController();
   final reason = await showDialog<String>(
     context: context,
     builder: (context) {
       void submit() {
-        if (controller.text.trim().isNotEmpty) Navigator.pop(context, controller.text.trim());
+        if (!required || controller.text.trim().isNotEmpty) Navigator.pop(context, controller.text.trim());
       }
 
       return AlertDialog(
@@ -125,7 +128,7 @@ Future<String?> askReason(BuildContext context, {required String title}) async {
           child: TextField(
             controller: controller,
             autofocus: true,
-            decoration: const InputDecoration(labelText: Strings.reason),
+            decoration: InputDecoration(labelText: required ? Strings.reason : '${Strings.reason} (اختياري)'),
             onSubmitted: (_) => submit(),
           ),
         ),

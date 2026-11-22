@@ -16,6 +16,7 @@ import '../../core/widgets/data_list.dart';
 import '../../core/widgets/list_kit.dart';
 import '../payments/payment_dialog.dart';
 import '../purchases/supplier_advances_dialog.dart';
+import 'delete_party.dart';
 import 'party_form_dialog.dart';
 import 'statement_dialog.dart';
 
@@ -159,6 +160,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                   (Strings.statement, Icons.receipt_long_outlined,
                       () => showStatement(context, partyType: PartyType.customer, partyId: c.id)),
                   (Strings.edit, Icons.edit_outlined, () => showCustomerForm(context, existing: c)),
+                  if (ref.read(currentUserProvider)?.isAdmin == true) ('حذف العميل', Icons.delete_outline, () => deleteParty(context, ref, customer: true, id: c.id, name: c.name)),
                 ]);
             return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               SummaryStrip(items: [
@@ -321,6 +323,7 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
                       () => showStatement(context, partyType: PartyType.supplier, partyId: s.id)),
                   ('الدفعات المقدمة', Icons.account_balance_wallet_outlined, () => showSupplierAdvances(context, s)),
                   (Strings.edit, Icons.edit_outlined, () => showSupplierForm(context, existing: s)),
+                  if (ref.read(currentUserProvider)?.isAdmin == true) ('حذف المورد', Icons.delete_outline, () => deleteParty(context, ref, customer: false, id: s.id, name: s.name)),
                 ]);
             return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               SummaryStrip(items: [

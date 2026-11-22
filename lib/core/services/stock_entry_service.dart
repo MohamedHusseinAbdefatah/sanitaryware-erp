@@ -256,7 +256,6 @@ class StockEntryService {
   Future<void> cancel(int entryId, {required String reason, required User user}) {
     return db.transaction(() async {
       _owner(user);
-      if (reason.trim().isEmpty) throw ValidationException('اكتب سبب الإلغاء');
       final e = await (db.select(db.stockEntries)..where((t) => t.id.equals(entryId))).getSingleOrNull();
       if (e == null) throw ValidationException('الإدخال غير موجود');
       if (e.status != DocStatus.active) throw ValidationException('الإدخال ${e.number} ملغى من قبل');

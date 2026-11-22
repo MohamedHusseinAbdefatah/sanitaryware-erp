@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 
+import '../auth/auth_service.dart';
 import '../db/database.dart';
 import '../pricing_math.dart';
 import '../quantity.dart';
@@ -295,6 +296,116 @@ class ProductService {
     });
   }
 
+  /// What keeps a product from being deleted: anything that moved it or
+  /// that a document points to. Price-list rows are not here: a deleted
+  /// product's rows are unlinked from it instead.
+  static const _usedIn = {
+    'stock_movements': 'حركة مخزون',
+    'cost_layers': 'رصيد مخزون',
+    'sales_invoice_items': 'فاتورة بيع',
+    'purchase_invoice_items': 'فاتورة شراء',
+    'return_items': 'مرتجع',
+    'sales_order_lines': 'أمر بيع أو عرض سعر',
+    'purchase_order_lines': 'أمر شراء',
+    'reservations': 'حجز',
+    'project_boq_lines': 'مقايسة مشروع',
+    'stock_entry_lines': 'إدخال مخزون يدوي',
+    'purchase_rejections': 'استلام مرفوض',
+  };
+
+  /// Why each of [productIds] cannot be deleted ("فاتورة بيع، حركة مخزون");
+  /// a product missing from the result can be.
+  Future<Map<int, String>> usage(Iterable<int> productIds) async {
+    final ids = productIds.toSet().toList();
+    final out = <int, List<String>>{};
+    if (ids.isEmpty) return const {};
+    final marks = List.filled(ids.length, '?').join(',');
+    for (final e in _usedIn.entries) {
+      final rows = await db.customSelect(
+        'SELECT DISTINCT product_id AS p FROM ${e.key} WHERE product_id IN ($marks)',
+        variables: [for (final id in ids) Variable.withInt(id)],
+      ).get();
+      for (final r in rows) {
+        (out[r.read<int>('p')] ??= []).add(e.value);
+      }
+    }
+    return {for (final e in out.entries) e.key: e.value.join('، ')};
+  }
+
+  /// Deletes, for good, the products of [productIds] that nothing used: no
+  /// stock, no document, no reservation, no project line. Their photo and
+  /// any discount set on them alone go too; price-list rows that named them
+  /// are unlinked and marked "الصنف محذوف". Used products are left as they
+  /// are and returned with the reason (they can be switched off instead).
+  /// With [onlyIfNotOnOtherLists], a product still on a list other than
+  /// [exceptList] is kept too (cleaning up after a list is removed).
+  Future<ProductDeleteResult> deleteUnused(
+    Iterable<int> productIds, {
+    required User user,
+    String reason = '',
+    int? exceptList,
+    bool onlyIfNotOnOtherLists = false,
+  }) {
+    return db.transaction(() async {
+      if (!user.can(Perm.catalog)) throw ValidationException('حذف الأصناف لصلاحية الأصناف والأسعار');
+      final ids = productIds.toSet().toList();
+      final kept = await usage(ids);
+      if (onlyIfNotOnOtherLists && ids.isNotEmpty) {
+        final marks = List.filled(ids.length, '?').join(',');
+        final onOthers = await db.customSelect(
+          'SELECT DISTINCT i.product_id AS p FROM price_list_items i JOIN price_lists l ON l.id = i.price_list_id '
+          "WHERE i.product_id IN ($marks) AND i.price_list_id <> ? AND l.status <> 'withdrawn'",
+          variables: [for (final id in ids) Variable.withInt(id), Variable.withInt(exceptList ?? -1)],
+        ).get();
+        for (final r in onOthers) {
+          kept.putIfAbsent(r.read<int>('p'), () => 'في قائمة أسعار أخرى');
+        }
+      }
+      final gone = ids.where((id) => !kept.containsKey(id)).toList();
+      final products = {
+        for (final p in await (db.select(db.products)..where((t) => t.id.isIn(gone))).get()) p.id: p,
+      };
+      for (final id in gone) {
+        final p = products[id];
+        if (p == null) continue;
+        await (db.update(db.priceListItems)..where((t) => t.productId.equals(id))).write(const PriceListItemsCompanion(
+            productId: Value(null), status: Value('skipped'), reviewReason: Value('الصنف محذوف')));
+        await (db.delete(db.productImages)..where((t) => t.productId.equals(id))).go();
+        await (db.delete(db.buyingPolicies)..where((t) => t.productId.equals(id))).go();
+        await (db.delete(db.sellingPolicies)..where((t) => t.productId.equals(id))).go();
+        await (db.delete(db.products)..where((t) => t.id.equals(id))).go();
+        await AuditService(db).log(
+          action: AuditAction.delete,
+          entity: 'product',
+          entityId: id,
+          userId: user.id,
+          details: '${p.code} — ${p.nameAr}${p.manufacturerCode.isEmpty ? '' : ' (${p.manufacturerCode})'}',
+          reason: reason.trim().isEmpty ? null : reason.trim(),
+        );
+      }
+      final names = {
+        for (final p in await (db.select(db.products)..where((t) => t.id.isIn(kept.keys.toList()))).get()) p.id: p.nameAr,
+      };
+      return ProductDeleteResult(
+        deleted: gone.where(products.containsKey).length,
+        kept: {for (final e in kept.entries) if (names[e.key] != null) names[e.key]!: e.value},
+        keptIds: kept.keys.toList(),
+      );
+    });
+  }
+
+  /// Switches products off (hidden from sales and lists, history kept).
+  Future<void> setActive(Iterable<int> productIds, bool active, {int? userId}) async {
+    final ids = productIds.toSet().toList();
+    if (ids.isEmpty) return;
+    await (db.update(db.products)..where((t) => t.id.isIn(ids)))
+        .write(ProductsCompanion(isActive: Value(active), updatedAt: Value(DateTime.now())));
+    for (final id in ids) {
+      await AuditService(db).log(
+          action: active ? AuditAction.activate : AuditAction.deactivate, entity: 'product', entityId: id, userId: userId);
+    }
+  }
+
   /// Gives many products the same category (and subcategory, which must sit
   /// under it; null clears it) in one step. Each changed product is in the
   /// audit log with its old and new category. Returns how many changed.
@@ -394,4 +505,14 @@ class ProductService {
 
   static String? _blankToNull(String? s) =>
       (s == null || s.trim().isEmpty) ? null : s.trim();
+}
+
+/// What [ProductService.deleteUnused] did: how many went, and each kept
+/// product's name with what it is used in.
+class ProductDeleteResult {
+  const ProductDeleteResult({required this.deleted, required this.kept, required this.keptIds});
+
+  final int deleted;
+  final Map<String, String> kept;
+  final List<int> keptIds;
 }
