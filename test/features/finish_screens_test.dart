@@ -14,6 +14,7 @@ import 'package:sanitaryware_erp/core/services/project_service.dart';
 import 'package:sanitaryware_erp/core/services/purchase_service.dart';
 import 'package:sanitaryware_erp/core/services/return_service.dart';
 import 'package:sanitaryware_erp/core/services/sales_service.dart';
+import 'package:sanitaryware_erp/core/services/supplier_advance_service.dart';
 import 'package:sanitaryware_erp/features/accounting/accounting_reports.dart';
 import 'package:sanitaryware_erp/features/parties/parties_screen.dart';
 import 'package:sanitaryware_erp/features/products/products_screen.dart';
@@ -163,6 +164,28 @@ void main() {
     await settle(tester);
     expect(find.widgetWithText(TextField, '2'), findsOneWidget, reason: 'the mixer once, quantity 2');
     expect(find.widgetWithText(TextField, '1'), findsOneWidget, reason: 'the pipe, quantity 1');
+    expect(tester.takeException(), isNull);
+    await unmount(tester);
+  });
+
+  testWidgets('a supplier with an advance: the invoice is taken from it or is a regular one', (tester) async {
+    await SupplierAdvanceService(shop.db).create(supplierId: shop.supplierId, amount: 1000000, user: shop.admin);
+    await pump(tester, PurchaseEntryScreen(supplierId: shop.supplierId));
+    expect(find.textContaining('لهذا المورد دفعة مقدمة متاحة'), findsOneWidget);
+    await tester.tap(find.text('خصم من الدفعة المقدمة'));
+    await settle(tester);
+    await tester.tap(find.text('تصفح الأصناف (F3)'));
+    await settle(tester);
+    await tester.tap(find.text('خلاط').last);
+    await settle(tester);
+    await tester.tap(find.text('تم'));
+    await settle(tester);
+    await tester.enterText(find.widgetWithText(TextFormField, 'تكلفة الوحدة').first, '300');
+    await settle(tester);
+    expect(find.textContaining('يُخصم 300'), findsOneWidget, reason: 'the amount follows the invoice total');
+    await tester.tap(find.text('فاتورة عادية'));
+    await settle(tester);
+    expect(find.textContaining('يُخصم'), findsNothing);
     expect(tester.takeException(), isNull);
     await unmount(tester);
   });

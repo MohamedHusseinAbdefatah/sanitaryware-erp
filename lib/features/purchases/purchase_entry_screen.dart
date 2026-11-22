@@ -179,6 +179,11 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
   AdvanceBalance? _advanceBalance;
   final _fromAdvance = TextEditingController();
 
+  /// "خصم من الدفعة المقدمة" chosen: the amount taken follows the invoice
+  /// total (up to what is left) until the person types one of their own.
+  bool _advanceMode = false;
+  bool _advanceTyped = false;
+
   /// The invoice being corrected, when correcting.
   PurchaseInvoice? _correcting;
   String _method = PaymentMethod.cash;
@@ -317,6 +322,8 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
       _supplier = s;
       _advanceBalance = null;
       _fromAdvance.clear();
+      _advanceMode = false;
+      _advanceTyped = false;
     });
     _loadAdvances();
     _refreshListCosts();
@@ -675,6 +682,13 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Taking from the advance: the amount follows the total as lines change.
+    if (_advanceMode && !_advanceTyped && _correcting == null) {
+      final need = _total - moneyOrZero(_paid);
+      final take = need < _advanceAvailable ? need : _advanceAvailable;
+      final text = take <= 0 ? '' : _plain(take);
+      if (_fromAdvance.text != text) _fromAdvance.text = text;
+    }
     final theme = Theme.of(context);
     const warn = AppColors.warn;
     final suppliers = ref.watch(activeSuppliersProvider).valueOrNull ?? const <Supplier>[];
@@ -774,6 +788,48 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                 ],
               ),
             ),
+            // The supplier has money paid ahead: this invoice is either taken
+            // from it or a regular one, chosen here where it is seen.
+            if (_correcting == null && (_advanceAvailable > 0 || _advanceValue > 0))
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.infoBg,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.info.withValues(alpha: 0.3)),
+                  ),
+                  child: Wrap(spacing: 14, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                    const Icon(Icons.account_balance_wallet_outlined, color: AppColors.info),
+                    Text('لهذا المورد دفعة مقدمة متاحة: ${formatMoney(_advanceAvailable)}',
+                        style: const TextStyle(fontWeight: FontWeight.w800)),
+                    SegmentedButton<bool>(
+                      segments: const [
+                        ButtonSegment(value: false, label: Text('فاتورة عادية'), icon: Icon(Icons.receipt_long_outlined)),
+                        ButtonSegment(
+                            value: true, label: Text('خصم من الدفعة المقدمة'), icon: Icon(Icons.account_balance_wallet_outlined)),
+                      ],
+                      selected: {_advanceMode || _advanceValue > 0},
+                      onSelectionChanged: (s) {
+                        _advanceMode = s.single;
+                        _advanceTyped = false;
+                        if (s.single) {
+                          _useAdvance();
+                        } else {
+                          setState(() => _fromAdvance.clear());
+                        }
+                      },
+                    ),
+                    if (_advanceValue > 0)
+                      Text(
+                        'يُخصم ${formatMoney(_advanceValue)} من الدفعة'
+                        '${_remaining > 0 ? '، والباقي ${formatMoney(_remaining)} على حساب المورد أو يُدفع الآن' : ''}',
+                        style: const TextStyle(color: AppColors.info),
+                      ),
+                  ]),
+                ),
+              ),
             if (_correcting != null)
               const Padding(
                 padding: EdgeInsets.fromLTRB(24, 8, 24, 0),
@@ -1051,7 +1107,10 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                     child: MoneyField(
                       controller: _fromAdvance,
                       label: 'من الدفعات المقدمة',
-                      onChanged: (_) => setState(() {}),
+                      onChanged: (_) => setState(() {
+                        _advanceTyped = true;
+                        _advanceMode = _advanceValue > 0;
+                      }),
                     ),
                   ),
                   const SizedBox(width: 6),

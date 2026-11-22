@@ -2,6 +2,18 @@
 
 Versions follow `version:` in `pubspec.yaml` and `lib/core/version.dart`.
 
+## 2.6.1
+
+No database change.
+
+- Purchase invoice for a supplier with an advance: a banner at the top shows
+  the advance left and a clear choice, "فاتورة عادية" or "خصم من الدفعة
+  المقدمة". Taking from the advance fills the amount to the invoice total
+  (up to what is left) and follows it as lines are added; the rest stays on
+  the supplier's account or is paid now. The amount can still be typed in
+  "من الدفعات المقدمة", and a saved invoice can still take from the advance
+  later from its own page.
+
 ## 2.6.0
 
 The client's requests after 2.5.1: correcting mistakes without friction.
