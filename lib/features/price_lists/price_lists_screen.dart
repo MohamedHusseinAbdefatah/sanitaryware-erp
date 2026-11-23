@@ -282,6 +282,36 @@ class _VersionsTabState extends ConsumerState<_VersionsTab> {
   String? _type;
   int? _category;
 
+  /// Deletes every withdrawn list: for good when no document used it, else
+  /// out of every screen and kept only for those documents.
+  Future<void> _removeWithdrawn(int count) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('حذف القوائم المسحوبة ($count)'),
+        content: const SizedBox(
+          width: 460,
+          child: Text('تُحذف كل القوائم المسحوبة من الشاشة. القائمة غير المستخدمة تُحذف نهائياً، '
+              'والمستخدمة في فواتير أو أوامر تبقى محفوظة داخلياً لها فقط دون أن يتغير شيء فيها.\n'
+              'الأصناف التي جاءت منها فقط ولم تُستخدم تُحذف معها.'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.bad),
+            onPressed: () => Navigator.pop(context, true),
+            icon: const Icon(Icons.delete_sweep_outlined),
+            label: const Text('حذف الكل'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final n = await runGuarded(
+        context, () => ref.read(priceListServiceProvider).removeWithdrawn(user: ref.read(currentUserProvider)!));
+    if (n != null && mounted) showToast(context, 'حُذفت $n قائمة مسحوبة');
+  }
+
   bool _pass(PriceListSummary s, _ListShow f) {
     final state = _stateOf(s.list).$1;
     return switch (f) {
@@ -424,6 +454,20 @@ class _VersionsTabState extends ConsumerState<_VersionsTab> {
                         selected: _show == f,
                         onSelected: (_) => setState(() => _show = f),
                       ),
+                    // Clears every withdrawn list at once.
+                    if (base.any((s) => s.list.status == PriceListStatus.withdrawn))
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.bad,
+                          side: BorderSide(color: AppColors.bad.withValues(alpha: 0.5)),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        onPressed: () => _removeWithdrawn(
+                            base.where((s) => s.list.status == PriceListStatus.withdrawn).length),
+                        icon: const Icon(Icons.delete_sweep_outlined, size: 18),
+                        label: Text(
+                            'حذف القوائم المسحوبة (${base.where((s) => s.list.status == PriceListStatus.withdrawn).length})'),
+                      ),
                   ]),
                 ),
                 Expanded(
@@ -523,7 +567,8 @@ class _VersionCard extends ConsumerWidget {
               ? 'لم تُستخدم هذه القائمة في أي مستند، فتُحذف نهائياً مع صفوفها وخصوماتها.\n'
                   'الأصناف التي جاءت منها فقط ولم تُستخدم تُحذف معها، والإصدار السابق من نفس النوع يعود سارياً.'
               : 'هذه القائمة مستخدمة في: $used.\n'
-                  'لذلك تُسحب (تبقى مقروءة لهذه المستندات فقط ولا تسعّر شيئاً جديداً).\n'
+                  'تُحذف من شاشة القوائم وكل الاختيارات، وتبقى محفوظة داخلياً لهذه المستندات فقط '
+                  '(كل سطر فيها محفوظ بسعره وخصمه، فلا يتغير شيء في الفواتير أو الأرصدة).\n'
                   'الأصناف التي جاءت منها فقط ولم تُستخدم تُحذف، والإصدار السابق من نفس النوع يعود سارياً.'),
         ),
         actions: [
@@ -532,7 +577,7 @@ class _VersionCard extends ConsumerWidget {
             style: FilledButton.styleFrom(backgroundColor: AppColors.bad),
             onPressed: () => Navigator.pop(context, true),
             icon: const Icon(Icons.delete_outline),
-            label: Text(used.isEmpty ? 'حذف نهائي' : 'سحب القائمة'),
+            label: Text(used.isEmpty ? 'حذف نهائي' : 'حذف القائمة'),
           ),
         ],
       ),
@@ -543,7 +588,7 @@ class _VersionCard extends ConsumerWidget {
     showToast(
       context,
       [
-        r.deleted ? 'حُذفت القائمة' : 'سُحبت القائمة',
+        r.keptForDocuments ? 'حُذفت القائمة (محفوظة داخلياً للمستندات التي استخدمتها)' : 'حُذفت القائمة',
         if (r.productsDeleted > 0) 'وحُذف ${r.productsDeleted} صنف جاء منها',
         if (r.productsKept > 0) 'وبقي ${r.productsKept} صنف مستخدم أو في قائمة أخرى',
         if (r.restoredVersion != null) 'وعاد الإصدار V${r.restoredVersion} سارياً',
@@ -692,15 +737,28 @@ class _VersionCard extends ConsumerWidget {
                 child: const ListTile(
                     dense: true, leading: Icon(Icons.play_circle_outline), title: Text('تفعيل القائمة')),
               ),
-            if (l.status != PriceListStatus.withdrawn)
-              PopupMenuItem(
-                value: () => _remove(context, ref),
-                child: const ListTile(
-                    dense: true,
-                    leading: Icon(Icons.delete_outline, color: AppColors.bad),
-                    title: Text('حذف القائمة (خطأ)', style: TextStyle(color: AppColors.bad))),
-              ),
+            PopupMenuItem(
+              value: () => _remove(context, ref),
+              child: const ListTile(
+                  dense: true,
+                  leading: Icon(Icons.delete_outline, color: AppColors.bad),
+                  title: Text('حذف القائمة', style: TextStyle(color: AppColors.bad))),
+            ),
           ],
+        ),
+        // In plain sight on every list, a withdrawn one too: delete it.
+        Tooltip(
+          message: 'حذف القائمة',
+          child: OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.bad,
+              side: BorderSide(color: AppColors.bad.withValues(alpha: 0.5)),
+              visualDensity: VisualDensity.compact,
+            ),
+            onPressed: () => _remove(context, ref),
+            icon: const Icon(Icons.delete_outline, size: 18),
+            label: const Text('حذف'),
+          ),
         ),
       ]),
     );

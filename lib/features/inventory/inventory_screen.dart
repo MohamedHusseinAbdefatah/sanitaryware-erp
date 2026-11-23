@@ -152,6 +152,12 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                           tag: ModelTag(r.product.modelNo),
                           subtitle: [r.product.code, if (r.item.brandName != null) r.item.brandName!].join('  ·  '),
                         )),
+                    DataListColumn('الموديل', sortValue: (r) => r.product.modelNo ?? '', flex: 2, (r) => Text(
+                          (r.product.modelNo ?? '').trim().isEmpty ? '—' : r.product.modelNo!.trim(),
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: (r.product.modelNo ?? '').trim().isEmpty ? AppColors.muted : AppColors.brand),
+                        )),
                     DataListColumn('الأماكن', flex: 4, (r) => Wrap(spacing: 4, runSpacing: 4, children: [
                           for (final (place, qty) in r.places)
                             Container(

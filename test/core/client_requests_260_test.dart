@@ -69,7 +69,7 @@ void main() {
       expect(products.map((p) => p.manufacturerCode), contains('A1'));
     });
 
-    test('a list documents used is withdrawn instead; only its unused products go', () async {
+    test('a list documents used leaves every screen, kept only for them; only its unused products go', () async {
       final lists = PriceListService(shop.db);
       // The fixture's list prices the mixer and the pipe; the mixer is bought.
       await PurchaseService(shop.db).post(
@@ -80,12 +80,26 @@ void main() {
       );
       expect(await lists.usage(shop.priceListId), contains('فاتورة شراء'));
       final r = await lists.remove(shop.priceListId, user: shop.admin);
-      expect(r.deleted, isFalse);
+      expect((r.deleted, r.keptForDocuments), (true, true));
       final list = await (shop.db.select(shop.db.priceLists)..where((l) => l.id.equals(shop.priceListId))).getSingle();
-      expect(list.status, PriceListStatus.withdrawn);
+      expect(list.status, PriceListStatus.deleted, reason: 'kept for the invoice that used it');
+      expect((await lists.summaries()).map((s) => s.list.id), isNot(contains(shop.priceListId)),
+          reason: 'gone from the price lists screen');
       final ids = (await shop.db.select(shop.db.products).get()).map((p) => p.id);
       expect(ids, contains(shop.mixer.id), reason: 'bought, so kept');
       expect(ids, isNot(contains(shop.pipe.id)), reason: 'never used, so it went with the list');
+    });
+
+    test('all withdrawn lists are deleted at once', () async {
+      final lists = PriceListService(shop.db);
+      final a = await newList('أ', DateTime(2026, 1, 1), [('B1', 1000)]);
+      final b = await newList('ب', DateTime(2026, 1, 1), [('B2', 1000)]);
+      await lists.withdraw(a, user: shop.admin);
+      await lists.withdraw(b, user: shop.admin);
+      expect(await lists.removeWithdrawn(user: shop.admin), 2);
+      final left = (await lists.summaries()).map((s) => s.list.id);
+      expect(left, isNot(contains(a)));
+      expect(left, isNot(contains(b)));
     });
   });
 

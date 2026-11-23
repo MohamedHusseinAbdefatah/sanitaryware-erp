@@ -2,6 +2,22 @@
 
 Versions follow `version:` in `pubspec.yaml` and `lib/core/version.dart`.
 
+## 2.6.2
+
+No database change.
+
+- Price lists: a red "حذف" button on every list card, in plain sight (it was
+  only in the card's ⋮ menu), a withdrawn list included. A list no document
+  used is deleted for good. One used by invoices or orders is now gone from
+  the screen and every list too (status "deleted"), kept only for those
+  documents, whose lines already hold their own price and discount. Its
+  unused products go, and the version before it is in force again (this
+  also repairs lists withdrawn before 2.6, which had left it closed).
+- "حذف القوائم المسحوبة (N)": deletes every withdrawn list at once.
+- Products list: "الموديل" and "كود الشركة" columns (sortable); inventory
+  list: "الموديل" column. A product shows a model only when its price list
+  had a model column or it was typed in the product's form.
+
 ## 2.6.1
 
 No database change.

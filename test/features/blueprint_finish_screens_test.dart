@@ -9,11 +9,13 @@ import 'package:sanitaryware_erp/core/providers.dart';
 import 'package:sanitaryware_erp/core/quantity.dart';
 import 'package:sanitaryware_erp/core/services/catalog_service.dart';
 import 'package:sanitaryware_erp/core/services/party_service.dart';
+import 'package:sanitaryware_erp/core/services/price_list_service.dart';
 import 'package:sanitaryware_erp/core/services/purchase_service.dart';
 import 'package:sanitaryware_erp/core/services/sales_service.dart';
 import 'package:sanitaryware_erp/features/expenses/expenses_screen.dart';
 import 'package:sanitaryware_erp/features/parties/customer_page.dart';
 import 'package:sanitaryware_erp/features/parties/party_form_dialog.dart';
+import 'package:sanitaryware_erp/features/price_lists/price_lists_screen.dart';
 import 'package:sanitaryware_erp/features/products/products_screen.dart';
 import 'package:sanitaryware_erp/features/purchases/purchase_plan_dialog.dart';
 
@@ -143,6 +145,27 @@ void main() {
     await settle(tester);
     final products = await shop.db.select(shop.db.products).get();
     expect(products.every((p) => p.categoryId == cat), isTrue);
+    expect(tester.takeException(), isNull);
+    await unmount(tester);
+  });
+
+  testWidgets('price lists: the delete button is on every list and deletes an unused one', (tester) async {
+    final listId = (await PriceListService(shop.db).createVersion(
+      PriceListHeader(name: 'قائمة خطأ', brandId: shop.brandId, listType: 'خطأ', effectiveFrom: DateTime(2026)),
+      rows: [PriceRowInput(name: 'خلاط', price: 1000, manufacturerCode: 'M1', productId: shop.mixer.id)],
+      user: shop.admin,
+    ))
+        .id;
+    await pump(tester, const PriceListsScreen());
+    final buttons = find.byTooltip('حذف القائمة');
+    expect(buttons, findsNWidgets(2), reason: 'one on each list');
+    // The wrong list is the newest, listed first.
+    await tester.ensureVisible(buttons.first);
+    await tester.tap(buttons.first);
+    await settle(tester);
+    await tester.tap(find.text('حذف نهائي'));
+    await settle(tester);
+    expect(await (shop.db.select(shop.db.priceLists)..where((l) => l.id.equals(listId))).getSingleOrNull(), isNull);
     expect(tester.takeException(), isNull);
     await unmount(tester);
   });

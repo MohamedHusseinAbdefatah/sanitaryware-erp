@@ -17,11 +17,17 @@ abstract final class PriceListStatus {
   /// document that used it keeps it, and it can be switched on again.
   static const inactive = 'inactive';
 
+  /// Deleted by the person but used by documents: gone from every screen
+  /// and list, kept only so those documents stay whole (each of their lines
+  /// already holds its own list price and discount).
+  static const deleted = 'deleted';
+
   static String label(String status) => switch (status) {
         active => 'مفعلة',
         pendingReview => 'قيد المراجعة',
         withdrawn => 'مسحوبة',
         inactive => 'موقوفة',
+        deleted => 'محذوفة',
         _ => status,
       };
 }
@@ -402,6 +408,7 @@ class PriceListService {
                WHERE i.price_list_id = l.id AND i.status = 'review') AS r
       FROM price_lists l
       LEFT JOIN brands b ON b.id = l.brand_id
+      WHERE l.status <> 'deleted'
       ORDER BY l.effective_from DESC, l.id DESC
     ''', readsFrom: {db.priceLists, db.priceListItems, db.brands}).map((r) => PriceListSummary(
           db.priceLists.map(r.data),
@@ -610,14 +617,15 @@ class PriceListService {
     return parts.join('، ');
   }
 
-  /// Owner or purchasing: removes a list entered by mistake. A list no
+  /// Owner or purchasing: deletes a list, a withdrawn one too. A list no
   /// document used is deleted for good with its rows and the discounts set
-  /// on it; one that was used is withdrawn instead (kept for those
-  /// documents). Either way the version before it comes back into force and
-  /// the products only this list brought in, which nothing used, are
-  /// deleted.
+  /// on it. One that documents used leaves every screen and list as well,
+  /// and is kept only for those documents (each of their lines already holds
+  /// its own list price and discount). Either way the version before it
+  /// comes back into force and the products only this list brought in,
+  /// which nothing used, are deleted.
   Future<ListRemoval> remove(int listId, {String reason = '', required User user}) async {
-    if (await usage(listId) != '') return withdraw(listId, reason: reason, user: user);
+    if (await usage(listId) != '') return _hide(listId, reason, user);
     return db.transaction(() async {
       _admin(user);
       final list = await _list(listId);
@@ -642,6 +650,43 @@ class PriceListService {
       return ListRemoval(deleted: true, productsDeleted: products.deleted, productsKept: products.keptIds.length,
           restoredVersion: restored);
     });
+  }
+
+  /// A used list deleted: out of every screen and list, kept for the
+  /// documents that used it.
+  Future<ListRemoval> _hide(int listId, String reason, User user) {
+    return db.transaction(() async {
+      _admin(user);
+      final list = await _list(listId);
+      // Lists withdrawn before 2.6 left the version before them closed: it opens again.
+      final restored = await _reopenBefore(list);
+      await (db.update(db.priceLists)..where((l) => l.id.equals(listId))).write(PriceListsCompanion(
+          status: const Value(PriceListStatus.deleted), updatedAt: Value(DateTime.now())));
+      await (db.delete(db.buyingPolicies)..where((t) => t.priceListId.equals(listId))).go();
+      await (db.delete(db.sellingPolicies)..where((t) => t.priceListId.equals(listId))).go();
+      final products = await _dropListProducts(listId, user, reason);
+      await AuditService(db).log(
+        action: AuditAction.delete,
+        entity: 'price_list',
+        entityId: listId,
+        userId: user.id,
+        details: 'حذف ${list.name} ${list.listType} V${list.versionNo} (مستخدمة في مستندات: محفوظة لها فقط)'
+            '${products.deleted > 0 ? ' — حُذف ${products.deleted} صنف' : ''}',
+        reason: reason.trim().isEmpty ? null : reason.trim(),
+      );
+      return ListRemoval(deleted: true, keptForDocuments: true, productsDeleted: products.deleted,
+          productsKept: products.keptIds.length, restoredVersion: restored);
+    });
+  }
+
+  /// Deletes every withdrawn list at once (see [remove]). Returns how many.
+  Future<int> removeWithdrawn({required User user}) async {
+    _admin(user);
+    final lists = await (db.select(db.priceLists)..where((l) => l.status.equals(PriceListStatus.withdrawn))).get();
+    for (final l in lists) {
+      await remove(l.id, user: user);
+    }
+    return lists.length;
   }
 
   Future<List<int>> _listProductIds(int listId) async => [
@@ -698,6 +743,7 @@ class PriceListService {
       if (list.status != from) {
         throw ValidationException(switch (list.status) {
           PriceListStatus.withdrawn => 'هذه القائمة مسحوبة نهائياً ولا يمكن تفعيلها',
+          PriceListStatus.deleted => 'هذه القائمة محذوفة',
           PriceListStatus.pendingReview => 'هذه القائمة قيد المراجعة؛ اعتمدها أولاً',
           _ => active ? 'القائمة مفعلة بالفعل' : 'القائمة موقوفة بالفعل',
         });
@@ -883,7 +929,7 @@ class PriceListService {
       innerJoin(db.priceLists, db.priceLists.id.equalsExp(db.priceListItems.priceListId)),
       leftOuterJoin(db.brands, db.brands.id.equalsExp(db.priceLists.brandId)),
     ])
-          ..where(db.priceListItems.productId.equals(productId))
+          ..where(db.priceListItems.productId.equals(productId) & db.priceLists.status.isNotValue(PriceListStatus.deleted))
           ..orderBy([OrderingTerm.desc(db.priceLists.effectiveFrom), OrderingTerm.desc(db.priceLists.id)]))
         .get();
     return [
@@ -899,6 +945,7 @@ class PriceListService {
 class ListRemoval {
   const ListRemoval({
     required this.deleted,
+    this.keptForDocuments = false,
     required this.productsDeleted,
     required this.productsKept,
     this.restoredVersion,
@@ -907,6 +954,9 @@ class ListRemoval {
   /// True when deleted for good; false when documents used it, so it was
   /// withdrawn and kept for them.
   final bool deleted;
+
+  /// Documents used it: gone from the screens, kept only for them.
+  final bool keptForDocuments;
 
   /// Products only this list brought in, deleted with it.
   final int productsDeleted;

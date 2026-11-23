@@ -354,7 +354,7 @@ class ProductService {
         final marks = List.filled(ids.length, '?').join(',');
         final onOthers = await db.customSelect(
           'SELECT DISTINCT i.product_id AS p FROM price_list_items i JOIN price_lists l ON l.id = i.price_list_id '
-          "WHERE i.product_id IN ($marks) AND i.price_list_id <> ? AND l.status <> 'withdrawn'",
+          "WHERE i.product_id IN ($marks) AND i.price_list_id <> ? AND l.status NOT IN ('withdrawn', 'deleted')",
           variables: [for (final id in ids) Variable.withInt(id), Variable.withInt(exceptList ?? -1)],
         ).get();
         for (final r in onOthers) {
